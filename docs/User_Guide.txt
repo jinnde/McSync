@@ -1,0 +1,75 @@
+This file is the documentation for McSync, a file synchronization utility.
+
+File synchronization is the task of keeping directories mirrored on different machines, so that a change on any machine gets propagated to the other machines.
+
+---------------------------------------------------------------------------
+
+Contents:
+(1) Is McSync the right tool for me?
+(2) What do I need to know in order to use McSync?
+(2a) The virtual tree
+(2b) The McSync interface
+(3) How does McSync work?
+(4) Version history
+
+---------------------------------------------------------------------------
+
+(1) Is McSync the right tool for me?
+
+If you are only going to be making changes on one machine, and want to have a mirror for backup or read-only (e.g. website) use, you will find it easier to use rsync, although McSync can do it.
+
+If you are looking for a system that allows several people to edit the same set of files, with the ability to go back to previous versions, then you probably want something else, like SVN or Mercurial or Git, since McSync does not keep track of previous versions of files, and it is designed to immediately propagate all changes, which is usually not what one wants for a coding project with multiple developers.  Use SVN or another such source version control system in such contexts.
+
+If you use machines in several places (perhaps including laptops), and you can ssh between them to get a shell on any of them (as is the case if they are Mac or Linux machines), and you would like the same set of files that you work with to be stored locally on each of the machines, then McSync is for you.  It is kind of like the old days of carrying around a floppy disk or usb stick with the files you are working on, so that wherever you are, you have the latest version of your files.  But McSync works even if you have a hundred thousand files, and it uses the internet so you don't have to carry a hard drive around with you, and there is no single point of possible failure, such as the hard drive or specific internet sites that must be reachable.  If two computers can communicate with each other, they can sync.
+
+There is not yet any version of McSync for Microsoft Windows.  If you need to synchronize a machine running Microsoft Windows, try using Unison.  Or, if you are inspired to write a Windows version of McSync, contact me with your vision and plan.
+
+Unison can in theory be used on all machines where McSync can be used.  So why would you ever want to use McSync instead of Unison?
+- because McSync has a better algorithm for propagating updates (meaning less human intervention is needed to get the right thing to happen)
+- because McSync allows synchronization between all your machines or synchronized directories at once (not just between two machines), even if different machines have differences in which directories are stored on that machine
+- because McSync gives you more control over what happens with your files, including how much or how little to sync on any given occasion
+- because McSync is more reliable (I originally wrote McSync because I was frustrated with Unison's mysterious failures to copy certain files and directories, as well as its difficulty of installation and use)
+
+McSync does not require root privileges to run or install.  It can be run on one machine to synchronize data on other machines (not necessarily including the machine it is being run on).  It does require ssh access to the remote machines.
+
+---------------------------------------------------------------------------
+
+INSTALLATION
+
+[change this to do a single example that syncs a machine with a usb stick, showing the virtual tree and the filesystem trees and how two points get grafted onto the same point and then get synced.  then another machine can be added, and other graft points, and a partial three-way update can be done.]
+
+
+If you just want to sync your home directory with a copy on a usb stick, then you can put the mcsync directory at ~/.mcsync and that is enough.  If you want to sync your desktop computer with a laptop computer and a usb stick that is sometimes on one or the other machine, then you will want to have three mcsync directories, one on each device (the two computers and one usb stick).
+
+
+(2) What do I need to know in order to use McSync?
+
+(2a) The virtual tree
+
+The main idea giving McSync its flexibility is that you maintain a virtual directory tree, that does not exist on any machine.  Real directories of files on actual storage media can then be grafted (mounted) onto the virtual tree.  Files are kept synchronized when they are grafted onto the same place in the virtual tree.  Portions of the virtual tree are what you can choose to sync.
+
+Example:  [Simplify this!]  My virtual tree has two top level directories, /Common and /Extras.  /Common is where I keep all the non-machine-specific files in my home directory, and /Extras is where I keep miscellaneous directories that I want to synchronize between my OS X (Mac) machines.  So I graft ~/Common (for every machine storing my home directory) onto the virtual /Common directory, and on my Macs I graft ~/Library/StickiesDatabase onto /Extras/StickiesDatabase, ~/Library/Safari/Bookmarks.plist onto /Extras/Bookmarks, and ~/Library/Safari/Form Values onto /Extras/SafariForms.  I keep my website in ~/Common/Website, so on the machine that hosts my website, I graft ~/public_html onto /Common/Website.
+
+There is only one virtual tree.  You can always add a new directory to the virtual root when a new synchronization project arises.
+
+A real directory that is grafted onto the virtual tree can specify that certain subdirectories should be ignored.  This is mostly useful when the subdirectory would take a lot of disk space and you do not want to bother mirroring it on that device.
+
+Example:  On the machine that hosts my website, the website is stored in ~/public_html, so on that machine, the graft of ~/Common onto /Common specifies that the subdirectory /Common/Website should be ignored for that graft, to save a little diskspace instead of storing the website twice on that machine (both in ~/Common/Website and in ~/public_html).  Although McSync treats hardlinks intelligently, unix does not allow you to hardlink directories to each other.  McSync does not follow symbolic links, but rather treats them similarly to text files.
+
+The same real file or directory can exist at multiple places in the virtual tree, so long as one place is not a descendant of the other.
+
+(2b) The McSync interface
+
+McSync uses a 2D ascii terminal interface, like pine or emacs.  Help at the bottom of the screen shows all currently available commands.
+
+---------------------------------------------------------------------------
+(3) How does McSync work?
+
+McSync scans the files on each machine it can reach to see what changes have occurred since the previous scan.  It then allows you to preview the changes it will make, and resolve any conflicts.  Finally, it propagates the changes.
+
+For more detail, see "Algorithm.txt".
+
+---------------------------------------------------------------------------
+
+Leslie Lamport. Time, clocks and the ordering of events in a distributed system. Communications of
+the ACM, 21(7):558Ð565, July 1978.

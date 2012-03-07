@@ -1,0 +1,21 @@
+McSync is a file synchronization utility.
+
+File synchronization is the task of keeping directories mirrored on different machines, so that a change on any machine gets propagated to the other machines.
+
+
+INSTALLATION
+
+Installing mcsync just requires copying the mcsync directory (the one containing the subdirectories "bin", "conf", "docs", "img", and "src") to the filesystems containing the files you want to sync.
+
+If you are reading this file as a text file on your own system, then mcsync is probably already installed.
+
+You can use mcsync itself to install it on other machines (like laptops) or devices (like usb sticks).  It must be possible to ssh to the other machines, not just to install mcsync, but to connect to those machines when using it.
+
+
+RUNNING
+
+McSync uses a 2D ascii terminal interface, like pine or emacs.  Help at the bottom of the screen shows all currently available commands.
+
+
+
+walk the user through setting up two directories and synchronizing them.

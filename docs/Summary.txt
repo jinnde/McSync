@@ -1,0 +1,27 @@
+Eventually this should go back into the top definitions section -- it is simply more formal, and less talking about special treatments.
+
+
+
+
+
+
+
+
+#####  View of syncs
+
+When the workers update files, it is the same as if the user or someone else had updated the file.  The success or failure of McSync's own update attempt is irrelevant.  This update attempt can be viewed as being attempted by a separate process from McSync proper.  What is relevant is the state of the file.  When McSync scans the file again, we are hoping that it sees the preferred values.  When it does, then Zing!, a sync occurs, meaning that two or more tracked file aspects have the same value at the same time.  Actually, to be sure they had the same value at the same time, the HQ can ask for repeat scans of at least all but one mirror of the synced aspects.  If we scan files A, B, C, and then D, and then A, B, C again, and they all give the same value, then they all had the same value at the same time (as far as McSync's histories can tell, which is all we care about), namely the time of the scan of D.
+
+For safety, we need the fact that a tracked file has a single history.  But this is practically the definition of a tracked file: its history.  If there are (by mistake, say) two McSync directories both acting on the same set of OS files, then they each have their own histories for the files.  There will be two tracked files, each with its own history, for a single OS file.  If each one is surprised by the other's changes to the file, it just doesn't matter.  From McSync's point of view, they are two files, being updated by who cares who.  This could also happen from a single McSync directory if a disk is mounted in two separate places.
+
+The lack of safety otherwise would come up in situations such as:  We edit file X on machine B, and then run McSync on A, collecting scans of A and B.  We tell it to propagate the new version to A, but we forget to hit "go", and then we edit file X on machine B some more, and sync B with C, so the new X propagates to C.  We sync C with A, and we specify that actually A's old
+We later finish the sync from B to A
+Well, that example is a bit contorted, but the general idea should be clear.
+
+Anyway, at the Zing! of the sync, the tracked file aspects are known perfectly to be identical, and the meaning of the sync is that they should be considered as in some sense the same; they should share their histories.  If one of them is derived from an old version on machine A (currently unreachable), then any updates to any of them should propagate back to machine A the next time it is reachable.  If any of them gets updated in the future, they all want to get that future update.  These are assuming that the files continue to get synced with each other periodically, according to the default propagation behavior.  Of course a tracked file can be released from this burden by de-grafting it.  The synced files can be split into two sets with two different destinies by re-grafting them to two different places, not the same.
+
+This is a nice view, but has some issues...
+
+
+
+
+
