@@ -1,4 +1,10 @@
-#! /bin/sh
+#!/bin/csh
+
+# This script helps to start McSync when contacted over the
+# network  to start in slave mode. Because McSync uses the
+# invocation path to figure out where its log files are (./data/log),
+# we need to cd into the root directory of McSync before invocation of
+# the binary.
 
 # we don't know what machine we are on or what directory we are in
 # but $0 found us to invoke us, so it can help us find our files
