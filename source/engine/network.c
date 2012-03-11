@@ -373,7 +373,7 @@ void* raisechild(void* voidplug)
         // and they don't have any effect if thread is blocked in getc!!!
         // so there is no way to keep the thread from stealing a future char!!
         // actually detach means don't have it wait to join other when exiting
-        fprintf(plug->tokid, "\n%s/src/mcsync -slave\n", sep + 1);
+        fprintf(plug->tokid, "\n%s/mcsync -slave\n", sep + 1);
         fflush(plug->tokid);
     }
     waitforstring(plug->fromkid, slave_start_string); // till mcsync is live

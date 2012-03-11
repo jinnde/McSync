@@ -1,0 +1,9 @@
+#! /bin/sh
+
+# we don't know what machine we are on or what directory we are in
+# but $0 found us to invoke us, so it can help us find our files
+# $0:h has the final path component stripped (unless there was nothing else)
+# so the following gets us to our 'source' directory
+if ( $0:h != $0 ) cd $0:h
+
+bin/mcsync $*
