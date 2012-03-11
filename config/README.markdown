@@ -1,8 +1,6 @@
-Readme: McSync Configuration
-============================
+# McSync Configuration
 
-Format of the specs file
-------------------------
+## Format of the specs file
 
 The first line gives the file format version number: "version 1"
 Then come specifications of machines and grafts:

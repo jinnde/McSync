@@ -1,39 +1,25 @@
-Source Code Structure
-=====================
+# Source Code Structure
 
 McSync is organized as a bunch of interacting processes.
 The source files can be understood in relation to these.
 
-definitions.h
-: Used by everybody
+    definitions.h           used by everybody
 
-main.c
-: Figures out whether it should be CMD / HQ / WKR and runs routermain
+    main.c                  figures out whether it should be CMD / HQ / WKR and runs routermain
+    communication.c         handles sending and receiving of messages over channels
+    network.c               connects to remote machine and establishes connection to remote mcsync
 
-communication.c
-: Handles sending and receiving of messages over channels
+    workerops.c             code for slaves to run
+    diskscan.c
 
-network.c
-: Connects to remote machine and establishes connection to remote mcsync
+    comparisons.c           used by HQ
 
-workerops.c
-diskscan.c
-: Code for slaves to run
-
-comparisons.c
-: Used by HQ
-
-tui.c
-: User interface
-
-specs.c
-: Configuration
+    tui.c                   user interface
 
 To compile, go to the uppermost directory, and type 'make'.
-To run, go one directory higher, and type './bin/mcsync'.
+To run, go one directory higher, and type `'./bin/mcsync'`.
 
-The Types of Processes
-----------------------
+## The Types of Processes
 
 ### Commander (CMD)
 
