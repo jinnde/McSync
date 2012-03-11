@@ -1,7 +1,8 @@
 Readme for McSync 1.0
-----------------------
+=====================
 
-Read docs/QuickStart.txt to start syncing right away, or read docs/UserGuide.txt to understand what you can do with McSync.
+Read docs/QuickStart.txt to start syncing right away, or read docs/UserGuide.txt
+to understand what you can do with McSync.
 
 The directory containing this file is McSync's private working directory.
 It is NOT a place to put your own files.
@@ -14,8 +15,17 @@ There must be a copy of this directory on each machine or storage device contain
 
 It has the following contents, which (except for "docs") are all needed by McSync:
 
-bin/        compiled binaries
-config/     configuration files
-docs/       documentation files
-data/       where mcsync stores its latest info about all the user files it syncs on this and other devices
-source/     the sources and scripts with which to compile and run mcsync
+bin/
+: Compiled binaries
+
+config/
+: Configuration files
+
+docs/
+: Documentation files
+
+data/
+: Where mcsync stores its latest info about all the user files it syncs on this and other devices
+
+source/
+: The sources and scripts with which to compile and run mcsync

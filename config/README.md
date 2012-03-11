@@ -7,15 +7,15 @@ Format of the specs file
 The first line gives the file format version number: "version 1"
 Then come specifications of machines and grafts:
 
-machine <nickname>
-<mcsync's working directory>
-<ipaddress> (must not include ':' or ' ')
-<ipaddress> (include as many as you like; only the first will be tried automatically)
-<ipaddress>,<ipaddress> (a line like this will ssh first to one machine and then from there to the second machine)
+    machine <nickname>
+    <mcsync's working directory>
+    <ipaddress> (must not include ':' or ' ')
+    <ipaddress> (include as many as you like; only the first will be tried automatically)
+    <ipaddress>,<ipaddress> (a line like this will ssh first to one machine and then from there to the second machine)
 
-<machine>:<directory or file>
-<virtual directory or file to "mount" it at>
-[ignore <virtual directory or file>]*
+    <machine>:<directory or file>
+    <virtual directory or file to "mount" it at>
+    [ignore <virtual directory or file>]*
 
 The same real file can exist in multiple places in the virtual tree.
 Multiple real files can exist in the same place in the virtual tree.

@@ -1,51 +1,64 @@
-This directory contains the source files for McSync.
+Source Code Structure
+=====================
 
 McSync is organized as a bunch of interacting processes.
 The source files can be understood in relation to these.
 
-definitions.h   used by everybody
+definitions.h
+: Used by everybody
 
-main.c          figures out whether it should be CMD / HQ / WKR and runs routermain
-communication.c handles sending and receiving of messages over channels
-network.c       connects to remote machine and establishes connection to remote mcsync
+main.c
+: Figures out whether it should be CMD / HQ / WKR and runs routermain
 
-workerops.c     code for slaves to run
+communication.c
+: Handles sending and receiving of messages over channels
+
+network.c
+: Connects to remote machine and establishes connection to remote mcsync
+
+workerops.c
 diskscan.c
+: Code for slaves to run
 
-comparisons.c   used by HQ
+comparisons.c
+: Used by HQ
 
-tui.c           user interface
-specs.c         configuration
+tui.c
+: User interface
+
+specs.c
+: Configuration
 
 To compile, go to the uppermost directory, and type 'make'.
 To run, go one directory higher, and type './bin/mcsync'.
 
-------------------------------------------------------------
+The Types of Processes
+----------------------
 
-#####
-#####  The types of processes
-#####
+### Commander (CMD)
 
-Commander
-    The commander is the TUI or GUI or batch preferences or whatever is making the decisions.
-    The program started by the user is the commander, running on the machine expected by the user, like any executable.
-    The commander communicates with the headquarters, receiving just enough info for display, and providing just enough info for the headquarters to run the show.  (Commander might be handheld device, while headquarters is big and powerful.)
-    The commander is the only one who uses the virtual tree.
+The commander is the TUI or GUI or batch preferences or whatever is making the decisions.
+The program started by the user is the commander, running on the machine expected by the user, like any executable.
+The commander communicates with the headquarters, receiving just enough info for display, and providing just enough info for the headquarters to run the show.  (Commander might be handheld device, while headquarters is big and powerful.)
+The commander is the only one who uses the virtual tree.
 
-Headquarters
-    The headquarters runs the history comparison algorithms, does history merging, creates instructions, and generally tells the workers what to do, based on what the commander tells it to do.  Workers send info in to the headquarters (when requested), and the headquarters sends info back out to the workers.
-    Conceivably the headquarters could tell workers to send data directly among themselves (possibly setting up further connections, so the network is not a tree), but we won't try that yet.
+### Algorithm or Headquarters (HQ)
 
-Workers
-    A worker accesses files on one device, in response to requests from (and communicating results to) the headquarters.
-    Two workers could handle two McSync locations on one machine.
+The headquarters runs the history comparison algorithms, does history merging, creates instructions, and generally tells the workers what to do, based on what the commander tells it to do.  Workers send info in to the headquarters (when requested), and the headquarters sends info back out to the workers.
+Conceivably the headquarters could tell workers to send data directly among themselves (possibly setting up further connections, so the network is not a tree), but we won't try that yet.
 
-Every device has a local router.  The routers are the only ones who know whether messages actually need to be sent to other places, and the only ones who send them.  Other processes just hand their messages to and from the local router.  The routers are like the post office.  Nobody else has to worry about how their message gets to its destination, they just say who it's for.  The network topology for now is a tree.
+### Workers (WKR)
 
-------------------------------------------------------------
+A worker accesses files on one device, in response to requests from (and communicating results to) the
+headquarters. Two workers could handle two McSync locations on one machine.
 
+### Router or Post Office (PO)
 
-STRUCTURE
+Every device has a local router.
+The routers are the only ones who know whether messages actually need to be sent to other places, and the only ones who send them.
+Other processes just hand their messages to and from the local router.  The routers are like the post office.  Nobody else has to worry about how their message gets to its destination, they just say who it's for.  The network topology for now is a tree.
+
+## Structure
 
 To understand the processes and threads within them, we need to understand that mcsync
 is in general running on multiple machines, accessing multiple devices.  (Devices are
@@ -57,9 +70,11 @@ that two machines are the same.
 
 These executables are linked in a tree:
 
-            ,------- WKR ------- WKR --------- WKR
-CMD ----- HQ ------- WKR            `--------- WKR
-            `------- WKR ------- WKR
+
+                ,------- WKR ------- WKR --------- WKR
+    CMD ----- HQ ------- WKR            `--------- WKR
+                `------- WKR ------- WKR
+
 
 Any of these locations can have extra workers in the same process.
 Each worker is reponsible for all operations on a given device.
@@ -70,7 +85,7 @@ have to be.
 
 The processes communicate via streams (such as stdin and stdout).
 
-Within each process there are one or more agents.  McSync is these agents working together.
+Within each process there are one or more agents. McSync is these agents working together.
 The agents are: one CMD, one HQ, a PO for each executable, and a WKR for each device.
 CMD talks only to HQ and POs, while HQ talks only to CMD and WKRs.
 
@@ -82,9 +97,9 @@ Each executable has a router (post office, PO) for getting messages to their des
 The router knows what other executables the process is directly connected to,
 and knows which way to send a message addressed to any agent.
 
-The connections are implemented with plugs.  A plug is a connector that allows two
-threads in the same process to send messages to each other.  An agent is connected to
-its local PO with a plug.  For connections between POs (i.e., between processes),
+The connections are implemented with plugs. A plug is a connector that allows two
+threads in the same process to send messages to each other. An agent is connected to
+its local PO with a plug. For connections between POs (i.e., between processes),
 at each end there are threads (shipping and receiving, SR) connected to the PO with a plug,
 and these two SRs communicate directly with each other using inter-process streams
 (actually a distinct pair of threads is used for each one-way link: in, out, err).
@@ -103,7 +118,7 @@ RCH becomes a remote SR and PO, it stops sending data on stderr.  So it looks li
 forward_raw_errors never processes anything.
 
 
-CREATING STRUCTURE
+## Creating Structure
 
 To connect to another machine, you can ask your PO to create a reaching (RCH) agent.
 This RCH will attempt to reach the target machine.
@@ -166,7 +181,7 @@ would need to use sockets instead of pipes.  No code for that yet.
 
 ----------------------------------------------------------
 
-#####  McSync operation
+## McSync operation
 
 The user starts the TUI/GUI/batch commander (CMD).
 The commander sets up a headquarters (HQ).
@@ -201,61 +216,61 @@ The HQ propagates histories as needed.
 
 
 --------------------------------------------------------
-Steps in establishing a connection [$1:]$2:$3:$3:$4(dir)
-L/I/R = local/intermediate/remote
-T = TUI thread
-A = algorithm thread
-W = worker thread
-P = plug thread
-C = child process
+    Steps in establishing a connection [$1:]$2:$3:$3:$4(dir)
+    L/I/R = local/intermediate/remote
+    T = TUI thread
+    A = algorithm thread
+    W = worker thread
+    P = plug thread
+    C = child process
 
-    expect: script name OR ssh: machine, user
-        user@machine:~/.mcsync
-        @laptop2:user@machine:user@machine:~/.mcsync
-            $1 = where to hop from -- not fully implemented
-            $2 = first machine to ssh to
-            $3 = continuing machines to ssh to
-            $4 = final McSync directory
-        sp2sp;running:min;$:AC;$:<input>
-            not fully implemented yet
+        expect: script name OR ssh: machine, user
+            user@machine:~/.mcsync
+            @laptop2:user@machine:user@machine:~/.mcsync
+                $1 = where to hop from -- not fully implemented
+                $2 = first machine to ssh to
+                $3 = continuing machines to ssh to
+                $4 = final McSync directory
+            sp2sp;running:min;$:AC;$:<input>
+                not fully implemented yet
 
-::TUI tells algo to connect to a certain device::
-LT  TUIprocesschar  receives 'c'onnect command, sends "newplugplease" (NPP1/2)
-                    message to algorithm w/ deviceid string(s)
-LA  algomain        receives NPP1 (devid) or NPP2(dstid,srcid) and calls reachfor
+    ::TUI tells algo to connect to a certain device::
+    LT  TUIprocesschar  receives 'c'onnect command, sends "newplugplease" (NPP1/2)
+                        message to algorithm w/ deviceid string(s)
+    LA  algomain        receives NPP1 (devid) or NPP2(dstid,srcid) and calls reachfor
 
-::algo asks worker to create a connection to the device::
-LA  algo_reachfor   sends NPP (deviceid + routeraddr) to worker, uses
-                 $1 deviceid to find machine and set its routeraddr
----                 at this point we would go to a remote machine's worker
-                    for a multi-hop connection
-IW  workermain      receives NPP message and calls channel_launch
-IW  channel_launch  creates the new plug, sets target_machine to the machine with
-                    the given deviceid, sets routeraddr (on intermediate machine)
-IP  thread_main     recognizes plug as needing connection and calls reachforremote
+    ::algo asks worker to create a connection to the device::
+    LA  algo_reachfor   sends NPP (deviceid + routeraddr) to worker, uses
+                     $1 deviceid to find machine and set its routeraddr
+    ---                 at this point we would go to a remote machine's worker
+                        for a multi-hop connection
+    IW  workermain      receives NPP message and calls channel_launch
+    IW  channel_launch  creates the new plug, sets target_machine to the machine with
+                        the given deviceid, sets routeraddr (on intermediate machine)
+    IP  thread_main     recognizes plug as needing connection and calls reachforremote
 
-::dedicated thread tries to actually reach device::
-IP  reachforremote  does regular scrolling, gives birth, gives further commands
-                    to process, waits for McSync to show signs of life, sends
-              $3,$4 router address
-IP  givebirth       forks, sends child (one-way) to firststeps
-IC  firststeps      fixes pipes
-IC  transmogrify $2 become ssh or whatever through execl
----                 keep receiving commands from reachforremote
-RC  main            prints messages to show signs of life, receives router address
-RC  routermain      tells channel_launch to create a parent plug and a worker
-                    plug with the given plug id
-RC  channel_launch  creates the new plug, sets target_machine and routeraddr
-RW  thread_main     sees it is the worker_plug
-RW  workermain      sends algorithm a "workerisup" message
----                 every hop along the way adds the worker's plug number to the
-                    thisway it came from
+    ::dedicated thread tries to actually reach device::
+    IP  reachforremote  does regular scrolling, gives birth, gives further commands
+                        to process, waits for McSync to show signs of life, sends
+                  $3,$4 router address
+    IP  givebirth       forks, sends child (one-way) to firststeps
+    IC  firststeps      fixes pipes
+    IC  transmogrify $2 become ssh or whatever through execl
+    ---                 keep receiving commands from reachforremote
+    RC  main            prints messages to show signs of life, receives router address
+    RC  routermain      tells channel_launch to create a parent plug and a worker
+                        plug with the given plug id
+    RC  channel_launch  creates the new plug, sets target_machine and routeraddr
+    RW  thread_main     sees it is the worker_plug
+    RW  workermain      sends algorithm a "workerisup" message
+    ---                 every hop along the way adds the worker's plug number to the
+                        thisway it came from
 
-::communication is up::
-LA                  algorithm receives this and asks worker for deviceid string
-RW                  worker sends deviceid
-LA                  algo finds machine with given deviceid, sets status_connected
-LT                  TUI shows machine is connected
+    ::communication is up::
+    LA                  algorithm receives this and asks worker for deviceid string
+    RW                  worker sends deviceid
+    LA                  algo finds machine with given deviceid, sets status_connected
+    LT                  TUI shows machine is connected
 --------------------------------------------------------
 
 Topworker should be eliminated.
@@ -270,8 +285,6 @@ Tui should tell (by default HQ's) PO to reach for a new WKR, remote location, or
 When reaching for a remote location, it can be done either step by step (each step being
 sent as a command from the tui), or interactive by the user through the tui (using raw
 streams), or as a set batch of steps.
-
-
 
 --------------------------------------------------------
 
