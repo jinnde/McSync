@@ -5,7 +5,7 @@
 # back tty of said window. The reason is that cgdb can't handle to curses output
 # of the mcsync interface. Further it creates a third terminal window where it
 # starts a tail -f on the data/log file of mcsync for real-time status updates.
-# It has to stay in the root McSync folder to function properly. Further it opens
+# It has to stay in the root McSync folder to function properly.
 
 # Important: Starting McSync in this way can cause troubles due to the transmogrifying
 # of a process into ssh or expect. Only use it to debug other parts of the program.
