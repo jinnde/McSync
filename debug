@@ -2,8 +2,10 @@
 
 # Debug.sh is a utility script to help debug McSync on machines runnning OS X
 # It opens a second terminal window where cgdb can start McSync using the piped
-# back tty of said window. It has to stay in the root McSync folder to function
-# properly.
+# back tty of said window. The reason is that cgdb can't handle to curses output
+# of the mcsync interface. Further it creates a third terminal window where it
+# starts a tail -f on the data/log file of mcsync for real-time status updates.
+# It has to stay in the root McSync folder to function properly. Further it opens
 
 # Important: Starting McSync in this way can cause troubles due to the transmogrifying
 # of a process into ssh or expect. Only use it to debug other parts of the program.
@@ -38,6 +40,15 @@ mkfifo /tmp/mcsync-tty-pipe
 /usr/bin/osascript <<EOF
     tell application "Terminal"
         do script "cd $PATHDIR; tty >> /tmp/mcsync-tty-pipe; sleep 86400;"
+    end tell
+EOF
+
+# Create a new terminal window and starts tail for real-time logging.
+
+# Important: Deletes log contents left over from previous runs.
+/usr/bin/osascript <<EOF
+    tell application "Terminal"
+        do script "cd $PATHDIR; cat /dev/null > data/log; tail -f data/log"
     end tell
 EOF
 
