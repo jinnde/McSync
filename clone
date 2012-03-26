@@ -1,13 +1,13 @@
 #!/bin/sh
 
-# Clone.sh is a utility script to help maintain a second local McSync
+# clone.sh is a utility script to help maintain a second local McSync
 # folder in order to build and test the network capabilities locally.
 
 # It builds McSync and then copies its complete root folder to a sibling
 # folder, which than has a "2" added to its name.
 
 # We need the most recent build
-make
+./compile
 
 # Find the McSync directory and make sure to follow symbolic links
 MC_SYNC_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
