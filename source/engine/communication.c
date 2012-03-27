@@ -6,7 +6,8 @@ connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct access
 
 const char* msgtypelist[] = { "error (msgtype==0)",
     "newplugplease", "NPP1","NPP2", "info", "workerisup",
-    "connected", "disconnect", "identifydevice", "deviceid"};
+    "connected", "disconnect", "identifydevice", "deviceid",
+    "scan"};
 
 
 

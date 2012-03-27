@@ -278,6 +278,14 @@ void algo_init(void) // called as soon as local worker is ready to do work
 
 } // algo_init
 
+void algo_scan(void)
+{
+
+    // Input: Virtual file path
+    // Result: Messages to corresponding workers determined by graft analysis.
+
+} // algo_scan
+
 void algomain(void)
 {
     int32 msg_src;
@@ -345,6 +353,10 @@ void algomain(void)
                     break;
             case msgtype_disconnect:
                     setstatus(atoi(msg_data), status_inactive);
+                    break;
+            case msgtype_scan:
+                    // TODO: Handle scan request from CMD
+                    algo_scan();
                     break;
             default:
                     printerr("algo got unexpected message"

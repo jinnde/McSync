@@ -222,6 +222,10 @@ void workermain(void)
                     sendmessage(worker_plug, algo_int, msgtype_deviceid,
                                 deviceidondisk());
                     break;
+            case msgtype_scan:
+                    // TODO: React to scan request from HQ
+                    slavescan();
+                    break;
             default:
                     printerr("worker got unexpected message"
                                     " of type %lld from %d: \"%s\"\n",

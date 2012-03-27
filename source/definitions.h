@@ -127,7 +127,7 @@ typedef struct fileinfo_struct { // everything to know about a file on disk
 
 // devices
 
-typedef enum { // if you change this, update status_word inheadquarters.c
+typedef enum { // if you change this, update status_word in headquarters.c
     status_inactive,
     status_reaching,
     status_connected,
@@ -263,6 +263,8 @@ extern connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct a
 #define msgtype_disconnect      7
 #define msgtype_identifydevice  8
 #define msgtype_deviceid        9
+#define msgtype_scan            10
+
 // if you change these, change msgtypelist in communication.c
 
 #define slave_start_string "this is mcsync"
