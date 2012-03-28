@@ -132,7 +132,7 @@ void readspecsfile(char *specsfile) // sets up devicelist and graftlist
     if (f == NULL) {
         printf("Error: Could not open specs file %s (%s)\n",
                 specsfile, strerror(errno));
-        cleanexit(__LINE__);
+        return;
     }
 
     line = nextline(f);
@@ -205,6 +205,25 @@ void writespecsfile(char *specsfile) // writes devicelist and graftlist
 
     fclose(f);
 } // writespecsfile
+
+int specstatevalid() // returns 1 if there exists a device with any reachplan and a graft;
+{
+    graft *g;
+    device *d = devicelist;
+
+    if (!d) // at least one device
+        return 0;
+
+    if(!(d->reachplan.mcsyncdir) || !(d->reachplan.ipaddrs)) // with address and McSync folder
+        return 0;
+
+    for(g = graftlist; g != NULL; g = g->next) { // and at least one corresponding graft
+        if(g->host == d)
+            return 1;
+    }
+
+    return 0;
+} // specstatevalid
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of specs IO /////////////////////////////////////

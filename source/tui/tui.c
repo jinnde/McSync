@@ -552,6 +552,7 @@ void refreshhelp(void)
         type = gi_editobjecttype;
         if (gi_mode == 1 && (// 1 means mousing devices
             // gi_editobjecttype is: 1=nn, ud, ipa, gp, vgp, pp=6, just m, no m
+            // if evaluates to true, don't print help command
                (!strcmp((*arr)[i][0], "Ret") && type <= 0)
             || (!strcmp((*arr)[i][0], "C") && (type == -1
                                         || gi_device->status != status_inactive))
@@ -562,7 +563,7 @@ void refreshhelp(void)
             || (!strcmp((*arr)[i][0], "DG") && (type < 4 || type > 6))
             || (!strcmp((*arr)[i][0], "P") && (type < 4 || type > 6))
             || (!strcmp((*arr)[i][0], "DP") && type != 6)
-            || (!strcmp((*arr)[i][0], "S") && !gi_dirtyspecs)
+            || (!strcmp((*arr)[i][0], "S") && (!gi_dirtyspecs || !specstatevalid()))
             )) // yes, we could test with i, but this way it's easier to maintain
             continue;
         if (gi_mode == 4 && (// 4 means deleting something
@@ -1166,8 +1167,10 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     refreshscreen(); // we have to at least refresh the help
                     break;
             case 's': // save specs file
-                    writespecsfile("config/specs");
-                    gi_dirtyspecs = 0;
+                    if(specstatevalid()) {
+                        writespecsfile("config/specs");
+                        gi_dirtyspecs = 0;
+                    }
                     refreshscreen();
                     break;
             case 'v': // switch to file view (mousing files)

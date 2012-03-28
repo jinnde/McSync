@@ -335,6 +335,7 @@ extern int waitmode; // changed to 1 on startup if "-wait" flag is provided
 void TUIstart2D(void); // enter 2D mode
 void TUIstop2D(void); // leave 2D mode, go back to scrolling terminal
 
+int specstatevalid(); // returns 1 if there exists a device with a reachplan and a graft;
 void writespecsfile(char *specsfile); // writes devicelist and graftlist
 void startscans(virtualnode *subtree);
 
