@@ -1,4 +1,5 @@
 #!/bin/sh
+# Argument = -b p(roduction)|d(evelopment) -c compiler
 
 # Important: Do not move this file out of the McSync root folder.
 
@@ -7,16 +8,91 @@
 # This timestamp is then used by mcsync.sh to identify whether source code has
 # changed since the last build.
 
+usage()
+{
+cat << EOF
+usage: $0 options
+
+This script builds McSync.
+
+OPTIONS:
+
+   option defaults shown in [brackets]
+
+   -h      Show this message
+   -b      Build: production or development [production]
+   -c      Compiler to use instead of cc [cc]
+
+
+EOF
+}
+
+BUILD=
+COMPILER=
+while getopts "hb:c:" OPTION
+do
+     case $OPTION in
+        h)
+             usage
+             exit 1
+             ;;
+        b)
+             BUILD=$OPTARG
+             ;;
+        c)
+             COMPILER=$OPTARG
+             ;;
+         ?)
+             usage
+             exit
+             ;;
+     esac
+done
+
+# Set defaults
+if [[ -z $BUILD ]]; then
+     BUILD="production"
+fi
+
+# accept abbreviations for build
+if [ "$BUILD" == "d" ]; then
+    BUILD="development"
+fi
+
+if [ "$BUILD" == "p" ]; then
+    BUILD="production"
+fi
+
+if [[ -z $COMPILER ]]; then
+     COMPILER="cc"
+fi
+# End of command line argument handling
+
 MACHINE_ARCHITECTURE=`cc -v 2>&1 | grep Target: | sed 's/.*: *//'`
 
-echo "Creating executable mcsync.$MACHINE_ARCHITECTURE"
+echo "\nCreating executable mcsync.$MACHINE_ARCHITECTURE for $BUILD using $COMPILER.\n"
 
 # Change into McSync root directory (the path of this script file)
 cd "$( cd "$( dirname "$0" )" && pwd )"
 
 cd source
 
-cc -O -g -o ../bin/mcsync.$MACHINE_ARCHITECTURE -lncurses -Wall -I. engine/*.c tui/*.c
+OPT=
+LIB="-lncurses"
+OUT="-o ../bin/mcsync.$MACHINE_ARCHITECTURE"
+SRC="-I. engine/*.c tui/*.c"
+
+if [ "$BUILD" == "development" ]; then
+    OPT="-O0 -g -Wall -pedantic -std=c99"
+elif [ "$BUILD" == "production" ]; then
+    OPT="-O3 -pedantic -std=c99" # Add as soon as possible: -Werror
+else
+    echo "Invalid build (-b) option: \"$BUILD\". Use \"production\" or \"development\"."
+    exit 1
+fi
+
+${COMPILER} ${OPT} ${LIB} ${SRC} ${OUT}
+#cc -O0 -g -o ../bin/mcsync.$MACHINE_ARCHITECTURE -lncurses -Wall -I. engine/*.c tui/*.c
 
 # Find the most recently modified source or header file
 LATEST_FILE=`find .  \( -name "*.c" -o -name "*.h" \) -type f -exec stat -f "%m %N" {} \; \

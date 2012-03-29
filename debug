@@ -16,7 +16,7 @@ command -v /usr/bin/osascript >/dev/null 2>&1 || { echo "This script runs on OS 
 command -v cgdb >/dev/null 2>&1 || { echo "This script requires *cgdb* and it was not found on your machine." >&2; exit 1; }
 
 # Build McSync
-./compile
+./compile -b development
 
 MACHINE_ARCHITECTURE=`(cc -v 2>&1 | grep Target: | sed 's/.*: *//')`
 

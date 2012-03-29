@@ -23,11 +23,11 @@ LATEST_FILE=`find .  \( -name "*.c" -o -name "*.h" \) -type f -exec stat -f "%m 
 # Check if the binary file exists for our architecture and whether it is older
 # than the latest source.
 if [ ./bin/mcsync.$MACHINE_ARCHITECTURE -ot $LATEST_FILE ]; then
-    ./compile
+    ./compile -b production
 elif [ ./bin/mcsync.$MACHINE_ARCHITECTURE -nt $LATEST_FILE ]; then
     read -p "Executable has been modified or touched since the last build. Rebuild? (y/n)?"
     if [ $REPLY == "y" ]; then
-        ./compile
+        ./compile -b production
     fi
 else
     echo "Executable looks up-to-date."
