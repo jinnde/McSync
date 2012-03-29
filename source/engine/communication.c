@@ -774,7 +774,7 @@ void routermain(int master, int plug_id)
                                     msg->len > 100 ? "long message" : msg->data);
                     if (!master)
                         printerr("source_plug = %p (parent = %p, worker = %p)\n",
-                                source_plug, parent_plug, worker_plug);
+                                (void*)source_plug, (void*)parent_plug, (void*)worker_plug);
                 }
                 // spy on message: if workerisup then add to thisway
                 if (msg->type == msgtype_workerisup) {
