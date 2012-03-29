@@ -1294,81 +1294,84 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     beep();
         }
     } else if (gi_mode == 3) { // 3 means editing
-        switch (ch) {
-            case KEY_LEFT:
-            case 2: // ctrl-b, move cursor backward
-                    if (gi_editcursor > 0)
-                        gi_editcursor--;
-                    refreshscreen();
-                    break;
-            case KEY_RIGHT:
-            case 6: // ctrl-f, move cursor forward
-                    if (gi_editcursor < strlen(gi_newstring))
-                        gi_editcursor++;
-                    refreshscreen();
-                    break;
-            case 1: // ctrl-a, move to beginning of line
-                    gi_editcursor = 0;
-                    refreshscreen();
-                    break;
-            case 5: // ctrl-e, move to end of line
-                    gi_editcursor = strlen(gi_newstring);
-                    refreshscreen();
-                    break;
-            case KEY_BACKSPACE: // ctrl-h turns into this
-            case 8: // in case ctrl-h doesn't change
-            case 127: // the delete key
-                    if (gi_editcursor == 0)
+
+        // Poor mans case range expression, read as case 36 ... 126:
+        if(36 <= ch && ch <= 126) {
+            {
+                int p, len = strlen(gi_newstring);
+                gi_newstring = (char*) realloc(gi_newstring, len + 2);
+                gi_newstring[len + 1] = 0;
+                for (p = len; p > gi_editcursor; p--)
+                    gi_newstring[p] = gi_newstring[p - 1];
+                gi_newstring[gi_editcursor] = ch;
+                gi_editcursor++;
+                refreshscreen();
+            }
+        } else {
+            switch (ch) {
+                case KEY_LEFT:
+                case 2: // ctrl-b, move cursor backward
+                        if (gi_editcursor > 0)
+                            gi_editcursor--;
+                        refreshscreen();
                         break;
-                    gi_editcursor--;
-                    // fall through...
-            case 4: // ctrl-d, forward-delete
-                    {
-                        int p, len=strlen(gi_newstring);
-                        if (gi_editcursor == len)
+                case KEY_RIGHT:
+                case 6: // ctrl-f, move cursor forward
+                        if (gi_editcursor < strlen(gi_newstring))
+                            gi_editcursor++;
+                        refreshscreen();
+                        break;
+                case 1: // ctrl-a, move to beginning of line
+                        gi_editcursor = 0;
+                        refreshscreen();
+                        break;
+                case 5: // ctrl-e, move to end of line
+                        gi_editcursor = strlen(gi_newstring);
+                        refreshscreen();
+                        break;
+                case KEY_BACKSPACE: // ctrl-h turns into this
+                case 8: // in case ctrl-h doesn't change
+                case 127: // the delete key
+                        if (gi_editcursor == 0)
                             break;
-                        for (p = gi_editcursor; p < len; p++)
-                            gi_newstring[p] = gi_newstring[p + 1];
-                        gi_newstring[len] = 0;
+                        gi_editcursor--;
+                        // fall through...
+                case 4: // ctrl-d, forward-delete
+                        {
+                            int p, len=strlen(gi_newstring);
+                            if (gi_editcursor == len)
+                                break;
+                            for (p = gi_editcursor; p < len; p++)
+                                gi_newstring[p] = gi_newstring[p + 1];
+                            gi_newstring[len] = 0;
+                            refreshscreen();
+                        }
+                        break;
+                case 11: // ctrl-k, delete to end of line
+                        gi_newstring[gi_editcursor] = 0;
                         refreshscreen();
-                    }
-                    break;
-            case 11: // ctrl-k, delete to end of line
-                    gi_newstring[gi_editcursor] = 0;
-                    refreshscreen();
-                    break;
-            case 32 ... 126:
-                    {
-                        int p, len = strlen(gi_newstring);
-                        gi_newstring = (char*) realloc(gi_newstring, len + 2);
-                        gi_newstring[len + 1] = 0;
-                        for (p = len; p > gi_editcursor; p--)
-                            gi_newstring[p] = gi_newstring[p - 1];
-                        gi_newstring[gi_editcursor] = ch;
-                        gi_editcursor++;
+                        break;
+                case 7: // ctrl-g, abort editing, revert
+                        endediting(0);
                         refreshscreen();
-                    }
-                    break;
-            case 7: // ctrl-g, abort editing, revert
-                    endediting(0);
-                    refreshscreen();
-                    break;
-            case 9: // tab, KEY_TAB doesn't exist, commit edits and move to next
-                    endediting(1);
-                    gi_editselection++;
-                    refreshscreen(); // find next object to edit
-                    startediting();
-                    refreshscreen();
-                    break;
-            case KEY_ENTER: // commit edits
-            case 13: // ctrl-m, enter keys on mac all send 13
-                    endediting(1);
-                    refreshscreen();
-                    break;
-            default:
-                    //move(10,10); printw("%d", ch); refresh();
-                    beep();
-        } // switch (ch)
+                        break;
+                case 9: // tab, KEY_TAB doesn't exist, commit edits and move to next
+                        endediting(1);
+                        gi_editselection++;
+                        refreshscreen(); // find next object to edit
+                        startediting();
+                        refreshscreen();
+                        break;
+                case KEY_ENTER: // commit edits
+                case 13: // ctrl-m, enter keys on mac all send 13
+                        endediting(1);
+                        refreshscreen();
+                        break;
+                default:
+                        //move(10,10); printw("%d", ch); refresh();
+                        beep();
+            } // switch (ch)
+        } // case range if
     } // gi_mode
     return 0;
 } // TUIprocesschar
