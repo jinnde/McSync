@@ -24,7 +24,7 @@
 
 extern FILE* ourerr; // we use this instead of stderr
 
-#define printerr(args...) do { fprintf(ourerr, args); fflush(ourerr); } while (0)
+#define printerr(...) do { fprintf(ourerr, __VA_ARGS__); fflush(ourerr); } while (0)
 
 #define assert(test)                                                    \
         if (!(test)) {                                                  \
@@ -268,7 +268,6 @@ extern connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct a
 
 extern char* slave_start_string;
 extern char* hi_slave_string;
-
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of data types ///////////////////////////////////

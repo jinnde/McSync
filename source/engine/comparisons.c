@@ -11,7 +11,7 @@
 char *nicknameA = "imageA", *nicknameB = "imageB";
 
 FILE *contrastlog = NULL;
-#define printl(args...) fprintf(contrastlog, args)
+#define printl(...) fprintf(contrastlog, __VA_ARGS__)
 
 typedef struct filecontrast_struct {
     struct filecontrast_struct * next;
