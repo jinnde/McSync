@@ -8,10 +8,6 @@ const char* msgtypelist[] = { "error (msgtype==0)",
     "newplugplease", "NPP1","NPP2", "info", "workerisup",
     "connected", "disconnect", "identifydevice", "deviceid"};
 
-char* slave_start_string = "this is mcsync";
-char* hi_slave_string = "you are ";
-// linefeeds get mangled... \n becomes \r\n
-
 
 
 unsigned char unhex(unsigned char a, unsigned char b)

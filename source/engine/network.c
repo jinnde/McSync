@@ -377,7 +377,7 @@ void* raisechild(void* voidplug)
         fflush(plug->tokid);
     }
     waitforstring(plug->fromkid, slave_start_string); // till mcsync is live
-    fprintf(plug->tokid, hi_slave_string);
+    fprintf(plug->tokid, "%s", hi_slave_string);
     put32safe(plug->tokid, plug->target_device->reachplan.routeraddr);
     fflush(plug->tokid);
     raised = 1;

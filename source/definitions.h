@@ -266,8 +266,8 @@ extern connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct a
 #define msgtype_deviceid        9
 // if you change these, change msgtypelist in communication.c
 
-extern char* slave_start_string;
-extern char* hi_slave_string;
+#define slave_start_string "this is mcsync"
+#define hi_slave_string "you are "
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of data types ///////////////////////////////////
