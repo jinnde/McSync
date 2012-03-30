@@ -85,7 +85,7 @@ SRC="-I. engine/*.c tui/*.c"
 if [ "$BUILD" == "development" ]; then
     OPT="-O0 -g -Wall -pedantic -std=c99"
 elif [ "$BUILD" == "production" ]; then
-    OPT="-O3 -pedantic -std=c99" # Add as soon as possible: -Werror
+    OPT="-O2 -pedantic -std=c99" # Add as soon as possible: -Werror
 else
     echo "Invalid build (-b) option: \"$BUILD\". Use \"production\" or \"development\"."
     exit 1
