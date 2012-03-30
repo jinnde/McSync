@@ -210,7 +210,6 @@ typedef struct virtualnode_struct {
     int32   colwidth; // width of this column (for parent dir listing)
 } virtualnode;
 
-extern virtualnode virtualroot; // has no siblings and no name
 
 // messaging
 
@@ -317,11 +316,11 @@ void algomain(void);
 void workermain(void);
 void readspecsfile(char *specsfile); // sets up devicelist and graftlist
 
-void virtualtreeinit(void);
-
 void raw_io(void);
 
 void waitforstring(FILE* input, char* string);
+
+void initvirtualroot(virtualnode *root); // used by HQ and CMD (e.g. tui.c)
 
 int reachforremote(connection plug); // try to get mcsync started on remote site
 void channel_launch(connection* store_plug_here, char* deviceid, int plugnumber);
@@ -336,6 +335,5 @@ void TUIstop2D(void); // leave 2D mode, go back to scrolling terminal
 
 int specstatevalid(); // returns 1 if there exists a device with a reachplan and a graft;
 void writespecsfile(char *specsfile); // writes devicelist and graftlist
-void startscans(virtualnode *subtree);
 
 

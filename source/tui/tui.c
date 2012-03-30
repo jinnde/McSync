@@ -1,7 +1,10 @@
 #include "definitions.h"
 
+virtualnode cmd_virtualroot; // has no siblings and no name
+                             // only to be used by the tui thread
 
 char buffer[90], *bufpos; // use is private to next two functions, 90 digit max...
+
 
 void commanumberrec(int64 n, int dig) // helper func for commanumber
 {
@@ -605,166 +608,6 @@ void refreshscreen(void)
     // probably changed means written-to, even if it's the same as before
 } // refreshscreen
 
-void initvirtualroot(void)
-{
-    // set up root directory
-    virtualroot.next = NULL;
-    virtualroot.prev = NULL;
-    virtualroot.up = NULL;
-    virtualroot.down = NULL; // will change when children are added
-    virtualroot.grafteelist = NULL;
-    virtualroot.bootedlist = NULL;
-    virtualroot.graftroots = NULL;
-    virtualroot.graftends = NULL;
-    virtualroot.name = "";
-    virtualroot.filetype = 0; // 0=stub
-    browsingdirectory = &virtualroot;
-    // now for the interface stuff
-    virtualroot.redyellow = 0;
-    virtualroot.redgreen = 0;
-    virtualroot.numchildren = 0;
-    virtualroot.subtreesize = 1;
-    virtualroot.subtreebytes = 0;
-    virtualroot.cols = 6;
-    virtualroot.firstvisiblenum = -1;
-    virtualroot.firstvisible = NULL;
-    virtualroot.selectionnum = -1;
-    virtualroot.selection = NULL;
-} // initvirtualroot
-
-virtualnode *conjuredirectory(char *dir) // chars in dir string must be writable
-// dir must not end with / or contain //
-// this routine creates all virtual files except for the root (in initvirtualroot)
-{
-    virtualnode *parent, *ans;
-    char *pos;
-    if (dir[0] != '/') // in general true only for "" (otherwise dir was bad)
-        return &virtualroot;
-    pos = rindex(dir, '/');
-    *pos = 0; // truncate string
-    parent = conjuredirectory(dir);
-    *pos = '/';
-    for (ans = parent->down; ans != NULL; ans = ans->next)
-        if (ans->filetype <= 1 && !strcmp(ans->name, pos + 1))
-            return ans;
-    // it doesn't exist
-    ans = (virtualnode*) malloc(sizeof(virtualnode));
-    ans->next = parent->down;
-    parent->down = ans;
-    if (ans->next != NULL)
-        ans->next->prev = ans;
-    ans->prev = NULL;
-    ans->down = NULL;
-    ans->up = parent;
-    ans->grafteelist = NULL;
-    ans->bootedlist = NULL;
-    ans->graftroots = NULL;
-    ans->graftends = NULL;
-    ans->name = strdup(pos + 1);
-    ans->filetype = 0; // 0=stub
-    // that was the structural stuff, now some adorning interface info
-    ans->redyellow = 0;
-    ans->redgreen = 0;
-    ans->numchildren = 0;
-    ans->subtreesize = 1;
-    ans->subtreebytes = 0;
-    ans->cols = 6;
-    ans->firstvisiblenum = -1; // -1 means needs recompute
-    ans->firstvisible = NULL;
-    ans->selectionnum = -1; // -1 means needs recompute
-    ans->selection = NULL;
-    parent->numchildren++;
-    parent->firstvisiblenum = -1;
-    parent->selectionnum = -1;
-    while (parent != NULL) {
-        parent->subtreesize++;
-        parent = parent->up;
-    }
-    return ans;
-} // conjuredirectory
-
-void removedirectory(virtualnode *skunk) // skunk should be empty
-{
-    virtualnode *parent = skunk->up;
-    if (skunk->prev != NULL)
-        skunk->prev->next = skunk->next;
-    else
-        skunk->up->down = skunk->next;
-    if (skunk->next != NULL)
-        skunk->next->prev = skunk->prev;
-    free(skunk->name);
-    free(skunk);
-    parent->numchildren--;
-    parent->firstvisiblenum = -1;
-    parent->selectionnum = -1;
-    while (parent != NULL) {
-        parent->subtreesize--;
-        parent = parent->up;
-    }
-} // removedirectory
-
-void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
-// adds (or deletes, if deleteq) the graft "source" to the virtual directory
-// "where" as a graftroot (or graftend, if pruneq)
-{
-    virtualnode *v;
-    graftee *gee;
-
-    v = conjuredirectory(where);
-    if (pruneq) // it is a prune point
-        gee = &(v->graftends);
-    else // it is a graft root
-        gee = &(v->graftroots);
-    if (deleteq) { // we should remove it
-        while (*gee != NULL && (*gee)->source != source)
-            gee = &((*gee)->next);
-        if (*gee == NULL) {
-            // we're supposed to delete it, but it's not there
-            // this should never happen
-        } else {
-            graftee skunk = *gee;
-            *gee = skunk->next;
-            free(skunk);
-            // now check to see if we should remove stub as well
-            while (v->graftroots == NULL && v->graftends == NULL
-                    && v->grafteelist == NULL && v->bootedlist == NULL
-                    && v->down == NULL && v->filetype == 0
-                    && v->up != NULL) {
-                // remove v
-                virtualnode *parent = v->up;
-                if (v->prev != NULL)
-                    v->prev->next = v->next;
-                else
-                    v->up->down = v->next;
-                if (v->next != NULL)
-                    v->next->prev = v->prev;
-                free(v->name);
-                free(v);
-                v = parent;
-            }
-        }
-    } else { // we should add it
-        while (*gee != NULL)
-            gee = &((*gee)->next);
-        *gee = (graftee) malloc(sizeof(struct graftee_struct));
-        (*gee)->next = NULL;
-        (*gee)->source = source;
-        (*gee)->realfile = NULL; // not used
-    }
-} // mapgraftpoint
-
-void conjuregraftpoints(void) // make graft roots and prune points exist in v. dir
-{
-    graft *g;
-    stringlist *s;
-
-    for (g = graftlist; g != NULL; g = g->next) {
-        mapgraftpoint(g, g->virtualpath, 0, 0);
-        for (s = g->prunepoints; s != NULL; s = s->next) {
-            mapgraftpoint(g, s->string, 1, 0);
-        }
-    }
-} // conjuregraftpoints
 
 char *validate(char *str, int type) // returns NULL if str ok, error string if not
 {
@@ -809,17 +652,18 @@ char *validate(char *str, int type) // returns NULL if str ok, error string if n
 
 void endediting(int keep)
 {
+    // TODO: Replace with messages to HQ
     gi_mode = gi_savemode; // pop back to the saved mode
     if (keep) {
         gi_errorinfo = validate(gi_newstring, gi_editobjecttype);
         if (gi_errorinfo == NULL) { // passed validator
             if (gi_editobjecttype == 5) { // 5=virtual graft point
-                mapgraftpoint(gi_graft, *gi_editobject, 0, 1);
-                mapgraftpoint(gi_graft, gi_newstring, 0, 0);
+                // mapgraftpoint(gi_graft, *gi_editobject, 0, 1);
+                // mapgraftpoint(gi_graft, gi_newstring, 0, 0);
             }
             if (gi_editobjecttype == 6) { // 6=prune point
-                mapgraftpoint(gi_graft, *gi_editobject, 1, 1);
-                mapgraftpoint(gi_graft, gi_newstring, 1, 0);
+                // mapgraftpoint(gi_graft, *gi_editobject, 1, 1);
+                // mapgraftpoint(gi_graft, gi_newstring, 1, 0);
             }
             // replace the string
             free(*gi_editobject);
@@ -992,7 +836,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         (*gf)->hostpath = strdup("~");
                         (*gf)->virtualpath = strdup("/Home");
                         (*gf)->prunepoints = NULL;
-                        mapgraftpoint(*gf, (*gf)->virtualpath, 0, 0);
+                        // TODO: Send message to HQ
+                        // mapgraftpoint(*gf, (*gf)->virtualpath, 0, 0);
                         gi_editselection = gi_editableitemcount - 1;
                         gi_dirtyspecs = 1;
                         refreshscreen();
@@ -1009,7 +854,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         *st = (stringlist*) malloc(sizeof(stringlist));
                         (*st)->next = NULL;
                         (*st)->string = strdup("/Home/local");
-                        mapgraftpoint(gi_graft, (*st)->string, 1, 0);
+                        // TODO: Send message to HQ
+                        // mapgraftpoint(gi_graft, (*st)->string, 1, 0);
                         gi_dirtyspecs = 1;
                         refreshscreen();
                     } else {
@@ -1037,14 +883,16 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                         graft *sk = *g;
                                         while (sk->prunepoints != NULL) {
                                             stringlist *skunk=sk->prunepoints;
-                                            mapgraftpoint(sk,
-                                                        skunk->string, 1, 1);
+                                            // TODO: Send message to HQ
+                                            // mapgraftpoint(sk,
+                                                        // skunk->string, 1, 1);
                                             sk->prunepoints = skunk->next;
                                             free(skunk->string);
                                             free(skunk);
                                         }
-                                        mapgraftpoint(sk,
-                                                        sk->virtualpath, 0, 1);
+                                        // TODO: Send to HQ
+                                        // mapgraftpoint(sk,
+                                                        // sk->virtualpath, 0, 1);
                                         //free(sk->host); NO! it's a device
                                         free(sk->hostpath);
                                         free(sk->virtualpath);
@@ -1115,14 +963,16 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                         // trash the graft!
                                         while (sk->prunepoints != NULL) {
                                             skunk = sk->prunepoints;
-                                            mapgraftpoint(sk,
-                                                        skunk->string, 1, 1);
+                                            // TODO: Send to HQ
+                                            // mapgraftpoint(sk,
+                                            //             skunk->string, 1, 1);
                                             sk->prunepoints = skunk->next;
                                             free(skunk->string);
                                             free(skunk);
                                         }
-                                        mapgraftpoint(sk,
-                                                        sk->virtualpath, 0, 1);
+                                        // TODO: Send to HQ
+                                        // mapgraftpoint(sk,
+                                                        // sk->virtualpath, 0, 1);
                                         //free(sk->host); NO! it's a device
                                         free(sk->hostpath);
                                         free(sk->virtualpath);
@@ -1144,8 +994,9 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                 while (*s != NULL) {
                                     if (&((*s)->string) == gi_editobject){
                                         stringlist *sk = *s;
-                                        mapgraftpoint(gi_graft,
-                                                        (*s)->string, 1, 1);
+                                        // TODO: Send message to HQ
+                                        // mapgraftpoint(gi_graft,
+                                        //                 (*s)->string, 1, 1);
                                         free(sk->string);
                                         *s = sk->next;
                                         free(sk);
@@ -1283,7 +1134,6 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     }
                     break;
             case 's': // start scans
-                    startscans(browsingdirectory->selection);
                     break;
             case 'v': // switch to mousing devices
                     // we leave the selection untouched while in other mode
@@ -1407,23 +1257,6 @@ void TUIstop2D(void)
     // <enter> reset <enter> to get back to the normal scrolling terminal mode
 } // TUIshutdown
 
-int virtual_tree_read_in = 0;
-
-void virtualtreeinit(void)
-{
-    // specs file is read in routermain
-    initvirtualroot(); // initialize virtual tree
-    conjuregraftpoints(); // make the tree include spots indicated by the grafts
-    virtual_tree_read_in = 1;
-} // virtualtreeinit
-
-void waitforvirtualtree(void)
-{
-    while (virtual_tree_read_in == 0) {
-        usleep(10000);
-    }
-} // waitforvirtualtree
-
 int doUI = 1; // can be turned off by -batch option
 int password_pause = 0; // signals when input should be allowed to go to ssh
 
@@ -1436,8 +1269,8 @@ void TUImain(void)
 
     if (doUI)
         TUIstart2D(); // configures the terminal for the interface
-
-    waitforvirtualtree();
+    initvirtualroot(&cmd_virtualroot);
+    browsingdirectory = &cmd_virtualroot;
 
     while (keepgoing) {
         int got_char, got_msg;

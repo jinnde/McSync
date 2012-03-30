@@ -1,5 +1,8 @@
 #include "definitions.h"
 
+virtualnode virtualroot; // has no siblings and no name
+                            // only to be used by the hq thread
+
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of algo main //////////////////////////////////
@@ -10,6 +13,174 @@ char* statusword[] = {
     "reaching",
     "connected",
 };
+
+virtualnode *conjuredirectory(char *dir) // chars in dir string must be writable
+// dir must not end with / or contain //
+// this routine creates all virtual files except for the root (in initvirtualroot)
+{
+    virtualnode *parent, *ans;
+    char *pos;
+    if (dir[0] != '/') // in general true only for "" (otherwise dir was bad)
+        return &virtualroot;
+    pos = rindex(dir, '/');
+    *pos = 0; // truncate string
+    parent = conjuredirectory(dir);
+    *pos = '/';
+    for (ans = parent->down; ans != NULL; ans = ans->next)
+        if (ans->filetype <= 1 && !strcmp(ans->name, pos + 1))
+            return ans;
+    // it doesn't exist
+    ans = (virtualnode*) malloc(sizeof(virtualnode));
+    ans->next = parent->down;
+    parent->down = ans;
+    if (ans->next != NULL)
+        ans->next->prev = ans;
+    ans->prev = NULL;
+    ans->down = NULL;
+    ans->up = parent;
+    ans->grafteelist = NULL;
+    ans->bootedlist = NULL;
+    ans->graftroots = NULL;
+    ans->graftends = NULL;
+    ans->name = strdup(pos + 1);
+    ans->filetype = 0; // 0=stub
+    // that was the structural stuff, now some adorning interface info
+    ans->redyellow = 0;
+    ans->redgreen = 0;
+    ans->numchildren = 0;
+    ans->subtreesize = 1;
+    ans->subtreebytes = 0;
+    ans->cols = 6;
+    ans->firstvisiblenum = -1; // -1 means needs recompute
+    ans->firstvisible = NULL;
+    ans->selectionnum = -1; // -1 means needs recompute
+    ans->selection = NULL;
+    parent->numchildren++;
+    parent->firstvisiblenum = -1;
+    parent->selectionnum = -1;
+    while (parent != NULL) {
+        parent->subtreesize++;
+        parent = parent->up;
+    }
+    return ans;
+} // conjuredirectory
+
+void removedirectory(virtualnode *skunk) // skunk should be empty
+{
+    virtualnode *parent = skunk->up;
+    if (skunk->prev != NULL)
+        skunk->prev->next = skunk->next;
+    else
+        skunk->up->down = skunk->next;
+    if (skunk->next != NULL)
+        skunk->next->prev = skunk->prev;
+    free(skunk->name);
+    free(skunk);
+    parent->numchildren--;
+    parent->firstvisiblenum = -1;
+    parent->selectionnum = -1;
+    while (parent != NULL) {
+        parent->subtreesize--;
+        parent = parent->up;
+    }
+} // removedirectory
+
+void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
+// adds (or deletes, if deleteq) the graft "source" to the virtual directory
+// "where" as a graftroot (or graftend, if pruneq)
+{
+    virtualnode *v;
+    graftee *gee;
+
+    v = conjuredirectory(where);
+    if (pruneq) // it is a prune point
+        gee = &(v->graftends);
+    else // it is a graft root
+        gee = &(v->graftroots);
+    if (deleteq) { // we should remove it
+        while (*gee != NULL && (*gee)->source != source)
+            gee = &((*gee)->next);
+        if (*gee == NULL) {
+            // we're supposed to delete it, but it's not there
+            // this should never happen
+        } else {
+            graftee skunk = *gee;
+            *gee = skunk->next;
+            free(skunk);
+            // now check to see if we should remove stub as well
+            while (v->graftroots == NULL && v->graftends == NULL
+                    && v->grafteelist == NULL && v->bootedlist == NULL
+                    && v->down == NULL && v->filetype == 0
+                    && v->up != NULL) {
+                // remove v
+                virtualnode *parent = v->up;
+                if (v->prev != NULL)
+                    v->prev->next = v->next;
+                else
+                    v->up->down = v->next;
+                if (v->next != NULL)
+                    v->next->prev = v->prev;
+                free(v->name);
+                free(v);
+                v = parent;
+            }
+        }
+    } else { // we should add it
+        while (*gee != NULL)
+            gee = &((*gee)->next);
+        *gee = (graftee) malloc(sizeof(struct graftee_struct));
+        (*gee)->next = NULL;
+        (*gee)->source = source;
+        (*gee)->realfile = NULL; // not used
+    }
+} // mapgraftpoint
+
+void conjuregraftpoints(void) // make graft roots and prune points exist in v. dir
+{
+    graft *g;
+    stringlist *s;
+
+    for (g = graftlist; g != NULL; g = g->next) {
+        mapgraftpoint(g, g->virtualpath, 0, 0);
+        for (s = g->prunepoints; s != NULL; s = s->next) {
+            mapgraftpoint(g, s->string, 1, 0);
+        }
+    }
+} // conjuregraftpoints
+
+// Used by CMD and HQ to initialize their virtual trees
+void initvirtualroot(virtualnode *root)
+{
+    // set up root directory
+    root->next = NULL;
+    root->prev = NULL;
+    root->up = NULL;
+    root->down = NULL; // will change when children are added
+    root->grafteelist = NULL;
+    root->bootedlist = NULL;
+    root->graftroots = NULL;
+    root->graftends = NULL;
+    root->name = "";
+    root->filetype = 0; // 0=stub
+    // now for the interface stuff
+    root->redyellow = 0;
+    root->redgreen = 0;
+    root->numchildren = 0;
+    root->subtreesize = 1;
+    root->subtreebytes = 0;
+    root->cols = 6;
+    root->firstvisiblenum = -1;
+    root->firstvisible = NULL;
+    root->selectionnum = -1;
+    root->selection = NULL;
+} // initvirtualroot
+
+void virtualtreeinit(void)
+{
+    // specs file is read in routermain
+    initvirtualroot(&virtualroot); // initialize virtual tree
+    conjuregraftpoints(); // make the tree include spots indicated by the grafts
+} // virtualtreeinit
 
 void setstatus(int32 who, status_t newstatus)
 {
