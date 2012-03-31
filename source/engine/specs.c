@@ -206,20 +206,21 @@ void writespecsfile(char *specsfile) // writes devicelist and graftlist
     fclose(f);
 } // writespecsfile
 
-int specstatevalid() // returns 1 if there exists a device with any reachplan and a graft;
+int specstatevalid() // returns 1 if there exists one device with any reachplan and a graft;
 {
     graft *g;
-    device *d = devicelist;
+    device *d;
 
-    if (!d) // at least one device
-        return 0;
-
-    if(!(d->reachplan.mcsyncdir) || !(d->reachplan.ipaddrs)) // with address and McSync folder
-        return 0;
-
-    for(g = graftlist; g != NULL; g = g->next) { // and at least one corresponding graft
-        if(g->host == d)
-            return 1;
+    // at least one device
+    for (d = devicelist; d != NULL; d = d->next) {
+        // with address and McSync folder
+        if (d->reachplan.mcsyncdir != NULL && d->reachplan.ipaddrs != NULL) {
+            // and at least one corresponding graft
+            for(g = graftlist; g != NULL; g = g->next) {
+                if(g->host == d)
+                    return 1;
+            }
+        }
     }
 
     return 0;
