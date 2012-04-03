@@ -1,115 +1,35 @@
 #include "definitions.h"
 
-
-
 connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct access
 
 const char* msgtypelist[] = { "error (msgtype==0)",
     "newplugplease", "NPP1","NPP2", "info", "workerisup",
     "connected", "disconnect", "identifydevice", "deviceid",
-    "scan", "lstree" };
+    "scan", "lstree", "virtualnode" };
 
 
-////////// start of serialization code
+//////////////////////////////////////////////////////////////////////////////////
+//////////////////////////// start of serialization //////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
 #define serialize_type_int32   0
 #define serialize_type_int64   1
 #define serialize_type_string  2
 
+#define serialize_type_int32_size  4 // in bytes, should much int64, int32 sizes
+#define serialize_type_int64_size  8
+
 char empty_char = '\0';
 
-///////// start queue implementation
-typedef struct queuenode_struct {
-    struct queuenode_struct *next;
-    struct queuenode_struct *prev;
-    void *data;
-    int32 len;
-} *queuenode;
+// utilities for endian handling
+enum {
+    little_endian = 0x03020100ul,
+    big_endian = 0x00010203ul,
+};
 
-typedef struct queue_struct {
-    queuenode head;
-    queuenode tail;
-    int32 len;
-} *queue;
+static const union { unsigned char bytes[4]; int32 value; } o32_host_order = { { 0, 1, 2, 3 } };
 
-queue initqueue() // free when done
-{
-    queue q = (queue) malloc(sizeof(struct queue_struct));
-    q->head = NULL;
-    q->tail = NULL;
-    q->len = 0;
-    return q;
-} // initqueue
-
-void freequeue(queue q)
-{
-    queuenode current = q->head;
-    queuenode temp;
-
-    while (current != NULL) {
-        temp = current;
-        current = current->next;
-        free(temp);
-    }
-    free(q);
-} // freeserializable
-
-void queueinsertafter(queue q, queuenode qn, void *data, int32 len)
-{
-    queuenode nqn = (queuenode) malloc(sizeof(struct queuenode_struct));
-    nqn->data = data;
-    nqn->len = len;
-    q->len += len;
-
-    nqn->prev = qn;
-    nqn->next = qn->next;
-    if (qn->next == NULL)
-        q->tail = nqn;
-    else
-        qn->next->prev = nqn;
-    qn->next = nqn;
-} // queueinsertafter
-
-void queueinsertbefore(queue q, queuenode qn, void *data, int32 len)
-{
-    queuenode nqn = (queuenode) malloc(sizeof(struct queuenode_struct));
-    nqn->data = data;
-    nqn->len = len;
-    q->len += len;
-
-    nqn->prev = qn->prev;
-    nqn->next = qn;
-    if (qn->prev == NULL)
-        q->head = nqn;
-    else
-        qn->prev->next = nqn;
-    qn->prev = nqn;
-} // queueinsertbefore
-
-void queueinserthead(queue q, void *data, int32 len)
-{
-    if (q->head == NULL) {
-        queuenode nqn = (queuenode) malloc(sizeof(struct queuenode_struct));
-        nqn->data = data;
-        nqn->len = len;
-        q->len += len;
-        q->head = nqn;
-        q->tail = nqn;
-        nqn->prev = NULL;
-        nqn->next = NULL;
-    } else {
-        queueinsertbefore(q, q->head, data, len);
-    }
-} // queueinserthead
-
-void queueinserttail(queue q, void *data, int32 len)
-{
-    if (q->tail == NULL)
-        queueinserthead(q, data, len);
-    else
-        queueinsertafter(q, q->tail, data, len);
-} // queueinsertend
-
-///////// end queue implementation
+#define o32_host_order (o32_host_order.value)
+// end of utilities for endian handling
 
 void stage(queue q, void *data, char type)
 {
@@ -117,10 +37,10 @@ void stage(queue q, void *data, char type)
 
     switch (type) {
         case serialize_type_int32:
-            len = 4;
+            len = serialize_type_int32_size;
             break;
         case serialize_type_int64:
-            len = 8;
+            len = serialize_type_int64_size;
             break;
         case serialize_type_string:
             if(data) {
@@ -131,36 +51,82 @@ void stage(queue q, void *data, char type)
             }
             break;
         default:
-            printerr("Error: Undefined packet_type #%d", type);
+            printerr("Error: Undefined serialize type #%d", type);
             return;
             break;
     }
     queueinserttail(q, data, len);
 } // stage
 
-char *serialize(queue q) // returns new string, frees s
+char *serialize(queue q, int32 *len) // returns new string, frees queue
 {
-    char *serialized = (char*) malloc(q->len + 1);
+    char *serialized = (char*) malloc(q->len);
     char *temp = serialized;
+
+    *len = q->len;
 
     queuenode qn = q->head;
     while (qn != NULL) {
-        memcpy(temp, qn->data, qn->len);
+        memmove(temp, qn->data, qn->len);
         temp += qn->len;
         qn = qn->next;
     }
-/// YOU WERE HERE: DOES THIS THING HAVE TO BE A VALID CHAR TO BE SENT CORRECTLY?
-    *(temp++) = (char) 4; // set EOT
     freequeue(q);
     return serialized;
 } // serialize
 
-virtualnode *deserializevirtualnode(char *str)
+int32 deserializeint32(char **source)
 {
+    int32 destination;
+    memmove(&destination, *source, serialize_type_int32_size);
+    *source += serialize_type_int32_size;
+    return destination;
+} // deserializeint32
 
+int64 deserializeint64(char **source)
+{
+    int64 destination;
+    memmove(&destination, *source, serialize_type_int64_size);
+    *source += serialize_type_int64_size;
+    return destination;
+} // deserializeint64
+
+char *deserializestring(char **source) // allocates string, free when done
+{
+    int32 len = strlen(*source) + 1;
+    char *destination = (char*) malloc(len);
+    memmove(destination, *source, len);
+    *source += len;
+    return destination;
+} // deserializestring
+
+virtualnode *deserializevirtualnode(char *str) // returns allocated virtual node, free when done
+{
+    virtualnode *node = (virtualnode*) malloc(sizeof(virtualnode));
+    char *pos = str;
+
+    node->name             = deserializestring(&pos);
+    node->filetype         = deserializeint32(&pos);
+    node->accesstime       = deserializeint64(&pos);
+    node->modificationtime = deserializeint64(&pos);
+    node->permissions      = deserializeint32(&pos);
+    node->numericuser      = deserializeint32(&pos);
+    node->numericgroup     = deserializeint32(&pos);
+    node->user             = deserializestring(&pos);
+    node->group            = deserializestring(&pos);
+    node->redyellow        = deserializeint32(&pos);
+    node->redgreen         = deserializeint32(&pos);
+    node->numchildren      = deserializeint32(&pos);
+    node->subtreesize      = deserializeint32(&pos);
+    node->subtreebytes     = deserializeint32(&pos);
+    node->cols             = deserializeint32(&pos);
+    node->firstvisiblenum  = deserializeint32(&pos);
+    node->selectionnum     = deserializeint32(&pos);
+    node->colwidth         = deserializeint32(&pos);
+    return node;
 } // deserializevirtualnode
 
-char *serializevirtualnode(virtualnode *node) // returns allocated string, free when done
+char *serializevirtualnode(virtualnode *node, int32 *len) // returns allocated string, free when done
 {
     queue q = initqueue();
     stage(q, (void*)node->name, serialize_type_string);
@@ -181,10 +147,12 @@ char *serializevirtualnode(virtualnode *node) // returns allocated string, free 
     stage(q, (void*)&node->firstvisiblenum, serialize_type_int32);
     stage(q, (void*)&node->selectionnum, serialize_type_int32);
     stage(q, (void*)&node->colwidth, serialize_type_int32);
-    return serialize(q);
+    return serialize(q, len);
 } // serialize_virtual_tree
 
-//////// end of serialization code
+//////////////////////////////////////////////////////////////////////////////////
+//////////////////////////// end of serialization ////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
 
 unsigned char unhex(unsigned char a, unsigned char b)
 {
@@ -613,9 +581,6 @@ void freemessage(message skunk)
     free(skunk);
 } // freemessage
 
-
-
-
 void nsendmessage(connection plug, int recipient, int type, char* what, int len)
 {
     message msg;
@@ -647,7 +612,13 @@ void sendmessage2(connection plug, int recipient, int type, char* what)
                     first + 1 + strlen(what + first + 1)); // don't send second 0
 } // sendmessage2
 
-
+void sendvirtualnode(connection plug, int recipient, virtualnode* node)
+{
+    int32 len = 0;
+    char *serialized = serializevirtualnode(node, &len);
+    nsendmessage(plug, recipient, msgtype_virtualnode, serialized, len);
+    free(serialized);
+} // sendvirtualnode
 
 char* secondstring(char* string)
 {

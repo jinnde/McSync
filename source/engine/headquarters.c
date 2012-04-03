@@ -221,9 +221,13 @@ void sendvirtualnodelisting(char* path, int destination)
 
     if (node) {
         for (child = node->down; child != NULL; child = child->next) {
-            char *serialized = serializevirtualnode(child);
-            printerr("Serialized: %s\n", serialized);
-            free(serialized);
+            virtualnode test;
+            test.name = "A";
+            test.filetype = 0x11111111;
+            test.accesstime = 0x2222222222222222;
+            test.modificationtime = 0x3333333333333333;
+            test.permissions = 0x44444444;
+            sendvirtualnode(algo_plug, TUI_int, &test);
         }
     } else {
         printerr("Error: HQ could not find node with path: %s\n", path);

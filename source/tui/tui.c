@@ -1309,8 +1309,11 @@ void TUImain(void)
                             refreshscreen();
                     break;
                 case msgtype_virtualnode:
-                     // we got a node update for the virtual tree
-
+                    { // we got a node update for the virtual tree
+                        virtualnode* node = deserializevirtualnode(msg_data);
+                        printerr("TUI got %s", node->name);
+                        free(node);
+                    }
                     break;
                 default:
                         printerr("TUI got unexpected message"

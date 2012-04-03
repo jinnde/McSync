@@ -33,8 +33,6 @@ char *most(char *s) // allocs new string, s must contain '/' and be writable
     return ret;
 } // most
 
-
-
 ssize_t sys_getxattr(const char *path, const char *name, void *value, size_t size)
 {
 #if defined(HAVE_GETXATTR)

@@ -313,8 +313,33 @@ void waitforsequence(FILE* input, char* sequence, int len, int echo);
 
 void sendmessage(connection plug, int recipient, int type, char* what);
 void sendmessage2(connection plug, int recipient, int type, char* what);
+void sendvirtualnode(connection plug, int recipient, virtualnode* node);
+
 int receivemessage(connection plug, listint* src, int64* type, char** data);
 char* secondstring(char* string);
+
+// start of queue
+typedef struct queuenode_struct {
+    struct queuenode_struct *next;
+    struct queuenode_struct *prev;
+    void *data;
+    int32 len;
+} *queuenode;
+
+typedef struct queue_struct {
+    queuenode head;
+    queuenode tail;
+    int32 len;
+} *queue;
+
+queue initqueue(); // allocates memory, free when done
+void freequeue(queue q);
+
+void queueinsertafter(queue q, queuenode qn, void *data, int32 len);
+void queueinsertbefore(queue q, queuenode qn, void *data, int32 len);
+void queueinserthead(queue q, void *data, int32 len);
+void queueinserttail(queue q, void *data, int32 len);
+// end of queue
 
 //////// actual interaction between program parts
 
@@ -344,5 +369,6 @@ int specstatevalid(); // returns 1 if there exists a device with a reachplan and
 void writespecsfile(char *specsfile); // writes devicelist and graftlist
 
 virtualnode *findnode(virtualnode *root, char *path); // finds a node in root using a given path
-char *serializevirtualnode(virtualnode *node); // serializes a virtual node for sending in messages
+char *serializevirtualnode(virtualnode *node, int32 *len); // serializes a virtual node for sending in messages
+virtualnode *deserializevirtualnode(char *str); // deserializes a virtual node from message data
 

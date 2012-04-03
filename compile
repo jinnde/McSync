@@ -80,7 +80,7 @@ cd source
 OPT=
 LIB="-lncurses"
 OUT="-o ../bin/mcsync.$MACHINE_ARCHITECTURE"
-SRC="-I. engine/*.c tui/*.c"
+SRC="-I. engine/*.c tui/*.c util/*.c"
 
 if [ "$BUILD" == "development" ]; then
     OPT="-O0 -g -Wall -pedantic -std=c99"
