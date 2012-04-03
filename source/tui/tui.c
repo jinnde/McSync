@@ -1272,6 +1272,8 @@ void TUImain(void)
     initvirtualroot(&cmd_virtualroot);
     browsingdirectory = &cmd_virtualroot;
 
+    sendmessage(TUI_plug, algo_int, msgtype_lstree, "/"); // send ls for root
+
     while (keepgoing) {
         int got_char, got_msg;
         int ch;
@@ -1305,6 +1307,10 @@ void TUImain(void)
                         free(msg_data);
                         if (doUI)
                             refreshscreen();
+                    break;
+                case msgtype_virtualnode:
+                     // we got a node update for the virtual tree
+
                     break;
                 default:
                         printerr("TUI got unexpected message"

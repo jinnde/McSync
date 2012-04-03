@@ -7,9 +7,184 @@ connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct access
 const char* msgtypelist[] = { "error (msgtype==0)",
     "newplugplease", "NPP1","NPP2", "info", "workerisup",
     "connected", "disconnect", "identifydevice", "deviceid",
-    "scan"};
+    "scan", "lstree" };
 
 
+////////// start of serialization code
+#define serialize_type_int32   0
+#define serialize_type_int64   1
+#define serialize_type_string  2
+
+char empty_char = '\0';
+
+///////// start queue implementation
+typedef struct queuenode_struct {
+    struct queuenode_struct *next;
+    struct queuenode_struct *prev;
+    void *data;
+    int32 len;
+} *queuenode;
+
+typedef struct queue_struct {
+    queuenode head;
+    queuenode tail;
+    int32 len;
+} *queue;
+
+queue initqueue() // free when done
+{
+    queue q = (queue) malloc(sizeof(struct queue_struct));
+    q->head = NULL;
+    q->tail = NULL;
+    q->len = 0;
+    return q;
+} // initqueue
+
+void freequeue(queue q)
+{
+    queuenode current = q->head;
+    queuenode temp;
+
+    while (current != NULL) {
+        temp = current;
+        current = current->next;
+        free(temp);
+    }
+    free(q);
+} // freeserializable
+
+void queueinsertafter(queue q, queuenode qn, void *data, int32 len)
+{
+    queuenode nqn = (queuenode) malloc(sizeof(struct queuenode_struct));
+    nqn->data = data;
+    nqn->len = len;
+    q->len += len;
+
+    nqn->prev = qn;
+    nqn->next = qn->next;
+    if (qn->next == NULL)
+        q->tail = nqn;
+    else
+        qn->next->prev = nqn;
+    qn->next = nqn;
+} // queueinsertafter
+
+void queueinsertbefore(queue q, queuenode qn, void *data, int32 len)
+{
+    queuenode nqn = (queuenode) malloc(sizeof(struct queuenode_struct));
+    nqn->data = data;
+    nqn->len = len;
+    q->len += len;
+
+    nqn->prev = qn->prev;
+    nqn->next = qn;
+    if (qn->prev == NULL)
+        q->head = nqn;
+    else
+        qn->prev->next = nqn;
+    qn->prev = nqn;
+} // queueinsertbefore
+
+void queueinserthead(queue q, void *data, int32 len)
+{
+    if (q->head == NULL) {
+        queuenode nqn = (queuenode) malloc(sizeof(struct queuenode_struct));
+        nqn->data = data;
+        nqn->len = len;
+        q->len += len;
+        q->head = nqn;
+        q->tail = nqn;
+        nqn->prev = NULL;
+        nqn->next = NULL;
+    } else {
+        queueinsertbefore(q, q->head, data, len);
+    }
+} // queueinserthead
+
+void queueinserttail(queue q, void *data, int32 len)
+{
+    if (q->tail == NULL)
+        queueinserthead(q, data, len);
+    else
+        queueinsertafter(q, q->tail, data, len);
+} // queueinsertend
+
+///////// end queue implementation
+
+void stage(queue q, void *data, char type)
+{
+    int32 len;
+
+    switch (type) {
+        case serialize_type_int32:
+            len = 4;
+            break;
+        case serialize_type_int64:
+            len = 8;
+            break;
+        case serialize_type_string:
+            if(data) {
+                len = (int32)strlen((char*) data) + 1;
+            } else {
+               len = 1;
+               data = &empty_char;
+            }
+            break;
+        default:
+            printerr("Error: Undefined packet_type #%d", type);
+            return;
+            break;
+    }
+    queueinserttail(q, data, len);
+} // stage
+
+char *serialize(queue q) // returns new string, frees s
+{
+    char *serialized = (char*) malloc(q->len + 1);
+    char *temp = serialized;
+
+    queuenode qn = q->head;
+    while (qn != NULL) {
+        memcpy(temp, qn->data, qn->len);
+        temp += qn->len;
+        qn = qn->next;
+    }
+/// YOU WERE HERE: DOES THIS THING HAVE TO BE A VALID CHAR TO BE SENT CORRECTLY?
+    *(temp++) = (char) 4; // set EOT
+    freequeue(q);
+    return serialized;
+} // serialize
+
+virtualnode *deserializevirtualnode(char *str)
+{
+
+} // deserializevirtualnode
+
+char *serializevirtualnode(virtualnode *node) // returns allocated string, free when done
+{
+    queue q = initqueue();
+    stage(q, (void*)node->name, serialize_type_string);
+    stage(q, (void*)&node->filetype, serialize_type_int32);
+    stage(q, (void*)&node->accesstime, serialize_type_int64);
+    stage(q, (void*)&node->modificationtime, serialize_type_int64);
+    stage(q, (void*)&node->permissions, serialize_type_int32);
+    stage(q, (void*)&node->numericuser, serialize_type_int32);
+    stage(q, (void*)&node->numericgroup, serialize_type_int32);
+    stage(q, (void*)node->user, serialize_type_string);
+    stage(q, (void*)node->group, serialize_type_string);
+    stage(q, (void*)&node->redyellow, serialize_type_int32);
+    stage(q, (void*)&node->redgreen, serialize_type_int32);
+    stage(q, (void*)&node->numchildren, serialize_type_int32);
+    stage(q, (void*)&node->subtreesize, serialize_type_int32);
+    stage(q, (void*)&node->subtreebytes, serialize_type_int32);
+    stage(q, (void*)&node->cols, serialize_type_int32);
+    stage(q, (void*)&node->firstvisiblenum, serialize_type_int32);
+    stage(q, (void*)&node->selectionnum, serialize_type_int32);
+    stage(q, (void*)&node->colwidth, serialize_type_int32);
+    return serialize(q);
+} // serialize_virtual_tree
+
+//////// end of serialization code
 
 unsigned char unhex(unsigned char a, unsigned char b)
 {
@@ -471,6 +646,8 @@ void sendmessage2(connection plug, int recipient, int type, char* what)
     nsendmessage(plug, recipient, type, what,
                     first + 1 + strlen(what + first + 1)); // don't send second 0
 } // sendmessage2
+
+
 
 char* secondstring(char* string)
 {

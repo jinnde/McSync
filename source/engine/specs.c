@@ -206,7 +206,7 @@ void writespecsfile(char *specsfile) // writes devicelist and graftlist
     fclose(f);
 } // writespecsfile
 
-int specstatevalid() // returns 1 if there exists one device with any reachplan and a graft;
+int specstatevalid() // returns 1 if there exists a device with any reachplan and a graft;
 {
     graft *g;
     device *d;
@@ -222,7 +222,6 @@ int specstatevalid() // returns 1 if there exists one device with any reachplan 
             }
         }
     }
-
     return 0;
 } // specstatevalid
 

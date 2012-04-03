@@ -52,6 +52,9 @@ typedef unsigned long long int uint64;
 // four bytes are: (high byte first) 79 99 144 131 (-112 -125) (hex: 4f 63 90 83)
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
+// limit depth and file name length in virtual tree
+#define virtual_path_depth_max 1024
+#define virtual_file_name_max 256
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of data types /////////////////////////////////
@@ -264,6 +267,8 @@ extern connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct a
 #define msgtype_identifydevice  8
 #define msgtype_deviceid        9
 #define msgtype_scan            10
+#define msgtype_lstree          11
+#define msgtype_virtualnode     12
 
 // if you change these, change msgtypelist in communication.c
 
@@ -338,4 +343,6 @@ void TUIstop2D(void); // leave 2D mode, go back to scrolling terminal
 int specstatevalid(); // returns 1 if there exists a device with a reachplan and a graft;
 void writespecsfile(char *specsfile); // writes devicelist and graftlist
 
+virtualnode *findnode(virtualnode *root, char *path); // finds a node in root using a given path
+char *serializevirtualnode(virtualnode *node); // serializes a virtual node for sending in messages
 
