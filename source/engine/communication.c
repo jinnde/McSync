@@ -11,93 +11,72 @@ const char* msgtypelist[] = { "error (msgtype==0)",
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of serialization //////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
-#define serialize_type_int32   0
-#define serialize_type_int64   1
-#define serialize_type_string  2
 
-#define serialize_type_int32_size  4 // in bytes, should much int64, int32 sizes
-#define serialize_type_int64_size  8
+// needed for endianess handling
+#if !defined(__GNUC__) || __GNUC__ < 43
+#define swap32(x) \
+       (((x << 24) & 0xff000000) | \
+        ((x <<  8) & 0x00ff0000) | \
+        ((x >>  8) & 0x0000ff00) | \
+        ((x >> 24) & 0x000000ff))
 
-char empty_char = '\0';
+#define swap64(x) \
+       (((x << 56) & 0xff00000000000000ULL) | \
+        ((x << 40) & 0x00ff000000000000ULL) | \
+        ((x << 24) & 0x0000ff0000000000ULL) | \
+        ((x <<  8) & 0x000000ff00000000ULL) | \
+        ((x >>  8) & 0x00000000ff000000ULL) | \
+        ((x >> 24) & 0x0000000000ff0000ULL) | \
+        ((x >> 40) & 0x000000000000ff00ULL) | \
+        ((x >> 56) & 0x00000000000000ffULL))
+#else
+#define swap32(x) ((int32) __builtin_bswap32(x)) // use efficient asm instructions
+#define swap64(x) ((int64) __builtin_bswap64(x))
+#endif
 
-// utilities for endian handling
-enum {
-    little_endian = 0x03020100ul,
-    big_endian = 0x00010203ul,
-};
+#ifndef BIG_ENDIAN_MACHINE // provided by compile.sh
+#define stream_to_host_32(x) (x) // stream data is little endian
+#define stream_to_host_64(x) (x)
+#define host_to_stream_32(x) (x)
+#define host_to_stream_64(x) (x)
+#else
+#define stream_to_host_32(x) (swap32(x))
+#define stream_to_host_64(x) (swap64(x))
+#define host_to_stream_32(x) (swap32(x))
+#define host_to_stream_64(x) (swap64(x))
+#endif
+// end of endianess
 
-static const union { unsigned char bytes[4]; int32 value; } o32_host_order = { { 0, 1, 2, 3 } };
-
-#define o32_host_order (o32_host_order.value)
-// end of utilities for endian handling
-
-void stage(queue q, void *data, char type)
-{
-    int32 len;
-
-    switch (type) {
-        case serialize_type_int32:
-            len = serialize_type_int32_size;
-            break;
-        case serialize_type_int64:
-            len = serialize_type_int64_size;
-            break;
-        case serialize_type_string:
-            if(data) {
-                len = (int32)strlen((char*) data) + 1;
-            } else {
-               len = 1;
-               data = &empty_char;
-            }
-            break;
-        default:
-            printerr("Error: Undefined serialize type #%d", type);
-            return;
-            break;
-    }
-    queueinserttail(q, data, len);
-} // stage
-
-char *serialize(queue q, int32 *len) // returns new string, frees queue
-{
-    char *serialized = (char*) malloc(q->len);
-    char *temp = serialized;
-
-    *len = q->len;
-
-    queuenode qn = q->head;
-    while (qn != NULL) {
-        memmove(temp, qn->data, qn->len);
-        temp += qn->len;
-        qn = qn->next;
-    }
-    freequeue(q);
-    return serialized;
-} // serialize
+#define size_of_int32  4 // ensured by checktypes(void) in main.c
+#define size_of_int64  8
 
 int32 deserializeint32(char **source)
 {
-    int32 destination;
-    memmove(&destination, *source, serialize_type_int32_size);
-    *source += serialize_type_int32_size;
-    return destination;
+    int32 n;
+    memcpy(&n, *source, size_of_int32);
+    *source += size_of_int32;
+    return stream_to_host_32(n);
 } // deserializeint32
 
 int64 deserializeint64(char **source)
 {
-    int64 destination;
-    memmove(&destination, *source, serialize_type_int64_size);
-    *source += serialize_type_int64_size;
-    return destination;
+    int64 n;
+    memcpy(&n, *source, size_of_int64);
+    *source += size_of_int64;
+    return stream_to_host_64(n);
 } // deserializeint64
 
-char *deserializestring(char **source) // allocates string, free when done
+char *deserializestring(char **source) // may allocate string, free when done
 {
-    int32 len = strlen(*source) + 1;
-    char *destination = (char*) malloc(len);
-    memmove(destination, *source, len);
+    char *str = NULL;
+    int32 len = deserializeint32(source); // the first byte is the length of the string
+
+    if (len) {
+        str = (char*) malloc(len);
+        memcpy(str, *source, len);
+    }
     *source += len;
-    return destination;
+    return str;
 } // deserializestring
 
 virtualnode *deserializevirtualnode(char *str) // returns allocated virtual node, free when done
@@ -126,28 +105,50 @@ virtualnode *deserializevirtualnode(char *str) // returns allocated virtual node
     return node;
 } // deserializevirtualnode
 
-char *serializevirtualnode(virtualnode *node, int32 *len) // returns allocated string, free when done
+void serializeint32(bytestream b, int32 n)
 {
-    queue q = initqueue();
-    stage(q, (void*)node->name, serialize_type_string);
-    stage(q, (void*)&node->filetype, serialize_type_int32);
-    stage(q, (void*)&node->accesstime, serialize_type_int64);
-    stage(q, (void*)&node->modificationtime, serialize_type_int64);
-    stage(q, (void*)&node->permissions, serialize_type_int32);
-    stage(q, (void*)&node->numericuser, serialize_type_int32);
-    stage(q, (void*)&node->numericgroup, serialize_type_int32);
-    stage(q, (void*)node->user, serialize_type_string);
-    stage(q, (void*)node->group, serialize_type_string);
-    stage(q, (void*)&node->redyellow, serialize_type_int32);
-    stage(q, (void*)&node->redgreen, serialize_type_int32);
-    stage(q, (void*)&node->numchildren, serialize_type_int32);
-    stage(q, (void*)&node->subtreesize, serialize_type_int32);
-    stage(q, (void*)&node->subtreebytes, serialize_type_int32);
-    stage(q, (void*)&node->cols, serialize_type_int32);
-    stage(q, (void*)&node->firstvisiblenum, serialize_type_int32);
-    stage(q, (void*)&node->selectionnum, serialize_type_int32);
-    stage(q, (void*)&node->colwidth, serialize_type_int32);
-    return serialize(q, len);
+    n = host_to_stream_32(n);
+    bytestreaminsert(b, (void*) &n, size_of_int32);
+} // serializeint32
+
+void serializeint64(bytestream b, int64 n)
+{
+    n = host_to_stream_64(n);
+    bytestreaminsert(b, (void*) &n, size_of_int64);
+} // serializeint32
+
+void serializestring(bytestream b, char *str)
+{
+    int32 len = str ? strlen(str) : 0;
+    serializeint32(b, len); // prepend the size of the string
+    if (len)
+        bytestreaminsert(b, (void*) str, len);
+} // serializestring
+
+bytestream serializevirtualnode(virtualnode *node) // returns allocated string, free when done
+{
+    bytestream b = initbytestream(120);
+
+    serializestring(b, node->name);
+    serializeint32(b, node->filetype);
+    serializeint64(b,node->accesstime);
+    serializeint64(b,node->modificationtime);
+    serializeint32(b, node->permissions);
+    serializeint32(b, node->numericuser);
+    serializeint32(b, node->numericgroup);
+    serializestring(b, node->user);
+    serializestring(b, node->group);
+    serializeint32(b, node->redyellow);
+    serializeint32(b, node->redgreen);
+    serializeint32(b, node->numchildren);
+    serializeint32(b, node->subtreesize);
+    serializeint32(b, node->subtreebytes);
+    serializeint32(b, node->firstvisiblenum);
+    serializeint32(b, node->cols);
+    serializeint32(b, node->selectionnum);
+    serializeint32(b, node->colwidth);
+
+    return b;
 } // serialize_virtual_tree
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -614,10 +615,9 @@ void sendmessage2(connection plug, int recipient, int type, char* what)
 
 void sendvirtualnode(connection plug, int recipient, virtualnode* node)
 {
-    int32 len = 0;
-    char *serialized = serializevirtualnode(node, &len);
-    nsendmessage(plug, recipient, msgtype_virtualnode, serialized, len);
-    free(serialized);
+    bytestream serialized = serializevirtualnode(node);
+    nsendmessage(plug, recipient, msgtype_virtualnode, serialized->data, serialized->len);
+    freebytestream(serialized);
 } // sendvirtualnode
 
 char* secondstring(char* string)

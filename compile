@@ -22,6 +22,7 @@ OPTIONS:
    -h      Show this message
    -b      Build: production or development [production]
    -c      Compiler to use instead of cc [cc]
+   -d      Display generated compiler command [false]
 
 
 EOF
@@ -29,9 +30,10 @@ EOF
 
 BUILD=
 COMPILER=
-while getopts "hb:c:" OPTION
+DIAGNOSTICS=
+while getopts "hb:c:d" OPTION
 do
-     case $OPTION in
+    case $OPTION in
         h)
              usage
              exit 1
@@ -42,6 +44,9 @@ do
         c)
              COMPILER=$OPTARG
              ;;
+        d)
+             DIAGNOSTICS=1
+             ;;
          ?)
              usage
              exit
@@ -51,7 +56,7 @@ done
 
 # Set defaults
 if [[ -z $BUILD ]]; then
-     BUILD="production"
+    BUILD="production"
 fi
 
 # accept abbreviations for build
@@ -64,11 +69,18 @@ if [ "$BUILD" == "p" ]; then
 fi
 
 if [[ -z $COMPILER ]]; then
-     COMPILER="cc"
+    COMPILER="cc"
+fi
+
+if [[ -z $DIAGNOSTICS ]]; then
+    DIAGNOSTICS=0
 fi
 # End of command line argument handling
 
 MACHINE_ARCHITECTURE=`cc -v 2>&1 | grep Target: | sed 's/.*: *//'`
+
+# MACHINE_ENDIANESS = 1 means little endian
+MACHINE_ENDIANESS=`echo I | tr -d [:space:] | od -to2 | head -n1 | awk '{print $2}' | cut -c6`
 
 echo "\nCreating executable mcsync.$MACHINE_ARCHITECTURE for $BUILD using $COMPILER.\n"
 
@@ -91,8 +103,15 @@ else
     exit 1
 fi
 
+if [ $MACHINE_ENDIANESS == 0 ]; then
+    OPT="$OPT -DBIG_ENDIAN_MACHINE"
+fi
+
+if [ $DIAGNOSTICS == 1 ]; then
+   echo ${COMPILER} ${OPT} ${LIB} ${SRC} ${OUT}
+fi
+
 ${COMPILER} ${OPT} ${LIB} ${SRC} ${OUT}
-#cc -O0 -g -o ../bin/mcsync.$MACHINE_ARCHITECTURE -lncurses -Wall -I. engine/*.c tui/*.c
 
 # Find the most recently modified source or header file
 LATEST_FILE=`find .  \( -name "*.c" -o -name "*.h" \) -type f -exec stat -f "%m %N" {} \; \

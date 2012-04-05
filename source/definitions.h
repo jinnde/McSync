@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <string.h>
 #include <time.h>
 #include <errno.h>
@@ -291,7 +292,18 @@ intlist emptyintlist(void);
 void addtointlist(intlist il, listint n); // keeps list sorted, works for multisets
 void removefromintlist(intlist il, listint n);
 
-char* strdupcat(char* a, char* b, ...); // allocs new string, last arg must be NULL
+typedef struct bytestream_struct {
+    char *data;       // can't be used as regular string! (allowed to contain '\0')
+    char *head;       // the current writing position
+    uint32 len;       // bytes written into stream
+    uint32 streamlen; // total allocated memory of bytestream
+}* bytestream;
+
+bytestream initbytestream(uint32 len); // allocates new bytestream
+void freebytestream(bytestream b);
+void bytestreaminsert(bytestream b, void *data, int32 len);
+
+char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
 
 char *commanumber(int64 n); // returns human-readable integer in reused buffer
 
@@ -318,28 +330,6 @@ void sendvirtualnode(connection plug, int recipient, virtualnode* node);
 int receivemessage(connection plug, listint* src, int64* type, char** data);
 char* secondstring(char* string);
 
-// start of queue
-typedef struct queuenode_struct {
-    struct queuenode_struct *next;
-    struct queuenode_struct *prev;
-    void *data;
-    int32 len;
-} *queuenode;
-
-typedef struct queue_struct {
-    queuenode head;
-    queuenode tail;
-    int32 len;
-} *queue;
-
-queue initqueue(); // allocates memory, free when done
-void freequeue(queue q);
-
-void queueinsertafter(queue q, queuenode qn, void *data, int32 len);
-void queueinsertbefore(queue q, queuenode qn, void *data, int32 len);
-void queueinserthead(queue q, void *data, int32 len);
-void queueinserttail(queue q, void *data, int32 len);
-// end of queue
 
 //////// actual interaction between program parts
 
@@ -369,6 +359,6 @@ int specstatevalid(); // returns 1 if there exists a device with a reachplan and
 void writespecsfile(char *specsfile); // writes devicelist and graftlist
 
 virtualnode *findnode(virtualnode *root, char *path); // finds a node in root using a given path
-char *serializevirtualnode(virtualnode *node, int32 *len); // serializes a virtual node for sending in messages
+bytestream serializevirtualnode(virtualnode *node); // serializes a virtual node for sending in messages
 virtualnode *deserializevirtualnode(char *str); // deserializes a virtual node from message data
 
