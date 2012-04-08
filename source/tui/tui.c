@@ -1310,9 +1310,12 @@ void TUImain(void)
                     break;
                 case msgtype_virtualnode:
                     { // we got a node update for the virtual tree
-                        virtualnode* node = deserializevirtualnode(msg_data);
-                        printerr("TUI got %s", node->name);
-                        free(node);
+                        // virtualnode* node = deserializevirtualnode(msg_data);
+                        // printerr("TUI got %s", node->name);
+                        // // TODO: A function to release a virtual node!
+                        // free(node->name);
+                        // free(node);
+                        free(msg_data);
                     }
                     break;
                 default:

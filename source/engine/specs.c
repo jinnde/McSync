@@ -40,6 +40,7 @@ void readspecs1(FILE *f) // reads the rest of a version-1 specs file
     while (1) {
         if (! strcmp(line, "end of specs")) {
             *graftlistp = NULL;
+            free(line);
             break;
 
         } else if (! strncmp(line, "machine ", 8)) { // a device
@@ -155,6 +156,8 @@ void readspecsfile(char *specsfile) // sets up devicelist and graftlist
                 "I will try to read it anyway.\n",
                 specsfile, fileversion, specsfileversionnumber);
     }
+
+    free(line);
 
     switch (fileversion) {
         case 1:

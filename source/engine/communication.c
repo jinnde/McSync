@@ -69,7 +69,7 @@ int64 deserializeint64(char **source)
 char *deserializestring(char **source) // may allocate string, free when done
 {
     char *str = NULL;
-    int32 len = deserializeint32(source); // the first byte is the length of the string
+    int32 len = deserializeint32(source); // the first 4 bytes are the length of the string
 
     if (len) {
         str = (char*) malloc(len);
@@ -102,6 +102,7 @@ virtualnode *deserializevirtualnode(char *str) // returns allocated virtual node
     node->firstvisiblenum  = deserializeint32(&pos);
     node->selectionnum     = deserializeint32(&pos);
     node->colwidth         = deserializeint32(&pos);
+    pos = NULL;
     return node;
 } // deserializevirtualnode
 
@@ -120,7 +121,7 @@ void serializeint64(bytestream b, int64 n)
 void serializestring(bytestream b, char *str)
 {
     int32 len = str ? strlen(str) + 1 : 0;
-    serializeint32(b, len); // prepend the size of the string
+    serializeint32(b, len); // prepend the size of the string, the empty string has size 1, NULL size 0
     if (len)
         bytestreaminsert(b, (void*) str, len);
 } // serializestring
