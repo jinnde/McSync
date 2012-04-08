@@ -119,7 +119,7 @@ void serializeint64(bytestream b, int64 n)
 
 void serializestring(bytestream b, char *str)
 {
-    int32 len = str ? strlen(str) : 0;
+    int32 len = str ? strlen(str) + 1 : 0;
     serializeint32(b, len); // prepend the size of the string
     if (len)
         bytestreaminsert(b, (void*) str, len);
