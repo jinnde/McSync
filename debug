@@ -15,16 +15,11 @@
 command -v /usr/bin/osascript >/dev/null 2>&1 || { echo "This script runs on OS X only." >&2; exit 1; }
 command -v cgdb >/dev/null 2>&1 || { echo "This script requires *cgdb* and it was not found on your machine." >&2; exit 1; }
 
-# Build McSync
+# Build McSync, abort if not sucessful
 ./compile -b development
 
-MACHINE_ARCHITECTURE=`(cc -v 2>&1 | grep Target: | sed 's/.*: *//')`
-
-# Test if build generated a binary
-if [ ! -f "bin/mcsync.$MACHINE_ARCHITECTURE" ]
-then
-  echo "Could not find bin/mcsync.$MACHINE_ARCHITECTURE. Build failed?"
-  exit
+if [ $? -ne 0 ]; then
+    exit 1
 fi
 
 # Find the McSync root path (the folder this script is in)
@@ -50,6 +45,8 @@ EOF
         do script "cd $DIR; cat /dev/null > data/log; tail -f data/log"
     end tell
 EOF
+
+MACHINE_ARCHITECTURE=`(cc -v 2>&1 | grep Target: | sed 's/.*: *//')`
 
 # Start cgdb and tell it to connect to the tty sent using the pipe above.
 /usr/bin/osascript <<EOF

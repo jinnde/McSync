@@ -33,4 +33,9 @@ else
     echo "Executable looks up-to-date."
 fi
 
+# If compilation was not sucessful, exit and propagate error
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+
 bin/mcsync.$MACHINE_ARCHITECTURE $*

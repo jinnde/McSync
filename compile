@@ -111,7 +111,13 @@ if [ $DIAGNOSTICS == 1 ]; then
    echo ${COMPILER} ${OPT} ${LIB} ${SRC} ${OUT}
 fi
 
+# The actual compilation command
 ${COMPILER} ${OPT} ${LIB} ${SRC} ${OUT}
+
+if [ $? -ne 0 ]; then
+    echo "\nBuild failed!\n"
+    exit 1
+fi
 
 # Find the most recently modified source or header file
 LATEST_FILE=`find .  \( -name "*.c" -o -name "*.h" \) -type f -exec stat -f "%m %N" {} \; \
