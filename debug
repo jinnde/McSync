@@ -60,3 +60,26 @@ MACHINE_ARCHITECTURE=`(cc -v 2>&1 | grep Target: | sed 's/.*: *//')`
         end
     end tell
 EOF
+
+# Resize the newly created windows and arrange them for convience
+/usr/bin/osascript <<EOF
+    tell application "Finder"
+        set screenSize to (bounds of window of desktop)
+    end
+
+    set width to item 3 of screenSize
+    set height to item 4 of screenSize
+
+    set halfwidth to width/2
+    set halfheight to height/2
+
+    tell application "Terminal"
+        activate
+        set position of window 1 to {0, 0}
+        set size of window 1 to {halfwidth, height}
+        set position of window 2 to {halfwidth+5, 0}
+        set size of window 2 to {halfwidth, halfheight}
+        set position of window 3 to {halfwidth+5, halfheight}
+        set position of window 4 to {0, halfheight}
+    end tell
+EOF
