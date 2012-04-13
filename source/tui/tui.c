@@ -1,10 +1,11 @@
 #include "definitions.h"
 
+
 virtualnode cmd_virtualroot; // has no siblings and no name
                              // only to be used by the tui thread
 
-char buffer[90], *bufpos; // use is private to next two functions, 90 digit max...
 
+char buffer[90], *bufpos; // use is private to next two functions, 90 digit max...
 
 void commanumberrec(int64 n, int dig) // helper func for commanumber
 {
@@ -286,6 +287,16 @@ void refreshdevices(void)
     } // if a device is selected
 } // refreshdevices
 
+
+void sendvirtualnoderquest(virtualnode *node)
+{ // helps by assembling the path to a node before sending the request
+    bytestream b = initbytestream(128);
+    getvirtualnodepath(b, &cmd_virtualroot, node);
+    bytestreaminsertchar(b, '\0');
+    nsendmessage(TUI_plug, algo_int, msgtype_lstree, b->data, b->len);
+    freebytestream(b);
+} // sendvirtualnoderquest
+
 void showcontents(virtualnode *dir)
 // show filename array according to gi_bstyle on lines gi_btop...gi_bbottom
 {
@@ -342,7 +353,8 @@ void showcontents(virtualnode *dir)
     }
     if (dir->down == NULL) {
         color_set(REDonWHITE, NULL);
-        printw("  <<< Empty Directory >>>  ");
+        if (dir->numchildren == 0)
+            printw("  <<< Empty Directory >>>  ");
         return;
     }
     // fill grid
@@ -398,6 +410,10 @@ void showcontents(virtualnode *dir)
             color_set(BLACKonWHITE, NULL);
             clearrestofline();
         }
+    }
+    if (dir->touched) {
+        sendvirtualnoderquest(dir);
+        dir->touched = 0;
     }
 } // showcontents
 
@@ -1309,13 +1325,30 @@ void TUImain(void)
                             refreshscreen();
                     break;
                 case msgtype_virtualnode:
-                    { // we got a node update for the virtual tree
-                        // virtualnode* node = deserializevirtualnode(msg_data);
-                        // printerr("TUI got %s", node->name);
-                        // // TODO: A function to release a virtual node!
-                        // free(node->name);
-                        // free(node);
+                    { // adds or replaces a virtual node
+                        virtualnode *oldchild, *newchild, *parent;
+                        char *parentpath;
+
+                        receivevirtualnode(msg_data, &parentpath, &newchild);
+
+                        parent = findnode(&cmd_virtualroot, parentpath); // searches forward; more secure
+
+                        if (!parent) {
+                            parent = conjuredirectory(&cmd_virtualroot, parentpath);
+                            oldchild = NULL;
+                        } else {
+                            oldchild = findnode(parent, newchild->name);
+                        }
+
+                        if (oldchild)
+                            overwritevirtualnode(&oldchild, &newchild);
+                        else
+                            virtualnodeaddchild(&parent, &newchild);
+
+                        free(parentpath);
                         free(msg_data);
+                        if (doUI)
+                            refreshscreen();
                     }
                     break;
                 default:

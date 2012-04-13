@@ -79,30 +79,28 @@ char *deserializestring(char **source) // may allocate string, free when done
     return str;
 } // deserializestring
 
-virtualnode *deserializevirtualnode(char *str) // returns allocated virtual node, free when done
-{
+virtualnode *deserializevirtualnode(char **source) // returns allocated virtual node, free when done
+{// *source is manipulated by each deserialization function
     virtualnode *node = (virtualnode*) malloc(sizeof(virtualnode));
-    char *pos = str;
 
-    node->name             = deserializestring(&pos);
-    node->filetype         = deserializeint32(&pos);
-    node->accesstime       = deserializeint64(&pos);
-    node->modificationtime = deserializeint64(&pos);
-    node->permissions      = deserializeint32(&pos);
-    node->numericuser      = deserializeint32(&pos);
-    node->numericgroup     = deserializeint32(&pos);
-    node->user             = deserializestring(&pos);
-    node->group            = deserializestring(&pos);
-    node->redyellow        = deserializeint32(&pos);
-    node->redgreen         = deserializeint32(&pos);
-    node->numchildren      = deserializeint32(&pos);
-    node->subtreesize      = deserializeint32(&pos);
-    node->subtreebytes     = deserializeint32(&pos);
-    node->cols             = deserializeint32(&pos);
-    node->firstvisiblenum  = deserializeint32(&pos);
-    node->selectionnum     = deserializeint32(&pos);
-    node->colwidth         = deserializeint32(&pos);
-    pos = NULL;
+    node->name             = deserializestring(source);
+    node->filetype         = deserializeint32(source);
+    node->accesstime       = deserializeint64(source);
+    node->modificationtime = deserializeint64(source);
+    node->permissions      = deserializeint32(source);
+    node->numericuser      = deserializeint32(source);
+    node->numericgroup     = deserializeint32(source);
+    node->user             = deserializestring(source);
+    node->group            = deserializestring(source);
+    node->redyellow        = deserializeint32(source);
+    node->redgreen         = deserializeint32(source);
+    node->numchildren      = deserializeint32(source);
+    node->subtreesize      = deserializeint32(source);
+    node->subtreebytes     = deserializeint32(source);
+    node->cols             = deserializeint32(source);
+    node->firstvisiblenum  = deserializeint32(source);
+    node->selectionnum     = deserializeint32(source);
+    node->colwidth         = deserializeint32(source);
     return node;
 } // deserializevirtualnode
 
@@ -126,10 +124,28 @@ void serializestring(bytestream b, char *str)
         bytestreaminsert(b, (void*) str, len);
 } // serializestring
 
-bytestream serializevirtualnode(virtualnode *node) // returns allocated string, free when done
+bytestream serializehistory(history h)
 {
-    bytestream b = initbytestream(120);
+    return NULL;
+} // serializehistory
 
+bytestream serializefileinfo(fileinfo* info)
+{
+    return NULL;
+} // serializefileinfo
+
+bytestream serializegraft(graft* graft)
+{
+    return NULL;
+} // serializegraft
+
+bytestream serializegraftee(graftee gee)
+{
+    return NULL;
+} // serializegraftee
+
+void serializevirtualnode(bytestream b, virtualnode *node) // returns allocated stream, free when done
+{
     serializestring(b, node->name);
     serializeint32(b, node->filetype);
     serializeint64(b,node->accesstime);
@@ -144,13 +160,11 @@ bytestream serializevirtualnode(virtualnode *node) // returns allocated string, 
     serializeint32(b, node->numchildren);
     serializeint32(b, node->subtreesize);
     serializeint32(b, node->subtreebytes);
-    serializeint32(b, node->firstvisiblenum);
     serializeint32(b, node->cols);
+    serializeint32(b, node->firstvisiblenum);
     serializeint32(b, node->selectionnum);
     serializeint32(b, node->colwidth);
-
-    return b;
-} // serialize_virtual_tree
+} // serializevirtualnode
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of serialization ////////////////////////////////
@@ -614,9 +628,13 @@ void sendmessage2(connection plug, int recipient, int type, char* what)
                     first + 1 + strlen(what + first + 1)); // don't send second 0
 } // sendmessage2
 
-void sendvirtualnode(connection plug, int recipient, virtualnode* node)
+void sendvirtualnode(connection plug, int recipient, char* parentpath, virtualnode* node)
 {
-    bytestream serialized = serializevirtualnode(node);
+    bytestream serialized = initbytestream(128);
+
+    serializestring(serialized, parentpath);
+    serializevirtualnode(serialized, node);
+
     nsendmessage(plug, recipient, msgtype_virtualnode, serialized->data, serialized->len);
     freebytestream(serialized);
 } // sendvirtualnode
@@ -650,7 +668,13 @@ int receivemessage(connection plug, listint* src, int64* type, char** data)
     return 1;
 } // receivemessage
 
-
+void receivevirtualnode(char *msg_data, char **parentpath, virtualnode **node)
+{
+    char *source = msg_data; // pointer manipulated by deserialization
+    *parentpath = deserializestring(&source);
+    *node = deserializevirtualnode(&source);
+    (*node)->next = (*node)->prev = (*node)->down = (*node)->up = NULL;
+} // receivevirtualnode
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of router /////////////////////////////////////

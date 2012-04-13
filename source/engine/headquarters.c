@@ -14,17 +14,17 @@ char* statusword[] = {
     "connected",
 };
 
-virtualnode *conjuredirectory(char *dir) // chars in dir string must be writable
+virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir string must be writable
 // dir must not end with / or contain //
 // this routine creates all virtual files except for the root (in initvirtualroot)
 {
     virtualnode *parent, *ans;
     char *pos;
     if (dir[0] != '/') // in general true only for "" (otherwise dir was bad)
-        return &virtualroot;
+        return root;
     pos = rindex(dir, '/');
     *pos = 0; // truncate string
-    parent = conjuredirectory(dir);
+    parent = conjuredirectory(root, dir);
     *pos = '/';
     for (ans = parent->down; ans != NULL; ans = ans->next)
         if (ans->filetype <= 1 && !strcmp(ans->name, pos + 1))
@@ -92,7 +92,7 @@ void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
     virtualnode *v;
     graftee *gee;
 
-    v = conjuredirectory(where);
+    v = conjuredirectory(&virtualroot, where);
     if (pruneq) // it is a prune point
         gee = &(v->graftends);
     else // it is a graft root
@@ -153,15 +153,17 @@ virtualnode *findnode(virtualnode *root, char *path) // threads '/' as delimiter
 {
     virtualnode *node = root;
     char delimiter[] = "/";
-    char *name = strtok(path, delimiter);
+    char *rest = NULL;
+    char *name = strtok_r(path, delimiter, &rest);
 
+    // node is only null if we could not find a node with name
     while (name != NULL && node != NULL) {
         for (node = node->down; node != NULL; node = node->next) {
             if (!strcmp(node->name, name))
                 break;
         }
         // get next node name
-        name = strtok(NULL, delimiter);
+        name = strtok_r(NULL, delimiter, &rest);
     }
     return node;
 } // findnode
@@ -209,23 +211,27 @@ int validfullpath(char *path) // returns 1 if path is a valid full virtual path
     return 1;
 } // validfullpath
 
-void sendvirtualnodelisting(char* path, int destination)
+void sendvirtualnodelisting(char* path, int destination) // sends back all children of node at path
 {
+    virtualnode *node, *child;
+
     if (!validfullpath(path)) {
         printerr("Error: HQ got invalid path: %s\n", path);
         return;
     }
 
-    virtualnode *node = findnode(&virtualroot, path);
-    virtualnode *child;
+    node = findnode(&virtualroot, path);
 
-    if (node) {
-        for (child = node->down; child != NULL; child = child->next) {
-            sendvirtualnode(algo_plug, TUI_int, child);
-        }
-    } else {
-        printerr("Error: HQ could not find node with path: %s\n", path);
+    if (node->filetype > 1) {
+        printerr("Error: HQ got ls for node which is not a directory: %s\n", path);
+        return;
     }
+
+    if (node)
+        for (child = node->down; child != NULL; child = child->next)
+                sendvirtualnode(algo_plug, TUI_int, path, child);
+    else
+        printerr("Error: HQ could not find node with path: %s\n", path);
 } // sendvirtualnodelisting
 
 // Used by CMD and HQ to initialize their virtual trees
@@ -241,7 +247,7 @@ void initvirtualroot(virtualnode *root)
     root->graftroots = NULL;
     root->graftends = NULL;
     root->name = "";
-    root->filetype = 0; // 0=stub
+    root->filetype = 1; // 1=directory
     // now for the interface stuff
     root->redyellow = 0;
     root->redgreen = 0;
@@ -253,6 +259,7 @@ void initvirtualroot(virtualnode *root)
     root->firstvisible = NULL;
     root->selectionnum = -1;
     root->selection = NULL;
+    root->touched = 0;
 } // initvirtualroot
 
 void virtualtreeinit(void)
@@ -261,6 +268,68 @@ void virtualtreeinit(void)
     initvirtualroot(&virtualroot); // initialize virtual tree
     conjuregraftpoints(); // make the tree include spots indicated by the grafts
 } // virtualtreeinit
+
+void freegrafteelist(graftee gee)
+{
+    graftee skunk;
+    while (gee != NULL) {
+        skunk = gee;
+        gee = skunk->next;
+        free(skunk);
+    }
+} // freegraftee
+
+void freevirtualnode(virtualnode *node)
+{
+    free(node->name);
+    free(node->user);
+    free(node->group);
+    freegrafteelist(node->grafteelist);
+    freegrafteelist(node->bootedlist);
+    freegrafteelist(node->graftroots);
+    freegrafteelist(node->graftends);
+    free(node);
+} // freevirtualnode
+
+void virtualnodeaddchild(virtualnode **parent, virtualnode **child)
+{
+    if ((*parent)->down) {
+        (*child)->next = (*parent)->down;
+        (*child)->next->prev = *child;
+    }
+    (*parent)->down = *child;
+    (*child)->up = *parent;
+} // virtualnodeaddchild
+
+void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode) // frees a
+{
+    (*newnode)->up = (*oldnode)->up;
+    (*newnode)->down = (*oldnode)->down;
+    (*newnode)->prev = (*oldnode)->prev;
+    (*newnode)->next = (*oldnode)->next;
+    if ((*oldnode)->up)
+        (*oldnode)->up->down = (*newnode);
+    if ((*oldnode)->prev)
+        (*oldnode)->prev->next = (*newnode);
+    if ((*oldnode)->next)
+        (*oldnode)->next->prev = (*newnode);
+    if ((*oldnode)->down)
+        (*oldnode)->down->up = (*newnode);
+    freevirtualnode(*oldnode);
+} // overwritevirtualnode
+
+void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node)
+{
+    // TODO: We could replace this check for the NULL node above root to make things nicer
+    if (node == root) {
+        bytestreaminsertchar(b, '/');
+        return;
+    }
+    getvirtualnodepath(b, root, node->up);
+    if (node->up != root)
+        bytestreaminsertchar(b, '/');
+    bytestreaminsert(b, node->name, strlen(node->name));
+} // getvirtualnodepath
 
 void setstatus(int32 who, status_t newstatus)
 {

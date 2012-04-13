@@ -197,8 +197,8 @@ typedef struct virtualnode_struct {
     int32   permissions;
     int32   numericuser;
     int32   numericgroup;
-    char    *user;
-    char    *group;
+    char    *user; // free when done
+    char    *group; // free when done
     // info about how the desired state is a change from the previous state(s)
     int32   redyellow; // red means conflict, yellow means user-specified
     int32   redgreen; // green means propagating change, no color means no change
@@ -212,6 +212,7 @@ typedef struct virtualnode_struct {
     int32   selectionnum; // which child is selected (-1 = pls recompute)
     struct virtualnode_struct *selection; // which child is selected
     int32   colwidth; // width of this column (for parent dir listing)
+    int32   touched; // if 1, CMD request update on node from HQ, only to be set on CMD
 } virtualnode;
 
 
@@ -258,6 +259,7 @@ extern connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct a
 #define TUI_int         2
 #define topworker_int   3
 #define firstfree_int   4
+
 #define msgtype_newplugplease   1
 #define msgtype_newplugplease1  2
 #define msgtype_newplugplease2  3
@@ -270,7 +272,6 @@ extern connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct a
 #define msgtype_scan            10
 #define msgtype_lstree          11
 #define msgtype_virtualnode     12
-
 // if you change these, change msgtypelist in communication.c
 
 #define slave_start_string "this is mcsync"
@@ -293,15 +294,16 @@ void addtointlist(intlist il, listint n); // keeps list sorted, works for multis
 void removefromintlist(intlist il, listint n);
 
 typedef struct bytestream_struct {
-    char *data;       // can't be used as regular string! (allowed to contain '\0')
+    char *data;       // not necessarily usable as regular string! (allowed to contain '\0')
     char *head;       // the current writing position
     uint32 len;       // bytes written into stream
     uint32 streamlen; // total allocated memory of bytestream
 }* bytestream;
 
-bytestream initbytestream(uint32 len); // allocates new bytestream
+bytestream initbytestream(uint32 len); // allocates new bytestream, free when done
 void freebytestream(bytestream b);
 void bytestreaminsert(bytestream b, void *data, int32 len);
+void bytestreaminsertchar(bytestream b, char str);
 
 char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
 
@@ -325,9 +327,13 @@ void waitforsequence(FILE* input, char* sequence, int len, int echo);
 
 void sendmessage(connection plug, int recipient, int type, char* what);
 void sendmessage2(connection plug, int recipient, int type, char* what);
-void sendvirtualnode(connection plug, int recipient, virtualnode* node);
+void nsendmessage(connection plug, int recipient, int type, char* what, int len);
+
+void sendvirtualnode(connection plug, int recipient, char* path, virtualnode* node);
 
 int receivemessage(connection plug, listint* src, int64* type, char** data);
+void receivevirtualnode(char *msg_data, char **path, virtualnode **node);
+
 char* secondstring(char* string);
 
 
@@ -343,6 +349,12 @@ void raw_io(void);
 void waitforstring(FILE* input, char* string);
 
 void initvirtualroot(virtualnode *root); // used by HQ and CMD (e.g. tui.c)
+virtualnode *conjuredirectory(virtualnode* root, char *dir); // chars in dir string must be writable
+virtualnode *findnode(virtualnode *root, char *path); // returns NULL if not found, path must be writable
+void virtualnodeaddchild(virtualnode **parent, virtualnode **child);
+void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode); // frees oldnode
+void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // writes the path of node into b
+
 
 int reachforremote(connection plug); // try to get mcsync started on remote site
 void channel_launch(connection* store_plug_here, char* deviceid, int plugnumber);
@@ -358,7 +370,5 @@ void TUIstop2D(void); // leave 2D mode, go back to scrolling terminal
 int specstatevalid(); // returns 1 if there exists a device with a reachplan and a graft;
 void writespecsfile(char *specsfile); // writes devicelist and graftlist
 
-virtualnode *findnode(virtualnode *root, char *path); // finds a node in root using a given path
-bytestream serializevirtualnode(virtualnode *node); // serializes a virtual node for sending in messages
-virtualnode *deserializevirtualnode(char *str); // deserializes a virtual node from message data
+void serializevirtualnode(bytestream b, virtualnode *node); // serializes a virtual node for sending in messages
 
