@@ -1,6 +1,6 @@
 #include "definitions.h"
 
-connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct access
+connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct access
 
 const char* msgtypelist[] = { "error (msgtype==0)",
     "newplugplease", "NPP1","NPP2", "info", "workerisup",
@@ -328,8 +328,8 @@ char* threadname(void)
 {
     pthread_t us = pthread_self();
     return (worker_plug && us == worker_plug->listener) ? "worker" :
-            (algo_plug && us == algo_plug->listener) ? "algo" :
-            (TUI_plug && us == TUI_plug->listener) ? "TUI" :
+            (hq_plug && us == hq_plug->listener) ? "HQ" :
+            (cmd_plug && us == cmd_plug->listener) ? "CMD" :
             (parent_plug && us == parent_plug->listener) ? "parent" :
             "other thread";
 } // threadname
@@ -647,6 +647,15 @@ void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir
     freebytestream(serialized);
 } // sendvirtualdir
 
+void sendvirtualnoderquest(virtualnode *root, virtualnode *node)
+{ // helps by assembling the path to a node before sending the request
+    bytestream b = initbytestream(128);
+    getvirtualnodepath(b, root, node);
+    bytestreaminsertchar(b, '\0');
+    nsendmessage(cmd_plug, hq_int, msgtype_listvirtualdir, b->data, b->len);
+    freebytestream(b);
+} // sendvirtualnoderquest
+
 char* secondstring(char* string)
 {
     char* pos = string;
@@ -793,13 +802,14 @@ void* thread_main(void* voidplug) // all new plug threads start here
 {
     connection      plug = voidplug; // so compiler knows type
 
-    // TUI, algo, and worker each handle both input and output messages
-    if (plug == TUI_plug) { // from routermain init
-        TUImain(); // returns when user exits
+    // CMD, HQ, and worker each handle both input and output messages
+    if (plug == cmd_plug) { // from routermain init
+        cmd_thread_start_function(); // returns when user exits,
+                                     // set by main.c to user choice (e.g. TUImain or climain)
         cleanexit(0); // kill all other threads and really exit
         return NULL;
     }
-    if (plug == algo_plug) { // from routermain init
+    if (plug == hq_plug) { // from routermain init
         algomain(); // never returns
         return NULL;
     }
@@ -917,8 +927,8 @@ void routermain(int master, int plug_id)
 
     // set up the basic set of channels
     if (master) {
-        channel_launch(&algo_plug, NULL, algo_int);
-        channel_launch(&TUI_plug, NULL, TUI_int);
+        channel_launch(&hq_plug, NULL, hq_int);
+        channel_launch(&cmd_plug, NULL, cmd_int);
         channel_launch(&worker_plug, NULL, topworker_int);
     } else {
         channel_launch(&parent_plug, NULL, 0); // "NULL, 0" == "parent"
@@ -943,8 +953,8 @@ void routermain(int master, int plug_id)
                     int i;
                     printerr("Message going from %d (%s) to",
                                     msg->source,
-                                    msg->source == algo_int ? "algo" :
-                                    msg->source == TUI_int ? "TUI" :
+                                    msg->source == hq_int ? "HQ" :
+                                    msg->source == cmd_int ? "CMD" :
                                     msg->source == topworker_int ? "topworker" :
                                     "remote worker");
                     for (i = 0; i < msg->destinations->count; i++) {
@@ -954,8 +964,8 @@ void routermain(int master, int plug_id)
                     }
                     if (msg->destinations->count == 1)
                         printerr(" (%s)",
-                            msg->destinations->values[0] == algo_int ? "algo" :
-                            msg->destinations->values[0] == TUI_int ? "TUI" :
+                            msg->destinations->values[0] == hq_int ? "HQ" :
+                            msg->destinations->values[0] == cmd_int ? "CMD" :
                             msg->destinations->values[0] == topworker_int ?
                                 "topworker" : "remote worker");
                     printerr(".\n");

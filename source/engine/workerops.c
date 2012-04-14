@@ -186,7 +186,7 @@ void workermain(void)
 
     // report existence
     snprintf(buf, 90, "%d", worker_plug->thisway->values[0]);
-    sendmessage(worker_plug, algo_int, msgtype_workerisup, buf);
+    sendmessage(worker_plug, hq_int, msgtype_workerisup, buf);
 
     while (1) {
         while (! receivemessage(worker_plug, &msg_src, &msg_type, &msg_data)) {
@@ -219,7 +219,7 @@ void workermain(void)
                     // if it works, it will report its existence on its own...
                     break;
             case msgtype_identifydevice:
-                    sendmessage(worker_plug, algo_int, msgtype_deviceid,
+                    sendmessage(worker_plug, hq_int, msgtype_deviceid,
                                 deviceidondisk());
                     break;
             case msgtype_scan:

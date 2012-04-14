@@ -430,7 +430,7 @@ int reachforremote(connection plug) // try to get mcsync started on remote site
         //status only has meaning on master device!
         char buf[90];
         snprintf(buf, 90, "%d", plug->thisway->values[0]);
-        sendmessage(worker_plug, algo_int, msgtype_disconnect, buf); // BUG
+        sendmessage(worker_plug, hq_int, msgtype_disconnect, buf); // BUG
         // we are not the worker thread!!!! and sendmessage is not thread-safe...
         // but our own msg queue will never start functioning in this error case
         retval = 1;

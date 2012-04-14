@@ -299,14 +299,14 @@ void setstatus(int32 who, status_t newstatus)
     // take any status-change-based actions
     switch (newstatus) {
         case status_inactive:
-                sendmessage(algo_plug, TUI_int, msgtype_disconnect,
+                sendmessage(hq_plug, cmd_int, msgtype_disconnect,
                             mach->deviceid);
             break;
         case status_reaching:
             break;
         case status_connected:
                 snprintf(buf, 90, "%s", mach->deviceid); // unnecessary to use buf
-                sendmessage(algo_plug, TUI_int, msgtype_connected, buf);
+                sendmessage(hq_plug, cmd_int, msgtype_connected, buf);
             break;
     }
     printerr("Changed status of %d (%s) from %d (%s) to %d (%s).\n",
@@ -356,7 +356,7 @@ void algo_reachfor(char* deviceid, char* reachfrom_deviceid) // RFID can be NULL
     target_m->reachplan.routeraddr = NextFreeAddress; // awaiting status_connected
     setstatus(NextFreeAddress, status_reaching);
     snprintf(buf, 90, "%s%c%d", deviceid, 0, NextFreeAddress);
-    sendmessage2(algo_plug, reachfrom_addr, msgtype_newplugplease, buf);
+    sendmessage2(hq_plug, reachfrom_addr, msgtype_newplugplease, buf);
     // Notice we don't send the device target_m!
     // It will be recovered from the deviceid by topworker in channel_launch.
     // This lets us use a worker besides topworker (multi-hop case), because
@@ -464,7 +464,7 @@ void sendvirtualnodelisting(char* path, int destination) // sends back all child
     }
 
     if (dir)
-        sendvirtualdir(algo_plug, TUI_int, path, dir);
+        sendvirtualdir(hq_plug, cmd_int, path, dir);
     else
         printerr("Error: HQ could not find node with path: %s\n", path);
 } // sendvirtualnodelisting
@@ -479,7 +479,7 @@ void algomain(void)
     virtualtreeinit();
 
     while (1) {
-        while (! receivemessage(algo_plug, &msg_src, &msg_type, &msg_data)) {
+        while (! receivemessage(hq_plug, &msg_src, &msg_type, &msg_data)) {
             usleep(1000);
         }
         // we got a message
@@ -490,7 +490,7 @@ void algomain(void)
                     break;
             case msgtype_workerisup:
                     // we need to find out (topworker) or verify who we are
-                    sendmessage(algo_plug, msg_src, msgtype_identifydevice, "");
+                    sendmessage(hq_plug, msg_src, msgtype_identifydevice, "");
                     // we won't say we're connected till we know to whom!
                     break;
             case msgtype_deviceid:

@@ -4,7 +4,6 @@
 virtualnode cmd_virtualroot; // has no siblings and no name
                              // only to be used by the tui thread
 
-
 char buffer[90], *bufpos; // use is private to next two functions, 90 digit max...
 
 void commanumberrec(int64 n, int dig) // helper func for commanumber
@@ -721,16 +720,6 @@ int TUIprocesschar2(int ch) // returns 1 if user wants to quit
     return TUIprocesskeycommand(cmd, ch);
 } // TUIprocesschar
 
-void sendvirtualnoderquest(virtualnode *node)
-{ // helps by assembling the path to a node before sending the request
-    bytestream b = initbytestream(128);
-    getvirtualnodepath(b, &cmd_virtualroot, node);
-    bytestreaminsertchar(b, '\0');
-    nsendmessage(TUI_plug, algo_int, msgtype_listvirtualdir, b->data, b->len);
-    freebytestream(b);
-} // sendvirtualnoderquest
-
-
 int TUIprocesschar(int ch) // returns 1 if user wants to quit
 {
     if (ch == -1) return 0; // sent for example while resizing on mac
@@ -795,7 +784,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             case 'c': // connect
                     if (gi_device != NULL
                                 && gi_device->status == status_inactive) {
-                        sendmessage(TUI_plug, algo_int, msgtype_newplugplease1,
+                        sendmessage(cmd_plug, hq_int, msgtype_newplugplease1,
                                     gi_device->deviceid);
                     } else {
                         beep();
@@ -1148,7 +1137,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     if (browsingdirectory->selection != NULL) {
 
                         if (browsingdirectory->selection->touched) {
-                            sendvirtualnoderquest(browsingdirectory->selection);
+                            sendvirtualnoderquest(&cmd_virtualroot, browsingdirectory->selection);
                             break;
                         }
 
@@ -1297,7 +1286,7 @@ void TUImain(void)
     initvirtualroot(&cmd_virtualroot);
     browsingdirectory = &cmd_virtualroot;
 
-    sendvirtualnoderquest(&cmd_virtualroot); // send ls for root
+    sendvirtualnoderquest(&cmd_virtualroot, &cmd_virtualroot); // send ls for root
 
     while (keepgoing) {
         int got_char, got_msg;
@@ -1314,7 +1303,7 @@ void TUImain(void)
             }
         }
 
-        got_msg = receivemessage(TUI_plug, &msg_src, &msg_type, &msg_data);
+        got_msg = receivemessage(cmd_plug, &msg_src, &msg_type, &msg_data);
         if (got_msg) {
             switch (msg_type) {
                 case msgtype_connected:

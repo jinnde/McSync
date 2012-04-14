@@ -113,7 +113,14 @@ int main(int argc, char**argv)
     }
 
     if (argc == 1) {
-        routermain(1, 0); // start in master mode
+        cmd_thread_start_function = TUImain; // start in master mode, using tui as cmd
+        routermain(1, 0);
+        return 0;
+    }
+
+    if (argc == 2 && !strcmp(argv[1], "-cli")) {
+        cmd_thread_start_function = climain; // start in master mode, using cli as cmd
+        routermain(1, 0);
         return 0;
     }
 
@@ -128,6 +135,7 @@ int main(int argc, char**argv)
         routermain(3, 0); // start in master mode, but take no automatic actions
         return 0;
     }
+
 
     printf("Did not understand arguments.  They were:\n");
     for (i = 0; i < argc; i++)

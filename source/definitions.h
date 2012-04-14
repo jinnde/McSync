@@ -253,12 +253,15 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
     int             processpid; // the id of the process we spawn to reach remote
 } *connection; // also known as a plug
 
-extern connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct access
+extern connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct access
 
-#define algo_int        1
-#define TUI_int         2
+#define hq_int          1
+#define cmd_int         2
 #define topworker_int   3
 #define firstfree_int   4
+
+void (*cmd_thread_start_function)(); // this is the function called by the cmd thread.
+                                     // depending on user choice this is either TUImain or climain
 
 #define msgtype_newplugplease   1
 #define msgtype_newplugplease1  2
@@ -353,6 +356,8 @@ void nsendmessage(connection plug, int recipient, int type, char* what, int len)
 
 void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
 
+void sendvirtualnoderquest(virtualnode *root, virtualnode *node);
+
 int receivemessage(connection plug, listint* src, int64* type, char** data);
 void receivevirtualdir(char *msg_data, char **path, queue receivednodes);
 
@@ -362,6 +367,7 @@ char* secondstring(char* string);
 //////// actual interaction between program parts
 
 void TUImain(void);
+void climain(void);
 void algomain(void);
 void workermain(void);
 void readspecsfile(char *specsfile); // sets up devicelist and graftlist
