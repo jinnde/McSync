@@ -110,9 +110,11 @@ int cligetcommand(char *line, char **argv) // returns number of parsed tokens
         size++;
     }
     free(str);
-    // delete trailing '\n'
-    lastlen = strlen(argv[size-1]);
-    argv[size-1][lastlen-1] = 0;
+    rest = NULL;
+    if (size) {     // delete trailing '\n'
+        lastlen = strlen(argv[size-1]);
+        argv[size-1][lastlen-1] = 0;
+    }
     return size;
 } // cligetcommand
 
@@ -147,12 +149,16 @@ void climain(void)
     initvirtualroot(&cmd_virtualroot);
     browsingdirectory = &cmd_virtualroot;
     char path[path_buffer_size];
+    char line[input_buffer_size] ; // the input line
+    char *argv[command_buffer_size];  // the command line argument
+
+    path[0] = '/';
+    path[1] = '\0';
 
     cliprinthelp();
 
     while (1) {
-        char line[input_buffer_size] ; // the input line
-        char *argv[command_buffer_size];  // the command line argument
+
         int32 commandcount = 0;
 
         printf("%s> ", path);
