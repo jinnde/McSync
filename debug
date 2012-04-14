@@ -42,7 +42,7 @@ EOF
 # Important: Deletes log contents left over from previous runs.
 /usr/bin/osascript <<EOF
     tell application "Terminal"
-        do script "cd $DIR; cat /dev/null > data/log; tail -f data/log"
+        do script "cd $DIR; cat /dev/null > data/log; tail -f data/log;"
     end tell
 EOF
 
