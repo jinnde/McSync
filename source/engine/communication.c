@@ -5,7 +5,7 @@ connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct access
 const char* msgtypelist[] = { "error (msgtype==0)",
     "newplugplease", "NPP1","NPP2", "info", "workerisup",
     "connected", "disconnect", "identifydevice", "deviceid",
-    "scan", "lstree", "virtualnode" };
+    "scan", "listvirtualdir", "virtualdir", "touch" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -628,16 +628,24 @@ void sendmessage2(connection plug, int recipient, int type, char* what)
                     first + 1 + strlen(what + first + 1)); // don't send second 0
 } // sendmessage2
 
-void sendvirtualnode(connection plug, int recipient, char* parentpath, virtualnode* node)
+void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir)
 {
-    bytestream serialized = initbytestream(128);
+    bytestream serialized = initbytestream(512);
+    virtualnode *child;
+    int32 count = 0;
 
-    serializestring(serialized, parentpath);
-    serializevirtualnode(serialized, node);
+    for (child = dir->down; child != NULL; child = child->next)
+        count++;
 
-    nsendmessage(plug, recipient, msgtype_virtualnode, serialized->data, serialized->len);
+    serializestring(serialized, path);
+    serializeint32(serialized, count); // prepend the number of children
+
+    for(child = dir->down; child != NULL; child = child->next)
+        serializevirtualnode(serialized, child);
+
+    nsendmessage(plug, recipient, msgtype_virtualdir, serialized->data, serialized->len);
     freebytestream(serialized);
-} // sendvirtualnode
+} // sendvirtualdir
 
 char* secondstring(char* string)
 {
@@ -668,13 +676,21 @@ int receivemessage(connection plug, listint* src, int64* type, char** data)
     return 1;
 } // receivemessage
 
-void receivevirtualnode(char *msg_data, char **parentpath, virtualnode **node)
+void receivevirtualdir(char *msg_data, char **path, queue receivednodes)
 {
     char *source = msg_data; // pointer manipulated by deserialization
-    *parentpath = deserializestring(&source);
-    *node = deserializevirtualnode(&source);
-    (*node)->next = (*node)->prev = (*node)->down = (*node)->up = NULL;
-} // receivevirtualnode
+    *path = deserializestring(&source);
+    int32 count = deserializeint32(&source);
+    virtualnode *node;
+
+    while (count--) {
+        node = deserializevirtualnode(&source);
+        node->next = node->prev = node->up = node->down = NULL;
+        node->firstvisible = node->selection = NULL;
+        node->grafteelist = node->bootedlist = node->graftroots = node->graftends = NULL;
+        queueinserttail(receivednodes, (void*) node);
+    }
+} // receivevirtualdir
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of router /////////////////////////////////////

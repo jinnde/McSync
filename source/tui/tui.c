@@ -288,15 +288,6 @@ void refreshdevices(void)
 } // refreshdevices
 
 
-void sendvirtualnoderquest(virtualnode *node)
-{ // helps by assembling the path to a node before sending the request
-    bytestream b = initbytestream(128);
-    getvirtualnodepath(b, &cmd_virtualroot, node);
-    bytestreaminsertchar(b, '\0');
-    nsendmessage(TUI_plug, algo_int, msgtype_lstree, b->data, b->len);
-    freebytestream(b);
-} // sendvirtualnoderquest
-
 void showcontents(virtualnode *dir)
 // show filename array according to gi_bstyle on lines gi_btop...gi_bbottom
 {
@@ -395,11 +386,16 @@ void showcontents(virtualnode *dir)
                 clearrestofline();
             }
             color_set(WHITEonBLACK, NULL);
-            printw("Here's a ton of information on %s.", dir->selection->name);
-            clearrestofline();
-            printw("For example, it contains %d items (%d children).",
+            if (dir->touched) {
+                printw("Loading...");
+                clearrestofline();
+            } else {
+                printw("Here's a ton of information on %s.", dir->selection->name);
+                clearrestofline();
+                printw("For example, it contains %d items (%d children).",
                     dir->selection->subtreesize - 1, dir->selection->numchildren);
-            clearrestofline();
+                clearrestofline();
+            }
         }
     }
     // color rest of line
@@ -410,10 +406,6 @@ void showcontents(virtualnode *dir)
             color_set(BLACKonWHITE, NULL);
             clearrestofline();
         }
-    }
-    if (dir->touched) {
-        sendvirtualnoderquest(dir);
-        dir->touched = 0;
     }
 } // showcontents
 
@@ -728,6 +720,16 @@ int TUIprocesschar2(int ch) // returns 1 if user wants to quit
     keycommand_t cmd = cmd_plain_char;
     return TUIprocesskeycommand(cmd, ch);
 } // TUIprocesschar
+
+void sendvirtualnoderquest(virtualnode *node)
+{ // helps by assembling the path to a node before sending the request
+    bytestream b = initbytestream(128);
+    getvirtualnodepath(b, &cmd_virtualroot, node);
+    bytestreaminsertchar(b, '\0');
+    nsendmessage(TUI_plug, algo_int, msgtype_listvirtualdir, b->data, b->len);
+    freebytestream(b);
+} // sendvirtualnoderquest
+
 
 int TUIprocesschar(int ch) // returns 1 if user wants to quit
 {
@@ -1072,6 +1074,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                             && browsingdirectory->selection != NULL
                             && browsingdirectory->selection->next != NULL) {
                         browsingdirectory->selectionnum++;
+
                         browsingdirectory->selection =
                                 browsingdirectory->selection->next;
                         refreshscreen();
@@ -1143,6 +1146,12 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     break;
             case '/': // go down into subdirectory
                     if (browsingdirectory->selection != NULL) {
+
+                        if (browsingdirectory->selection->touched) {
+                            sendvirtualnoderquest(browsingdirectory->selection);
+                            break;
+                        }
+
                         browsingdirectory = browsingdirectory->selection;
                         refreshscreen();
                     } else {
@@ -1288,7 +1297,7 @@ void TUImain(void)
     initvirtualroot(&cmd_virtualroot);
     browsingdirectory = &cmd_virtualroot;
 
-    sendmessage(TUI_plug, algo_int, msgtype_lstree, "/"); // send ls for root
+    sendvirtualnoderquest(&cmd_virtualroot); // send ls for root
 
     while (keepgoing) {
         int got_char, got_msg;
@@ -1324,31 +1333,84 @@ void TUImain(void)
                         if (doUI)
                             refreshscreen();
                     break;
-                case msgtype_virtualnode:
-                    { // adds or replaces a virtual node
-                        virtualnode *oldchild, *newchild, *parent;
-                        char *parentpath;
+                case msgtype_virtualdir:
+                    {
+                        virtualnode *dir, *child, *receivedchild;
+                        queue receivedlist = initqueue();
+                        queuenode receiveditem;
+                        char *path;
 
-                        receivevirtualnode(msg_data, &parentpath, &newchild);
+                        receivevirtualdir(msg_data, &path, receivedlist);
 
-                        parent = findnode(&cmd_virtualroot, parentpath); // searches forward; more secure
+                        dir = findnode(&cmd_virtualroot, path);
 
-                        if (!parent) {
-                            parent = conjuredirectory(&cmd_virtualroot, parentpath);
-                            oldchild = NULL;
-                        } else {
-                            oldchild = findnode(parent, newchild->name);
+                        if (!dir) {
+                            printerr("ERROR: TUI does not know about virtual dir: %s\n", path);
+                            goto free_and_return;
                         }
 
-                        if (oldchild)
-                            overwritevirtualnode(&oldchild, &newchild);
-                        else
-                            virtualnodeaddchild(&parent, &newchild);
+                        if (!dir->touched) {
+                            printerr("ERROR: TUI got listing for untouched dir: %s\n", path);
+                            goto free_and_return;
+                        }
 
-                        free(parentpath);
+                        // if a child of dir is in the receivedlist and touched, it is updated
+                        // if it's missing in the received list, it has to be removed from dir too
+                        // if it's in the received list but untouched, we can leave it as it is
+                        for (child = dir->down; child != NULL; child = child->next) {
+                            for (receiveditem = receivedlist->head; receiveditem != NULL; receiveditem = receiveditem->next) {
+                                receivedchild = (virtualnode*) receiveditem->data;
+                                if (!strcmp(child->name, receivedchild->name))
+                                    break;
+                            }
+                            if (!receiveditem) // The child was removed on HQ
+                                virtualnoderemovenode(&child);
+                            else { // Node with same name was found
+
+                                receivedchild = (virtualnode*) queueremove(receivedlist, receiveditem);
+
+                                if (child->touched) // Has HQ signaled the change here (with a msgtype_touch)? Might think about the touched attribute naming, but "dirty" would not be better either :)
+                                    overwritevirtualnode(&child, &receivedchild); // frees child, received is always untouched
+                                else
+                                    freevirtualnode(receivedchild); // there was no change
+                            }
+                        }
+                        // left over nodes in receivedlist are new children of dir!
+                        for (receiveditem = receivedlist->head; receiveditem != NULL; receiveditem = receiveditem->next) {
+                            receivedchild = (virtualnode*) queueremove(receivedlist, receiveditem);
+                            virtualnodeaddchild(&dir, &receivedchild);
+                            if (receivedchild->numchildren > 0)
+                                receivedchild->touched = 1;
+                        }
+
+                        dir->touched = 0;
+
+                        // if the user has left the cursor on the previously touched dir,
+                        // she probably wants us to display said node now.
+                        if (browsingdirectory->selection == dir)
+                            browsingdirectory = browsingdirectory->selection;
+
+                    free_and_return:
+                        free(path);
                         free(msg_data);
+                        // freequeue does not free data, make sure we do not leak it if we jumped here because of a problem
+                        while(receivedlist->size > 0) {
+                            receivedchild = (virtualnode*) queueremove(receivedlist, receivedlist->head);
+                            freevirtualnode(receivedchild);
+                        }
+                        freequeue(receivedlist);
                         if (doUI)
                             refreshscreen();
+                    }
+                    break;
+                case msgtype_touch:
+                    {
+                        // has cmd already loaded said node?
+                        // findnode(path)
+                        // is it in our current browsing path?
+                        // isancestor(browsingdirectory, node)
+                        // it is? oh boy.
+                        // request update and thus send browser to path
                     }
                     break;
                 default:

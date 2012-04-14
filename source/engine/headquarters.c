@@ -148,92 +148,6 @@ void conjuregraftpoints(void) // make graft roots and prune points exist in v. d
     }
 } // conjuregraftpoints
 
-virtualnode *findnode(virtualnode *root, char *path) // threads '/' as delimiter,
-// e.g. "home/tmp" is equal to "[/]*home[/]+tmp[/]*)" use "validfullpath" for validation.
-{
-    virtualnode *node = root;
-    char delimiter[] = "/";
-    char *rest = NULL;
-    char *name = strtok_r(path, delimiter, &rest);
-
-    // node is only null if we could not find a node with name
-    while (name != NULL && node != NULL) {
-        for (node = node->down; node != NULL; node = node->next) {
-            if (!strcmp(node->name, name))
-                break;
-        }
-        // get next node name
-        name = strtok_r(NULL, delimiter, &rest);
-    }
-    return node;
-} // findnode
-
-int validfullpath(char *path) // returns 1 if path is a valid full virtual path
-// checks file name length and tree depth. Only accepts paths which start at
-// root '/' and do not end in '/'. File names can't start with a space.
-{
-    uint32 namelen = 0;
-    uint32 depth = 1;
-
-    // path has to start at root
-    if (*path != '/')
-        return 0;
-     // root itself is always valid, also we start at depth 1
-    if (*(path++) == '\0')
-        return 1;
-
-    while (*path != '\0') {
-        // a new file name starts and we are one level deeper
-        if (*path == '/') {
-            // no empty file names allowed
-            if (!namelen)
-                return 0;
-            // check for maximum depth
-            depth++;
-            if (virtual_path_depth_max < depth)
-                return 0;
-            // a new file begins
-            namelen = 0;
-        } else if (*path == ' ' && *(path-1) == '/') {
-            // file names can't start with whitespaces
-            return 0;
-        } else {
-            namelen++;
-            if (virtual_file_name_max < namelen)
-                return 0;
-        }
-        path++;
-    }
-    // the root path would've returned alrady, so last character can't be '/'
-    if (*(path--) == '/')
-        return 0;
-
-    return 1;
-} // validfullpath
-
-void sendvirtualnodelisting(char* path, int destination) // sends back all children of node at path
-{
-    virtualnode *node, *child;
-
-    if (!validfullpath(path)) {
-        printerr("Error: HQ got invalid path: %s\n", path);
-        return;
-    }
-
-    node = findnode(&virtualroot, path);
-
-    if (node->filetype > 1) {
-        printerr("Error: HQ got ls for node which is not a directory: %s\n", path);
-        return;
-    }
-
-    if (node)
-        for (child = node->down; child != NULL; child = child->next)
-                sendvirtualnode(algo_plug, TUI_int, path, child);
-    else
-        printerr("Error: HQ could not find node with path: %s\n", path);
-} // sendvirtualnodelisting
-
 // Used by CMD and HQ to initialize their virtual trees
 void initvirtualroot(virtualnode *root)
 {
@@ -247,7 +161,7 @@ void initvirtualroot(virtualnode *root)
     root->graftroots = NULL;
     root->graftends = NULL;
     root->name = "";
-    root->filetype = 1; // 1=directory
+    root->filetype = 1; // 1 = directory
     // now for the interface stuff
     root->redyellow = 0;
     root->redgreen = 0;
@@ -259,7 +173,7 @@ void initvirtualroot(virtualnode *root)
     root->firstvisible = NULL;
     root->selectionnum = -1;
     root->selection = NULL;
-    root->touched = 0;
+    root->touched = 1;
 } // initvirtualroot
 
 void virtualtreeinit(void)
@@ -291,36 +205,69 @@ void freevirtualnode(virtualnode *node)
     free(node);
 } // freevirtualnode
 
+void virtualnoderemovenode(virtualnode **node) // removes and frees node and all its children
+{
+    virtualnode *skunk = *node;
+    virtualnode *child;
+
+    if (!skunk)
+        return;
+    if (!skunk->prev) // the head of the list, reconnect siblings with parent
+        skunk->up->down = skunk->next;
+    else {
+        skunk->prev->next = skunk->next;
+        if (skunk->next)
+            skunk->next->prev = skunk->prev;
+    }
+    for (child = skunk->down; child != NULL; child = child->next)
+        virtualnoderemovenode(&child);
+
+    freevirtualnode(skunk);
+} // virtualnoderemovechild
+
 void virtualnodeaddchild(virtualnode **parent, virtualnode **child)
 {
     if ((*parent)->down) {
         (*child)->next = (*parent)->down;
         (*child)->next->prev = *child;
-    }
+        (*child)->prev = NULL;
+    } else
+        (*child)->next = NULL;
+
     (*parent)->down = *child;
     (*child)->up = *parent;
 } // virtualnodeaddchild
 
-void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode) // frees a
+void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode) // frees oldnode
 {
-    (*newnode)->up = (*oldnode)->up;
-    (*newnode)->down = (*oldnode)->down;
-    (*newnode)->prev = (*oldnode)->prev;
-    (*newnode)->next = (*oldnode)->next;
-    if ((*oldnode)->up)
-        (*oldnode)->up->down = (*newnode);
-    if ((*oldnode)->prev)
-        (*oldnode)->prev->next = (*newnode);
-    if ((*oldnode)->next)
-        (*oldnode)->next->prev = (*newnode);
-    if ((*oldnode)->down)
-        (*oldnode)->down->up = (*newnode);
-    freevirtualnode(*oldnode);
+    virtualnode *new = *newnode;
+    virtualnode *old = *oldnode;
+
+    if (old->up) {
+        new->up = old->up;
+        old->up->down = new;
+    }
+
+    if (old->down) {
+        new->down = old->down;
+        old->down->up = new;
+    }
+
+    if (old->next) {
+        new->next = old->next;
+        old->next->prev = new;
+    }
+
+    if (old->prev) {
+        new->prev = old->prev;
+        old->prev->next = new;
+    }
+
+    freevirtualnode(old);
 } // overwritevirtualnode
 
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node)
 {
-    // TODO: We could replace this check for the NULL node above root to make things nicer
     if (node == root) {
         bytestreaminsertchar(b, '/');
         return;
@@ -435,6 +382,93 @@ void algo_scan(void)
 
 } // algo_scan
 
+virtualnode *findnode(virtualnode *root, char *path) // threads '/' as delimiter,
+// e.g. "home/tmp" is equal to "[/]*home[/]+tmp[/]*)" use "validfullpath" for validation.
+{
+    virtualnode *node = root;
+    char delimiter[] = "/";
+    char *rest = NULL;
+    char *pathdup = strdup(path);
+    char *name = strtok_r(pathdup, delimiter, &rest);
+
+    // node is only null if we could not find a node with name
+    while (name != NULL && node != NULL) {
+        for (node = node->down; node != NULL; node = node->next) {
+            if (!strcmp(node->name, name))
+                break;
+        }
+        // get next node name
+        name = strtok_r(NULL, delimiter, &rest);
+    }
+    free(pathdup);
+    return node;
+} // findnode
+
+int validfullpath(char *path) // returns 1 if path is a valid full virtual path
+// checks file name length and tree depth. Only accepts paths which start at
+// root '/' and do not end in '/'. File names can't start with a space.
+{
+    uint32 namelen = 0;
+    uint32 depth = 1;
+
+    // path has to start at root
+    if (*path != '/')
+        return 0;
+     // root itself is always valid, also we start at depth 1
+    if (*(path++) == '\0')
+        return 1;
+
+    while (*path != '\0') {
+        // a new file name starts and we are one level deeper
+        if (*path == '/') {
+            // no empty file names allowed
+            if (!namelen)
+                return 0;
+            // check for maximum depth
+            depth++;
+            if (virtual_path_depth_max < depth)
+                return 0;
+            // a new file begins
+            namelen = 0;
+        } else if (*path == ' ' && *(path-1) == '/') {
+            // file names can't start with whitespaces
+            return 0;
+        } else {
+            namelen++;
+            if (virtual_file_name_max < namelen)
+                return 0;
+        }
+        path++;
+    }
+    // the root path would've returned already, so last character can't be '/'
+    if (*(path--) == '/')
+        return 0;
+
+    return 1;
+} // validfullpath
+
+void sendvirtualnodelisting(char* path, int destination) // sends back all children of node at path
+{
+    virtualnode *dir;
+
+    if (!validfullpath(path)) {
+        printerr("Error: HQ got invalid path: %s\n", path);
+        return;
+    }
+
+    dir = findnode(&virtualroot, path);
+
+    if (dir->filetype > 1) {
+        printerr("Error: HQ got ls for node which is not a directory: %s\n", path);
+        return;
+    }
+
+    if (dir)
+        sendvirtualdir(algo_plug, TUI_int, path, dir);
+    else
+        printerr("Error: HQ could not find node with path: %s\n", path);
+} // sendvirtualnodelisting
+
 void algomain(void)
 {
     int32 msg_src;
@@ -503,7 +537,7 @@ void algomain(void)
             case msgtype_disconnect:
                     setstatus(atoi(msg_data), status_inactive);
                     break;
-            case msgtype_lstree:
+            case msgtype_listvirtualdir:
                     sendvirtualnodelisting(msg_data, msg_src);
                     break;
             case msgtype_scan:

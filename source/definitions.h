@@ -32,7 +32,7 @@ extern FILE* ourerr; // we use this instead of stderr
             printerr("Assertion failed: (%s), "                         \
                 "function %s, file %s, line %d.\n",                     \
                 #test, __FUNCTION__, __FILE__, __LINE__);               \
-            *(int*)NULL = 1; /* make THIS thread crash */               \
+            __builtin_trap(); /* make THIS thread crash */              \
         } else // (standard assert.h just throws signal at whole process)
 
 #define READ_END 0  // for pipes
@@ -212,7 +212,7 @@ typedef struct virtualnode_struct {
     int32   selectionnum; // which child is selected (-1 = pls recompute)
     struct virtualnode_struct *selection; // which child is selected
     int32   colwidth; // width of this column (for parent dir listing)
-    int32   touched; // if 1, CMD request update on node from HQ, only to be set on CMD
+    int32   touched; // node has changed since last query to HQ, _only_ set on CMD
 } virtualnode;
 
 
@@ -270,8 +270,9 @@ extern connection TUI_plug, algo_plug, worker_plug, parent_plug; // for direct a
 #define msgtype_identifydevice  8
 #define msgtype_deviceid        9
 #define msgtype_scan            10
-#define msgtype_lstree          11
-#define msgtype_virtualnode     12
+#define msgtype_listvirtualdir  11
+#define msgtype_virtualdir      12
+#define msgtype_touch           13 // mark virtual node as touched (changed) on CMD
 // if you change these, change msgtypelist in communication.c
 
 #define slave_start_string "this is mcsync"
@@ -305,6 +306,27 @@ void freebytestream(bytestream b);
 void bytestreaminsert(bytestream b, void *data, int32 len);
 void bytestreaminsertchar(bytestream b, char str);
 
+typedef struct queuenode_struct {
+    struct queuenode_struct *next;
+    struct queuenode_struct *prev;
+    void *data;
+} *queuenode;
+
+typedef struct queue_struct {
+    queuenode head;
+    queuenode tail;
+    uint32 size;
+} *queue;
+
+queue initqueue(); // allocates memory, free when done
+void freequeue(queue q); // does not free the data!!
+
+void queueinsertafter(queue q, queuenode qn, void *data);
+void queueinsertbefore(queue q, queuenode qn, void *data);
+void queueinserthead(queue q, void *data);
+void queueinserttail(queue q, void *data);
+void *queueremove(queue q, queuenode qn); // returns pointer to data, because it will not be freed!!
+
 char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
 
 char *commanumber(int64 n); // returns human-readable integer in reused buffer
@@ -329,10 +351,10 @@ void sendmessage(connection plug, int recipient, int type, char* what);
 void sendmessage2(connection plug, int recipient, int type, char* what);
 void nsendmessage(connection plug, int recipient, int type, char* what, int len);
 
-void sendvirtualnode(connection plug, int recipient, char* path, virtualnode* node);
+void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
 
 int receivemessage(connection plug, listint* src, int64* type, char** data);
-void receivevirtualnode(char *msg_data, char **path, virtualnode **node);
+void receivevirtualdir(char *msg_data, char **path, queue receivednodes);
 
 char* secondstring(char* string);
 
@@ -352,8 +374,10 @@ void initvirtualroot(virtualnode *root); // used by HQ and CMD (e.g. tui.c)
 virtualnode *conjuredirectory(virtualnode* root, char *dir); // chars in dir string must be writable
 virtualnode *findnode(virtualnode *root, char *path); // returns NULL if not found, path must be writable
 void virtualnodeaddchild(virtualnode **parent, virtualnode **child);
+void virtualnoderemovenode(virtualnode **node); // removes and frees node and all its children
 void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode); // frees oldnode
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // writes the path of node into b
+void freevirtualnode(virtualnode *node);
 
 
 int reachforremote(connection plug); // try to get mcsync started on remote site
