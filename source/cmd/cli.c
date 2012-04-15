@@ -125,7 +125,7 @@ void cliprinthelp(void)
     printf(" %-7s %-7s\n", "h(elp)", "show this message");
     printf(" %-7s %-7s\n", "q(uit)", "quit McSync");
     printf(" %-7s %-7s\n", "ls", "list virtual files of current directory");
-    printf(" %-7s %-7s\n", "cd", "change virtual directory (currently only depth)");
+    printf(" %-7s %-7s\n", "cd", "change virtual directory (currently only single depth)");
     printf("\n");
 } // cliprinthelp
 

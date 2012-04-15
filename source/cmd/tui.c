@@ -341,6 +341,7 @@ void showcontents(virtualnode *dir)
     for (i = 7; i < gi_scrx; i++) {
         printw(" ");
     }
+
     if (dir->down == NULL) {
         color_set(REDonWHITE, NULL);
         if (dir->numchildren == 0)
@@ -385,16 +386,11 @@ void showcontents(virtualnode *dir)
                 clearrestofline();
             }
             color_set(WHITEonBLACK, NULL);
-            if (dir->touched) {
-                printw("Loading...");
-                clearrestofline();
-            } else {
-                printw("Here's a ton of information on %s.", dir->selection->name);
-                clearrestofline();
-                printw("For example, it contains %d items (%d children).",
-                    dir->selection->subtreesize - 1, dir->selection->numchildren);
-                clearrestofline();
-            }
+            printw("Here's a ton of information on %s.", dir->selection->name);
+            clearrestofline();
+            printw("For example, it contains %d items (%d children)",
+            dir->selection->subtreesize - 1, dir->selection->numchildren);
+            clearrestofline();
         }
     }
     // color rest of line
@@ -1135,12 +1131,10 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     break;
             case '/': // go down into subdirectory
                     if (browsingdirectory->selection != NULL) {
-
                         if (browsingdirectory->selection->touched) {
                             sendvirtualnoderquest(&cmd_virtualroot, browsingdirectory->selection);
                             break;
                         }
-
                         browsingdirectory = browsingdirectory->selection;
                         refreshscreen();
                     } else {
@@ -1346,6 +1340,7 @@ void TUImain(void)
                         // if a child of dir is in the receivedlist and touched, it is updated
                         // if it's missing in the received list, it has to be removed from dir too
                         // if it's in the received list but untouched, we can leave it as it is
+                        // left over nodes in receivedlist are new children of dir!
                         for (child = dir->down; child != NULL; child = child->next) {
                             for (receiveditem = receivedlist->head; receiveditem != NULL; receiveditem = receiveditem->next) {
                                 receivedchild = (virtualnode*) receiveditem->data;
@@ -1364,7 +1359,7 @@ void TUImain(void)
                                     freevirtualnode(receivedchild); // there was no change
                             }
                         }
-                        // left over nodes in receivedlist are new children of dir!
+                        // add the new children
                         for (receiveditem = receivedlist->head; receiveditem != NULL; receiveditem = receiveditem->next) {
                             receivedchild = (virtualnode*) queueremove(receivedlist, receiveditem);
                             virtualnodeaddchild(&dir, &receivedchild);
