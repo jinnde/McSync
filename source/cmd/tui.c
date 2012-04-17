@@ -1377,7 +1377,7 @@ void TUImain(void)
                     free_and_return:
                         free(path);
                         free(msg_data);
-                        // freequeue does not free data, make sure we do not leak it if we jumped here because of a problem
+                        // freequeue does not free the payload data, make sure we do not leak it if we jumped here because of a problem
                         while(receivedlist->size > 0) {
                             receivedchild = (virtualnode*) queueremove(receivedlist, receivedlist->head);
                             freevirtualnode(receivedchild);
