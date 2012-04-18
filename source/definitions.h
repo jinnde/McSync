@@ -274,12 +274,6 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
 
 extern connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct access
 
-// commands
-typedef struct scancommand_struct {
-    char *scanroot;          // where to start scanning
-    stringlist *prunepoints; // a list of files to ignore
-}* scancommand;
-
 #define hq_int          1
 #define cmd_int         2
 #define topworker_int   3
@@ -294,10 +288,12 @@ typedef struct scancommand_struct {
 #define msgtype_disconnect      7
 #define msgtype_identifydevice  8
 #define msgtype_deviceid        9
-#define msgtype_scan            10
-#define msgtype_listvirtualdir  11
-#define msgtype_virtualdir      12
-#define msgtype_touch           13 // mark virtual node as touched (changed) on CMD
+#define msgtype_listvirtualdir  10
+#define msgtype_virtualdir      11
+#define msgtype_touch           12 // mark virtual node as touched (changed) on cmd
+#define msgtype_scanvirtualdir  13 // the message contains a virtual path (usually a request from cmd to hq)
+#define msgtype_scan            14 // the message contains a host path and prune points (usually a request from hq to wrks)
+
 // if you change these, change msgtypelist in communication.c
 
 #define slave_start_string "this is mcsync"
@@ -352,10 +348,11 @@ char* secondstring(char* string); // read the second string from a sendmessage2 
 void sendvirtualnoderquest(virtualnode *root, virtualnode *node); // sends a list virtual node request, only to be used from cmd
 void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
 void receivevirtualdir(char *msg_data, char **path, queue receivednodes);
-void serializevirtualnode(bytestream b, virtualnode *node); // serializes a virtual node for sending in messages
 
 // scan communication
+void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node);
 void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints);
+void receivescancommand(char *msg_data, char **scanroot, stringlist **prunepoints);
 
 ////////  general purpose data structures
 

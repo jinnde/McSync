@@ -374,14 +374,6 @@ void algo_init(void) // called as soon as local worker is ready to do work
 
 } // algo_init
 
-void algo_scan(void)
-{
-
-    // Input: Virtual file path
-    // Result: Messages to corresponding workers determined by graft analysis.
-
-} // algo_scan
-
 virtualnode *findnode(virtualnode *root, char *path) // threads '/' as delimiter,
 // e.g. "home/tmp" is equal to "[/]*home[/]+tmp[/]*)" use "validfullpath" for validation.
 {
@@ -447,7 +439,45 @@ int validfullpath(char *path) // returns 1 if path is a valid full virtual path
     return 1;
 } // validfullpath
 
-void sendvirtualnodelisting(char* path, int destination) // sends back all children of node at path
+void hq_scan(char *scanrootpath)
+{
+    graft *g;
+    char *scanpathcharacter, *graftpathcharacter;
+
+    if (!validfullpath(scanrootpath)) {
+        printerr("Error: HQ got invalid scan root path: %s\n", scanrootpath);
+        return;
+    }
+
+    for (g = graftlist; g != NULL; g = g->next) {
+        if (!(g->host->status == status_connected))
+            continue;
+
+        // if the requested path to scan and the virtualpath of the graft
+        // are the same for the length of the virtual path of the graft,
+        // we need to scan said graft.
+
+        // Consider the scan request for "/Home/test" and a graft with virtual
+        // path "/Home". The first 5 charachters are the same and because this
+        // is the length of the virtual path of the graft, it means the requested
+        // scan path is a child of the graft virtual root.
+        scanpathcharacter = scanrootpath;
+        graftpathcharacter = g->virtualpath;
+
+        while (*graftpathcharacter && *graftpathcharacter == *scanpathcharacter) {
+            graftpathcharacter++;
+            scanpathcharacter++;
+        }
+
+        if (*graftpathcharacter == '\0') {
+            sendscancommand(hq_plug, g->host->reachplan.routeraddr, scanrootpath, g->prunepoints);
+            printerr("HQ has sent scan command to %d\n", g->host->reachplan.routeraddr);
+        }
+    }
+
+} // hq_scan
+
+void sendvirtualnodelisting(char* path) // sends back all children of node at path
 {
     virtualnode *dir;
 
@@ -458,15 +488,17 @@ void sendvirtualnodelisting(char* path, int destination) // sends back all child
 
     dir = findnode(&virtualroot, path);
 
+    if (!dir) {
+        printerr("Error: HQ could not find node with path: %s\n", path);
+        return;
+    }
+
     if (dir->filetype > 1) {
         printerr("Error: HQ got ls for node which is not a directory: %s\n", path);
         return;
     }
 
-    if (dir)
-        sendvirtualdir(hq_plug, cmd_int, path, dir);
-    else
-        printerr("Error: HQ could not find node with path: %s\n", path);
+    sendvirtualdir(hq_plug, cmd_int, path, dir);
 } // sendvirtualnodelisting
 
 void algomain(void)
@@ -538,10 +570,12 @@ void algomain(void)
                     setstatus(atoi(msg_data), status_inactive);
                     break;
             case msgtype_listvirtualdir:
-                    sendvirtualnodelisting(msg_data, msg_src);
+                    // msg_data is the virtual path of the virtual directory to list
+                    sendvirtualnodelisting(msg_data);
                     break;
-            case msgtype_scan:
-                    algo_scan();
+            case msgtype_scanvirtualdir:
+                    // msg_data is the virtual path of the node to scan
+                    hq_scan(msg_data);
                     break;
             default:
                     printerr("algo got unexpected message"

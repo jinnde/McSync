@@ -171,7 +171,7 @@ void slaveping(void)
 char* deviceidondisk(void)
 {
     //we don't cache it, so if someone swaps a drive and asks us to notice, we can
-    return "laptop";
+    return "local1";
 } // deviceidondisk
 
 void channel_launch(connection* known_plug, char* deviceid, int plugnumber);
@@ -223,8 +223,12 @@ void workermain(void)
                                 deviceidondisk());
                     break;
             case msgtype_scan:
-                    // TODO: React to scan request from HQ
-                    slavescan();
+                    {
+                        char *scanroot;
+                        stringlist *prunepoints;
+
+                        receivescancommand(msg_data, &scanroot, &prunepoints);
+                    }
                     break;
             default:
                     printerr("worker got unexpected message"

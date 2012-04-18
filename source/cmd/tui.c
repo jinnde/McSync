@@ -1142,7 +1142,9 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     }
                     break;
             case 's': // start scans
-                    sendscancommand(cmd_plug, hq_int, graftlist->virtualpath, graftlist->prunepoints);
+                    if (browsingdirectory->selection != NULL) {
+                        sendscanvirtualdirrequest(&cmd_virtualroot, browsingdirectory->selection);
+                    }
                     break;
             case 'v': // switch to mousing devices
                     // we leave the selection untouched while in other mode

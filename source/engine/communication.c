@@ -5,7 +5,8 @@ connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct access
 const char* msgtypelist[] = { "error (msgtype==0)",
     "newplugplease", "NPP1","NPP2", "info", "workerisup",
     "connected", "disconnect", "identifydevice", "deviceid",
-    "scan", "listvirtualdir", "virtualdir", "touch" };
+    "listvirtualdir", "virtualdir", "touch", "scanvirtualdir",
+    "scan" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -121,14 +122,6 @@ virtualnode *deserializevirtualnode(char **source) // returns allocated virtual 
     node->colwidth         = deserializeint32(source);
     return node;
 } // deserializevirtualnode
-
-scancommand deserializescancommand(char **source)  // returns allocated scan command, free when done
-{
-    scancommand command = (scancommand) malloc(sizeof(scancommand));
-    command->scanroot = deserializestring(source);
-    command->prunepoints = deserializestringlist(source);
-    return command;
-} // deserializescancommand
 
 void serializeint32(bytestream b, int32 n)
 {
@@ -686,6 +679,15 @@ void sendvirtualnoderquest(virtualnode *root, virtualnode *node)
     freebytestream(b);
 } // sendvirtualnoderquest
 
+void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node)
+{
+    bytestream b = initbytestream(128);
+    getvirtualnodepath(b, root, node);
+    bytestreaminsertchar(b, '\0');
+    nsendmessage(cmd_plug, hq_int, msgtype_scanvirtualdir, b->data, b->len);
+    freebytestream(b);
+} // sendvirtualnodescanrequest
+
 void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir)
 {
     bytestream serialized = initbytestream(512);
@@ -759,6 +761,13 @@ void receivevirtualdir(char *msg_data, char **path, queue receivednodes)
         queueinserttail(receivednodes, (void*) node);
     }
 } // receivevirtualdir
+
+void receivescancommand(char *msg_data, char **scanroot, stringlist **prunepoints)
+{
+    char *source = msg_data; // pointer manipulated by deserialization
+    *scanroot = deserializestring(&source);
+    *prunepoints = deserializestringlist(&source);
+} // deserializescancommand
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of router /////////////////////////////////////
