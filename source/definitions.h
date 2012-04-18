@@ -75,6 +75,25 @@ typedef struct stringlist_struct {
     char *string;
 } stringlist;
 
+typedef struct bytestream_struct {
+    char *data;       // not necessarily usable as regular string! (allowed to contain '\0')
+    char *head;       // the current writing position
+    uint32 len;       // bytes written into stream
+    uint32 streamlen; // total allocated memory of bytestream
+}* bytestream;
+
+typedef struct queuenode_struct {
+    struct queuenode_struct *next;
+    struct queuenode_struct *prev;
+    void *data;
+} *queuenode;
+
+typedef struct queue_struct {
+    queuenode head;
+    queuenode tail;
+    uint32 size;
+} *queue;
+
 // mcsync's notion of an aspect's "history" is captured in the history struct
 
 typedef struct history_struct { // for every tracked file aspect, latest source
@@ -255,13 +274,16 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
 
 extern connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct access
 
+// commands
+typedef struct scancommand_struct {
+    char *scanroot;          // where to start scanning
+    stringlist *prunepoints; // a list of files to ignore
+}* scancommand;
+
 #define hq_int          1
 #define cmd_int         2
 #define topworker_int   3
 #define firstfree_int   4
-
-void (*cmd_thread_start_function)(); // this is the function called by the cmd thread.
-                                     // depending on user choice this is either TUImain or climain
 
 #define msgtype_newplugplease   1
 #define msgtype_newplugplease1  2
@@ -281,64 +303,30 @@ void (*cmd_thread_start_function)(); // this is the function called by the cmd t
 #define slave_start_string "this is mcsync"
 #define hi_slave_string "you are "
 
+void (*cmd_thread_start_function)(); // this is the function called by the cmd thread.
+                                     // depending on user choice this is currently either TUImain or climain
+
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of data types ///////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
 //////// some utility functions
 
-void ourperror(char* whatdidnotwork); // writes to ourerr, not stderr
-
-void cleanexit(int code); // kills children and exits
-
 char* hostname(void); // caches answer -- do not alter or free!
-
-intlist emptyintlist(void);
-void addtointlist(intlist il, listint n); // keeps list sorted, works for multisets
-void removefromintlist(intlist il, listint n);
-
-typedef struct bytestream_struct {
-    char *data;       // not necessarily usable as regular string! (allowed to contain '\0')
-    char *head;       // the current writing position
-    uint32 len;       // bytes written into stream
-    uint32 streamlen; // total allocated memory of bytestream
-}* bytestream;
-
-bytestream initbytestream(uint32 len); // allocates new bytestream, free when done
-void freebytestream(bytestream b);
-void bytestreaminsert(bytestream b, void *data, int32 len);
-void bytestreaminsertchar(bytestream b, char str);
-
-typedef struct queuenode_struct {
-    struct queuenode_struct *next;
-    struct queuenode_struct *prev;
-    void *data;
-} *queuenode;
-
-typedef struct queue_struct {
-    queuenode head;
-    queuenode tail;
-    uint32 size;
-} *queue;
-
-queue initqueue(); // allocates memory, free when done
-void freequeue(queue q); // does not free the data!!
-
-void queueinsertafter(queue q, queuenode qn, void *data);
-void queueinsertbefore(queue q, queuenode qn, void *data);
-void queueinserthead(queue q, void *data);
-void queueinserttail(queue q, void *data);
-void *queueremove(queue q, queuenode qn); // returns pointer to data, because it will not be freed!!
-
 char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
-
 char *commanumber(int64 n); // returns human-readable integer in reused buffer
 
+// error handling
+void ourperror(char* whatdidnotwork); // writes to ourerr, not stderr
+void cleanexit(int code); // kills children and exits
+
+// progress monitoring
 extern int didtick, amticking;
 extern int progress1, progress2, progress3, progress4;
 void startticking(void);
 void stopticking(void);
 
+// file io
 void put32(FILE* output, int32 data);
 void put32safe(FILE* output, int32 data);
 void put64(FILE* output, int64 data);
@@ -348,34 +336,68 @@ int32 get32safe(FILE* input);
 int64 get64(FILE* input);
 char* getstring(FILE* input, char delimiter); // returns new string; free when done
 
+// communication control
+void waitforstring(FILE* input, char* string);
 void waitforsequence(FILE* input, char* sequence, int len, int echo);
 
+// general message system
 void sendmessage(connection plug, int recipient, int type, char* what);
 void sendmessage2(connection plug, int recipient, int type, char* what);
 void nsendmessage(connection plug, int recipient, int type, char* what, int len);
 
-void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
-
-void sendvirtualnoderquest(virtualnode *root, virtualnode *node);
-
 int receivemessage(connection plug, listint* src, int64* type, char** data);
+char* secondstring(char* string); // read the second string from a sendmessage2 type message (contains two strings)
+
+// virtual node comnunication between cmd and hq
+void sendvirtualnoderquest(virtualnode *root, virtualnode *node); // sends a list virtual node request, only to be used from cmd
+void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
 void receivevirtualdir(char *msg_data, char **path, queue receivednodes);
+void serializevirtualnode(bytestream b, virtualnode *node); // serializes a virtual node for sending in messages
 
-char* secondstring(char* string);
+// scan communication
+void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints);
 
+////////  general purpose data structures
+
+// intlist
+intlist emptyintlist(void);
+void addtointlist(intlist il, listint n); // keeps list sorted, works for multisets
+void removefromintlist(intlist il, listint n);
+
+// bytestream - dynamically re-allocated string (doubling allocated memory when full)
+bytestream initbytestream(uint32 len); // allocates new bytestream, free when done
+void freebytestream(bytestream b);
+void bytestreaminsert(bytestream b, void *data, int32 len);
+void bytestreaminsertchar(bytestream b, char str);
+
+// queue - implemented using a doubly linked list
+queue initqueue(void); // allocates memory, free when done
+void freequeue(queue q); // does not free the data!!
+
+void queueinsertafter(queue q, queuenode qn, void *data);
+void queueinsertbefore(queue q, queuenode qn, void *data);
+void queueinserthead(queue q, void *data);
+void queueinserttail(queue q, void *data);
+void *queueremove(queue q, queuenode qn); // returns pointer to data, because it will not be freed!!
 
 //////// actual interaction between program parts
 
+// agent system
 void TUImain(void);
 void climain(void);
 void algomain(void);
 void workermain(void);
+
+int reachforremote(connection plug); // try to get mcsync started on remote site
+void channel_launch(connection* store_plug_here, char* deviceid, int plugnumber);
+void routermain(int master, int plug_id);
+
+// specification file handling
 void readspecsfile(char *specsfile); // sets up devicelist and graftlist
+int specstatevalid(void); // returns 1 if there exists a device with a reachplan and a graft;
+void writespecsfile(char *specsfile); // writes devicelist and graftlist
 
-void raw_io(void);
-
-void waitforstring(FILE* input, char* string);
-
+// virtual tree
 void initvirtualroot(virtualnode *root); // used by HQ and CMD (e.g. tui.c)
 virtualnode *conjuredirectory(virtualnode* root, char *dir); // chars in dir string must be writable
 virtualnode *findnode(virtualnode *root, char *path); // returns NULL if not found, path must be writable
@@ -385,10 +407,8 @@ void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode); // free
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // writes the path of node into b
 void freevirtualnode(virtualnode *node);
 
-
-int reachforremote(connection plug); // try to get mcsync started on remote site
-void channel_launch(connection* store_plug_here, char* deviceid, int plugnumber);
-void routermain(int master, int plug_id);
+// tui specific
+void raw_io(void);
 
 extern int doUI; // can be turned off by -batch option
 extern int password_pause; // signals when input should be allowed to go to ssh
@@ -396,9 +416,3 @@ extern int waitmode; // changed to 1 on startup if "-wait" flag is provided
 
 void TUIstart2D(void); // enter 2D mode
 void TUIstop2D(void); // leave 2D mode, go back to scrolling terminal
-
-int specstatevalid(); // returns 1 if there exists a device with a reachplan and a graft;
-void writespecsfile(char *specsfile); // writes devicelist and graftlist
-
-void serializevirtualnode(bytestream b, virtualnode *node); // serializes a virtual node for sending in messages
-

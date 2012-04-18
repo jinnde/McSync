@@ -35,7 +35,7 @@ const char* msgtypelist[] = { "error (msgtype==0)",
 #endif
 
 #ifndef BIG_ENDIAN_MACHINE // provided by compile.sh
-#define stream_to_host_32(x) (x) // stream data is little endian
+#define stream_to_host_32(x) (x) // stream data is always little endian
 #define stream_to_host_64(x) (x)
 #define host_to_stream_32(x) (x)
 #define host_to_stream_64(x) (x)
@@ -79,6 +79,24 @@ char *deserializestring(char **source) // may allocate string, free when done
     return str;
 } // deserializestring
 
+stringlist *deserializestringlist(char **source) // may allocate stringlist, free when done
+{ // *source is manipulated by each deserialization function
+    stringlist *head, *temp;
+    int32 count = deserializeint32(source);
+
+    head = NULL;
+    while (count--) {
+        temp = (stringlist*) malloc(sizeof(stringlist));
+        temp->string = deserializestring(source);
+        if (head)
+            temp->next = head;
+        else
+            temp->next = NULL;
+        head = temp;
+    }
+    return head;
+} // deserializestringlist
+
 virtualnode *deserializevirtualnode(char **source) // returns allocated virtual node, free when done
 {// *source is manipulated by each deserialization function
     virtualnode *node = (virtualnode*) malloc(sizeof(virtualnode));
@@ -104,6 +122,14 @@ virtualnode *deserializevirtualnode(char **source) // returns allocated virtual 
     return node;
 } // deserializevirtualnode
 
+scancommand deserializescancommand(char **source)  // returns allocated scan command, free when done
+{
+    scancommand command = (scancommand) malloc(sizeof(scancommand));
+    command->scanroot = deserializestring(source);
+    command->prunepoints = deserializestringlist(source);
+    return command;
+} // deserializescancommand
+
 void serializeint32(bytestream b, int32 n)
 {
     n = host_to_stream_32(n);
@@ -116,32 +142,45 @@ void serializeint64(bytestream b, int64 n)
     bytestreaminsert(b, (void*) &n, size_of_int64);
 } // serializeint32
 
-void serializestring(bytestream b, char *str)
+void serializestring(bytestream b, char *str)  // prepends the size of the string, the empty string has size 1, NULL size 0
 {
     int32 len = str ? strlen(str) + 1 : 0;
-    serializeint32(b, len); // prepend the size of the string, the empty string has size 1, NULL size 0
+    serializeint32(b, len);
     if (len)
         bytestreaminsert(b, (void*) str, len);
 } // serializestring
 
-bytestream serializehistory(history h)
+void serializestringlist(bytestream b, stringlist *list) // prepends the number of strings that have been serialized, list == NULL => sends count == 0
 {
-    return NULL;
+    int32 count = 0;
+    stringlist *listitem;
+    // prepend count
+    for (listitem = list; listitem != NULL; listitem = listitem->next)
+        count++;
+    serializeint32(b, count);
+
+    for (listitem = list; listitem != NULL; listitem = listitem->next)
+        serializestring(b, listitem->string);
+} // serializestringlist
+
+void serializehistory(bytestream b, history h)
+{
+        // TODO: Implement serialization for structure
 } // serializehistory
 
-bytestream serializefileinfo(fileinfo* info)
+void serializefileinfo(bytestream b, fileinfo* info)
 {
-    return NULL;
+    // TODO: Implement serialization for structure
 } // serializefileinfo
 
-bytestream serializegraft(graft* graft)
+void serializegraft(bytestream b, graft* graft)
 {
-    return NULL;
+        // TODO: Implement serialization for structure
 } // serializegraft
 
-bytestream serializegraftee(graftee gee)
+void serializegraftee(bytestream b, graftee gee)
 {
-    return NULL;
+        // TODO: Implement serialization for structure
 } // serializegraftee
 
 void serializevirtualnode(bytestream b, virtualnode *node) // returns allocated stream, free when done
@@ -442,7 +481,17 @@ void putstring(FILE* output, char* s)
     putc(0, output);
 } // putstring
 
+void freestringlist(stringlist *skunk)
+{
+    stringlist *temp;
 
+    while (skunk) {
+        temp = skunk;
+        skunk = skunk->next;
+        free(temp->string);
+        free(temp);
+    }
+} // freestringlist
 
 void freeintlist(intlist skunk)
 {
@@ -628,6 +677,15 @@ void sendmessage2(connection plug, int recipient, int type, char* what)
                     first + 1 + strlen(what + first + 1)); // don't send second 0
 } // sendmessage2
 
+void sendvirtualnoderquest(virtualnode *root, virtualnode *node)
+{ // helps by assembling the path to a node before sending the request to HQ from CMD
+    bytestream b = initbytestream(128);
+    getvirtualnodepath(b, root, node);
+    bytestreaminsertchar(b, '\0');
+    nsendmessage(cmd_plug, hq_int, msgtype_listvirtualdir, b->data, b->len);
+    freebytestream(b);
+} // sendvirtualnoderquest
+
 void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir)
 {
     bytestream serialized = initbytestream(512);
@@ -647,14 +705,15 @@ void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir
     freebytestream(serialized);
 } // sendvirtualdir
 
-void sendvirtualnoderquest(virtualnode *root, virtualnode *node)
-{ // helps by assembling the path to a node before sending the request
-    bytestream b = initbytestream(128);
-    getvirtualnodepath(b, root, node);
-    bytestreaminsertchar(b, '\0');
-    nsendmessage(cmd_plug, hq_int, msgtype_listvirtualdir, b->data, b->len);
-    freebytestream(b);
-} // sendvirtualnoderquest
+void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints)
+{
+    bytestream serialized = initbytestream(128);
+
+    serializestring(serialized, scanroot);
+    serializestringlist(serialized, prunepoints);
+    nsendmessage(plug, recipient, msgtype_scan, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendscancommand
 
 char* secondstring(char* string)
 {

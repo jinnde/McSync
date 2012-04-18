@@ -541,7 +541,6 @@ void algomain(void)
                     sendvirtualnodelisting(msg_data, msg_src);
                     break;
             case msgtype_scan:
-                    // TODO: Handle scan request from CMD
                     algo_scan();
                     break;
             default:

@@ -1,6 +1,6 @@
 #include "definitions.h"
 
-queue initqueue() // free when done
+queue initqueue(void) // free when done
 {
     queue q = (queue) malloc(sizeof(struct queue_struct));
     q->head = NULL;
