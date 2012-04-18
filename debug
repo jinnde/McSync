@@ -1,21 +1,18 @@
 #!/bin/sh
 
-# debug.sh is a utility script to help debug McSync on machines running OS X
-# It opens a second terminal window where cgdb can start McSync using the piped
-# back tty of said window. The reason is that cgdb can't handle to curses output
-# of the mcsync interface. Further it creates a third terminal window where it
-# starts a tail -f on the data/log file of mcsync for real-time status updates.
+# debug.sh is a utility script to help debug McSync on machines running OS X.
+# It starts McSync and attaches cgdb to it. Further, it executes tail -f data/log
+# for real-time debugging of the McSync log. Running the script will result in
+# three new terminal windows with adjusted dimension for convenience.
 # It has to stay in the root McSync folder to function properly.
 
-# Important: Starting McSync in this way can cause troubles due to the transmog-
-# rifying of a process into ssh or expect. Only use it to debug other parts of
-# the program.
+# Important: This script will kill all processes matching "mcsync"
 
 # Look for prerequisites
 command -v /usr/bin/osascript >/dev/null 2>&1 || { echo "This script runs on OS X only." >&2; exit 1; }
 command -v cgdb >/dev/null 2>&1 || { echo "This script requires *cgdb* and it was not found on your machine." >&2; exit 1; }
 
-# Build McSync, abort if not sucessful
+# Build McSync, abort if not successful
 ./compile -b development
 
 if [ $? -ne 0 ]; then
@@ -25,17 +22,11 @@ fi
 # Find the McSync root path (the folder this script is in)
 DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Create a pipe for the communication of the not yet started
-# McSync terminal tty
-rm /tmp/mcsync-tty-pipe
-mkfifo /tmp/mcsync-tty-pipe
-
-# Create a new terminal window and write its tty into the pipe
-/usr/bin/osascript <<EOF
-    tell application "Terminal"
-        do script "cd $DIR; tty >> /tmp/mcsync-tty-pipe; sleep 86400;"
-    end tell
-EOF
+# Kill all processes related to McSync
+MCSYNCPIDS=`ps aux | grep mcsync | grep -v root | grep -v grep | awk '{print $2}'`
+if [ $? -eq "0" ]; then
+for i in $MCSYNCPIDS; do kill -9 $i; done
+fi
 
 # Create a new terminal window and starts tail for real-time logging.
 
@@ -48,20 +39,28 @@ EOF
 
 MACHINE_ARCHITECTURE=`(cc -v 2>&1 | grep Target: | sed 's/.*: *//')`
 
-# Start cgdb and tell it to connect to the tty sent using the pipe above.
+# Create a new terminal window and start McSync in it
 /usr/bin/osascript <<EOF
     tell application "Terminal"
-        do script "cd $DIR; cgdb ./bin/mcsync.$MACHINE_ARCHITECTURE;"
-        delay 0.5
-        activate window 2
-            tell application "System Events"
-            keystroke "tty $(tail /tmp/mcsync-tty-pipe)"
-            keystroke return
-        end
+        do script "cd $DIR; ./bin/mcsync.$MACHINE_ARCHITECTURE;"
     end tell
 EOF
 
-# Resize the newly created windows and arrange them for convience
+# Wait for McSync to start
+MCSYNCPIDS=
+while [ -z $MCSYNCPIDS ]; do
+    MCSYNCPIDS=`ps aux | grep mcsync | grep -v root | grep -v grep | awk '{print $2}'`
+    sleep 0.01
+done
+
+# Start cgdb and tell it to attach itself to the running McSync instance
+/usr/bin/osascript <<EOF
+    tell application "Terminal"
+        do script "cd $DIR; cgdb attach $MCSYNCPIDS;"
+    end tell
+EOF
+
+# Resize the newly created windows and arrange them for convenience
 /usr/bin/osascript <<EOF
     tell application "Finder"
         set screenSize to (bounds of window of desktop)
