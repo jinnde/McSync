@@ -132,9 +132,11 @@ EOF
         set position of window 2 to {halfwidth+5, 0}
         set size of window 2 to {halfwidth, halfheight}
         set position of window 3 to {halfwidth+5, halfheight}
-        set position of window 4 to {halfwidth+5, halfheight}
         if window 5 exists then
+            set position of window 4 to {halfwidth+5, halfheight}
             set position of window 5 to {0, halfheight}
+        else
+           set position of window 4 to {0, halfheight}
         end if
     end tell
 EOF
