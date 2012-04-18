@@ -7,7 +7,7 @@
 # folder, which than has a "2" added to its name.
 
 # We need the most recent build
-./compile -b develop
+./compile -b development
 
 # Find the McSync directory and make sure to follow symbolic links
 MC_SYNC_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
