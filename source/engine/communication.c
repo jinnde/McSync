@@ -474,18 +474,6 @@ void putstring(FILE* output, char* s)
     putc(0, output);
 } // putstring
 
-void freestringlist(stringlist *skunk)
-{
-    stringlist *temp;
-
-    while (skunk) {
-        temp = skunk;
-        skunk = skunk->next;
-        free(temp->string);
-        free(temp);
-    }
-} // freestringlist
-
 void freeintlist(intlist skunk)
 {
     if (skunk->values != NULL)

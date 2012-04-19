@@ -1,26 +1,33 @@
 #include "definitions.h"
 
 
-char* strdupcat(char* a, char* b, ...) // allocs new string, last arg must be NULL
+char* strdupcat(const char* first, ...)
 {
-    char **i, *j, *cc;
-    int len;
+    va_list args;
+    char* buf;
+    const char* arg;
+    size_t len = strlen(first);
 
-    len = 0;
-    for (i = &a; *i != NULL; i += &b - &a)
-        for (j = *i; *j != 0; j++)
-            len++;
+    // calculate the length of the output string
+    va_start(args, first);
+    while ((arg = va_arg(args, const char*)) != NULL)
+        len += strlen(arg);
+    va_end(args);
 
-    cc = (char*)malloc(len + 1);
+    // allocate memory for the output string
+    buf = malloc(len + 1);
+    if (buf == NULL)
+        return NULL;
 
-    len = 0;
-    for (i = &a; *i != NULL; i += &b - &a)
-        for (j = *i; *j != 0; j++)
-            cc[len++] = *j;
-    cc[len] = 0;
-
-    return cc;
+    // copy strings into the output buffer
+    strcpy(buf, first);
+    va_start(args, first);
+    while ((arg = va_arg(args, const char*)) != NULL)
+        strcat(buf, arg);
+    va_end(args);
+    return buf;
 } // strdupcat
+
 
 char *most(char *s) // allocs new string, s must contain '/' and be writable
 {
@@ -336,7 +343,7 @@ fileinfo* formimage(char* filename)
          || !strcmp(filename + strlen(filename) - 3, "/..")) // inefficient
         return NULL;
     if (lstat(filename, &status)) {
-        printf("Warning: Could not stat %s (%s)\n", filename, strerror(errno));
+        printerr("Scan Warning: Could not stat %s (%s)\n", filename, strerror(errno));
         return NULL;
     }
 
@@ -397,7 +404,7 @@ fileinfo* formimage(char* filename)
 
         thisdir = opendir(filename);
         if (!thisdir) {
-            printf("Warning: directory %s could not be read (%s)\n",
+            printerr("Warning: directory %s could not be read (%s)\n",
                     filename, strerror(errno));
             goto donewithdir;
         }
@@ -412,13 +419,13 @@ fileinfo* formimage(char* filename)
             //  Another reason interfaces should be formalized further.)
             if (entry == NULL) {
                 if (errno != 0)
-                    printf("Warning: error reading directory %s (%s)\n",
+                    printerr("Warning: error reading directory %s (%s)\n",
                             filename, strerror(errno));
                 // if no error, entry==NULL means we have read it all
                 break;
             }
             if (index(entry->d_name, '/')) {
-                printf("Warning: skipping file \"%s\" because it"
+                printerr("Warning: skipping file \"%s\" because it"
                         " contains a '/' (in directory %s)\n",
                         entry->d_name, filename);
                 continue;
@@ -442,7 +449,7 @@ fileinfo* formimage(char* filename)
         }
 
         if (closedir(thisdir) != 0) {
-            printf("Warning: could not close directory %s (%s)\n",
+            printerr("Warning: could not close directory %s (%s)\n",
                     filename, strerror(errno));
         }
 
@@ -452,13 +459,11 @@ fileinfo* formimage(char* filename)
 
     if (didtick || toplevel) {
         didtick = 0;
-        printf("\015Scanning directories... "
+        printerr("\015Scanning directories... "
                 "(found %d directories, %d files, %d links, %d other)",
                 progress1, progress2, progress3, progress4);
-        fflush(stdout);
     }
     if (toplevel) {
-        printf("\n");
         stopticking();
     }
 

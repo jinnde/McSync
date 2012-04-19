@@ -317,7 +317,7 @@ void setstatus(int32 who, status_t newstatus)
 
 static int NextFreeAddress = firstfree_int;
 
-void algo_reachfor(char* deviceid, char* reachfrom_deviceid) // RFID can be NULL
+void hq_reachfor(char* deviceid, char* reachfrom_deviceid) // RFID can be NULL
 {
     device* target_m = NULL;
     device* m;
@@ -362,17 +362,17 @@ void algo_reachfor(char* deviceid, char* reachfrom_deviceid) // RFID can be NULL
     // This lets us use a worker besides topworker (multi-hop case), because
     // the deviceid for a device is the same everywhere.
     NextFreeAddress++;
-} // algo_reachfor
+} // hq_reachfor
 
 int waitmode = 0; // changed to 1 on startup if "-wait" flag is provided
 
-void algo_init(void) // called as soon as local worker is ready to do work
+void hq_init(void) // called as soon as local worker is ready to do work
 {
     if (waitmode)
         return;
     // here we do whatever the configuration file tells us to do on startup
 
-} // algo_init
+} // hq_init
 
 virtualnode *findnode(virtualnode *root, char *path) // threads '/' as delimiter,
 // e.g. "home/tmp" is equal to "[/]*home[/]+tmp[/]*)" use "validfullpath" for validation.
@@ -442,6 +442,7 @@ int validfullpath(char *path) // returns 1 if path is a valid full virtual path
 void hq_scan(char *scanrootpath)
 {
     graft *g;
+    stringlist *prunepoint;
     char *scanpathcharacter, *graftpathcharacter;
 
     if (!validfullpath(scanrootpath)) {
@@ -455,7 +456,7 @@ void hq_scan(char *scanrootpath)
 
         // if the requested path to scan and the virtualpath of the graft
         // are the same for the length of the virtual path of the graft,
-        // we need to scan said graft.
+        // we need to include said graft.
 
         // Consider the scan request for "/Home/test" and a graft with virtual
         // path "/Home". The first 5 charachters are the same and because this
@@ -469,9 +470,10 @@ void hq_scan(char *scanrootpath)
             scanpathcharacter++;
         }
 
-        if (*graftpathcharacter == '\0') {
-            sendscancommand(hq_plug, g->host->reachplan.routeraddr, scanrootpath, g->prunepoints);
-            printerr("HQ has sent scan command to %d\n", g->host->reachplan.routeraddr);
+        if (*graftpathcharacter == '\0') { // we reached the end of the graft virtual path
+            char *physicalpath = strdupcat(g->hostpath, scanpathcharacter);
+            sendscancommand(hq_plug, g->host->reachplan.routeraddr, physicalpath, g->prunepoints);
+            free(physicalpath);
         }
     }
 
@@ -557,14 +559,14 @@ void algomain(void)
                     }
                     setstatus(msg_src, status_connected);
                     if (msg_src == topworker_int)
-                        algo_init();
+                        hq_init();
                     break;
             case msgtype_newplugplease1:
-                    algo_reachfor(msg_data, NULL); // msg_data is m->deviceid
+                    hq_reachfor(msg_data, NULL); // msg_data is m->deviceid
                     break;
             case msgtype_newplugplease2:
                     // msg_data is destid, sourceid
-                    algo_reachfor(msg_data, secondstring(msg_data));
+                    hq_reachfor(msg_data, secondstring(msg_data));
                     break;
             case msgtype_disconnect:
                     setstatus(atoi(msg_data), status_inactive);

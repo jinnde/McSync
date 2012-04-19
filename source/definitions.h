@@ -309,7 +309,10 @@ void (*cmd_thread_start_function)(); // this is the function called by the cmd t
 //////// some utility functions
 
 char* hostname(void); // caches answer -- do not alter or free!
-char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
+//char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
+// TODO: REMOVE
+char* strdupcat(const char* first, ...);
+
 char *commanumber(int64 n); // returns human-readable integer in reused buffer
 
 // error handling
@@ -361,6 +364,9 @@ intlist emptyintlist(void);
 void addtointlist(intlist il, listint n); // keeps list sorted, works for multisets
 void removefromintlist(intlist il, listint n);
 
+// stringlist
+void freestringlist(stringlist *skunk);
+
 // bytestream - dynamically re-allocated string (doubling allocated memory when full)
 bytestream initbytestream(uint32 len); // allocates new bytestream, free when done
 void freebytestream(bytestream b);
@@ -403,6 +409,10 @@ void virtualnoderemovenode(virtualnode **node); // removes and frees node and al
 void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode); // frees oldnode
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // writes the path of node into b
 void freevirtualnode(virtualnode *node);
+
+// disk scan for workers
+fileinfo* formimage(char* filename); // get inode info for filename (which includes path) and for any subdirectories
+void writesubimage(FILE* output, fileinfo* subimage);
 
 // tui specific
 void raw_io(void);

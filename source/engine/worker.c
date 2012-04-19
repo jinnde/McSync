@@ -142,9 +142,14 @@ void slavedelete(void)
     // output: success
 } // slavedelete
 
-void slavescan(void)
+void slavescan(char *scanroot, stringlist *prunepoints)
 {
-    // input: root point (on device) and prune points
+    FILE *f;
+    fileinfo *info = formimage(scanroot);
+
+    f = fopen("./data/temp.txt", "w");
+    writesubimage(f, info);
+
     // output: scan number, changes since previous on master
 } // slavescan
 
@@ -170,7 +175,7 @@ void slaveping(void)
 
 char* deviceidondisk(void)
 {
-    //we don't cache it, so if someone swaps a drive and asks us to notice, we can
+    // we don't cache it, so if someone swaps a drive and asks us to notice, we can
     return "local1";
 } // deviceidondisk
 
@@ -228,6 +233,9 @@ void workermain(void)
                         stringlist *prunepoints;
 
                         receivescancommand(msg_data, &scanroot, &prunepoints);
+                        slavescan(scanroot, prunepoints);
+                        free(scanroot);
+                        freestringlist(prunepoints);
                     }
                     break;
             default:

@@ -215,7 +215,7 @@ would need to use sockets instead of pipes.  No code for that yet.
     LA  algomain        receives NPP1 (devid) or NPP2(dstid,srcid) and calls reachfor
 
     ::algo asks worker to create a connection to the device::
-    LA  algo_reachfor   sends NPP (deviceid + routeraddr) to worker, uses
+    LA  hq_reachfor   sends NPP (deviceid + routeraddr) to worker, uses
                      $1 deviceid to find machine and set its routeraddr
     ---                 at this point we would go to a remote machine's worker
                         for a multi-hop connection
