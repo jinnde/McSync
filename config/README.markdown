@@ -26,3 +26,8 @@ The virtual root directory cannot have anything mounted at it.
 (This is just to prevent naively mounting something there, which would make it awkward to ever sync anything besides what is mounted there.)
 
 The final line just says "end of specs".  All lines after that are ignored.
+
+## The device file
+
+There is a hidden .device file that contains the unique id of the device.
+Do not touch it.
