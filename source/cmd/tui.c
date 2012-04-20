@@ -780,6 +780,13 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             case 'c': // connect
                     if (gi_device != NULL
                                 && gi_device->status == status_inactive) {
+                        // when a device is added, we do not know the device id!
+                        // it has to be sent in by the remote worker, who read or
+                        // create their devices id locally. Until then we use the
+                        // local nickname for identication.
+                        if (!gi_device->deviceid)
+                            gi_device->deviceid = gi_device->nickname;
+
                         sendmessage(cmd_plug, hq_int, msgtype_newplugplease1,
                                     gi_device->deviceid);
                     } else {

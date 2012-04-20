@@ -314,9 +314,10 @@ char* deviceidondisk(void)
                      "Sending : \"unknown\" as id\n");
             goto release_and_return;
         }
+        // try to open the new device file
         devicefile = fopen(device_file_path, "r");
         // rare chance of happening, but somehow the permissions might have
-        // changed or what not so let's just be safe and check for a NULL
+        // changed or what not, so let's just be safe and check for a NULL
         // file descriptor again
         if (!devicefile) {
             printerr("Error: Worker can't open created device file for reading (%s) "
