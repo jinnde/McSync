@@ -212,7 +212,7 @@ would need to use sockets instead of pipes.  No code for that yet.
     ::TUI tells algo to connect to a certain device::
     LT  TUIprocesschar  receives 'c'onnect command, sends "newplugplease" (NPP1/2)
                         message to algorithm w/ deviceid string(s)
-    LA  algomain        receives NPP1 (devid) or NPP2(dstid,srcid) and calls reachfor
+    LA  hqmain        receives NPP1 (devid) or NPP2(dstid,srcid) and calls reachfor
 
     ::algo asks worker to create a connection to the device::
     LA  hq_reachfor   sends NPP (deviceid + routeraddr) to worker, uses

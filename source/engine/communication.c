@@ -866,7 +866,7 @@ void* thread_main(void* voidplug) // all new plug threads start here
         return NULL;
     }
     if (plug == hq_plug) { // from routermain init
-        algomain(); // never returns
+        hqmain(); // never returns
         return NULL;
     }
     if (plug == worker_plug) { // from routermain init

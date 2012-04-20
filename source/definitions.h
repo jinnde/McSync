@@ -48,14 +48,20 @@ typedef unsigned long long int uint64;
 #define programversionnumber    ((int32) 1)
 #define logfileversionnumber    ((int32) 1)
 #define specsfileversionnumber  ((int32) 1)
+#define devicefileversionnumber ((int32) 1)
 #define magiccookie             ((int32) 1331925123)
 // cookie is from letters m=13, c=3, s=19, y=25, n=12, c=3.
 // four bytes are: (high byte first) 79 99 144 131 (-112 -125) (hex: 4f 63 90 83)
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
+#define device_file_path "./config/device"
+
+#define device_id_size 16
+
 // limit depth and file name length in virtual tree
 #define virtual_path_depth_max 1024
 #define virtual_file_name_max 256
+
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of data types /////////////////////////////////
@@ -294,13 +300,14 @@ extern connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct acc
 #define msgtype_scanvirtualdir  13 // the message contains a virtual path (usually a request from cmd to hq)
 #define msgtype_scan            14 // the message contains a host path and prune points (usually a request from hq to wrks)
 
-// if you change these, change msgtypelist in communication.c
+// if you change these^, change msgtypelist in communication.c
 
 #define slave_start_string "this is mcsync"
 #define hi_slave_string "you are "
 
 void (*cmd_thread_start_function)(); // this is the function called by the cmd thread.
                                      // depending on user choice this is currently either TUImain or climain
+
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of data types ///////////////////////////////////
@@ -309,10 +316,10 @@ void (*cmd_thread_start_function)(); // this is the function called by the cmd t
 //////// some utility functions
 
 char* hostname(void); // caches answer -- do not alter or free!
-//char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
-// TODO: REMOVE
-char* strdupcat(const char* first, ...);
 
+// TODO: REMOVE OR CLARFIY WITH MATTHEW ON THE USAGE OF THIS ONE!
+//char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
+char* strdupcat(const char* first, ...); // allocates new string, last arg must be NULL
 char *commanumber(int64 n); // returns human-readable integer in reused buffer
 
 // error handling
@@ -334,6 +341,7 @@ int32 get32(FILE* input);
 int32 get32safe(FILE* input);
 int64 get64(FILE* input);
 char* getstring(FILE* input, char delimiter); // returns new string; free when done
+void tohex(unsigned char c, char* a, char* b);
 
 // communication control
 void waitforstring(FILE* input, char* string);
@@ -388,7 +396,7 @@ void *queueremove(queue q, queuenode qn); // returns pointer to data, because it
 // agent system
 void TUImain(void);
 void climain(void);
-void algomain(void);
+void hqmain(void);
 void workermain(void);
 
 int reachforremote(connection plug); // try to get mcsync started on remote site

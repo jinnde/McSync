@@ -442,11 +442,10 @@ int validfullpath(char *path) // returns 1 if path is a valid full virtual path
 void hq_scan(char *scanrootpath)
 {
     graft *g;
-    stringlist *prunepoint;
     char *scanpathcharacter, *graftpathcharacter;
 
     if (!validfullpath(scanrootpath)) {
-        printerr("Error: HQ got invalid scan root path: %s\n", scanrootpath);
+        printerr("Error: Headquarters got invalid scan root path: %s\n", scanrootpath);
         return;
     }
 
@@ -484,26 +483,26 @@ void sendvirtualnodelisting(char* path) // sends back all children of node at pa
     virtualnode *dir;
 
     if (!validfullpath(path)) {
-        printerr("Error: HQ got invalid path: %s\n", path);
+        printerr("Error: Headquarters got invalid path to list: %s\n", path);
         return;
     }
 
     dir = findnode(&virtualroot, path);
 
     if (!dir) {
-        printerr("Error: HQ could not find node with path: %s\n", path);
+        printerr("Error: Headquarters could not find node with path: %s\n", path);
         return;
     }
 
     if (dir->filetype > 1) {
-        printerr("Error: HQ got ls for node which is not a directory: %s\n", path);
+        printerr("Error: Headquarters got list request for node which is not a directory: %s\n", path);
         return;
     }
 
     sendvirtualdir(hq_plug, cmd_int, path, dir);
 } // sendvirtualnodelisting
 
-void algomain(void)
+void hqmain(void)
 {
     int32 msg_src;
     int64 msg_type;
@@ -519,7 +518,7 @@ void algomain(void)
         // we got a message
         switch (msg_type) {
             case msgtype_info:
-                    printerr("algo got info message: \"%s\" from %d\n",
+                    printerr("Headquarters got info message: \"%s\" from %d\n",
                                     msg_data, msg_src);
                     break;
             case msgtype_workerisup:
@@ -580,13 +579,13 @@ void algomain(void)
                     hq_scan(msg_data);
                     break;
             default:
-                    printerr("algo got unexpected message"
+                    printerr("Headquarters got unexpected message"
                                     " of type %lld from %d: \"%s\"\n",
                                     msg_type, msg_src, msg_data);
         } // switch on message type
         free(msg_data);
     } // loop on messages
-} // algomain
+} // hqmain
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of algo main ////////////////////////////////////
