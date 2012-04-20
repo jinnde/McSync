@@ -268,6 +268,7 @@ int32 createdevicefile(char *path)  // creates a new device file, with a unqiue 
     put32(devicefile, devicefileinfo.st_ino);
     put32(devicefile, devicefileinfo.st_dev);
     putstring(devicefile, deviceid);
+    free(deviceid);
     fclose(devicefile);
     return 1;
 } // createdevicefile
@@ -410,15 +411,12 @@ void workermain(void)
                     // if it works, it will report its existence on its own...
                     break;
             case msgtype_identifydevice:
-                    // // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< REMOVE !!!
-                    // {
-                    //     int derp = 1;
-                    //     while(derp)
-                    //         ;
-                    // }
-                    sendmessage(worker_plug, hq_int, msgtype_deviceid,
-                                deviceidondisk());
-                    break;
+            {
+                char *deviceid = deviceidondisk();
+                sendmessage(worker_plug, hq_int, msgtype_deviceid, deviceid);
+                free(deviceid);
+            }
+            break;
             case msgtype_scan:
                     {
                         char *scanroot;
