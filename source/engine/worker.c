@@ -173,7 +173,8 @@ void slaveping(void)
 
 int32 getlockfile(char *path, int32 maxtime)
 {// blocks for maxtime milliseconds until the lock for file at path can be acquired
- // returns 1 if sucessful, 0 otherwise
+ // returns 1 if sucessful, 0 otherwise. We use lock files because we might need to
+ // access data on old file systems such as FAT32 and thus can't use flock et al.
     FILE *lockfile;
     char *lockfilepath = strdupcat(path, ".locked", NULL);
 
@@ -400,7 +401,7 @@ void workermain(void)
     int32 msg_src;
     int64 msg_type;
     char* msg_data;
-    device* m;
+    device* d;
 
     // report existence
     snprintf(buf, 90, "%d", worker_plug->thisway->values[0]);
@@ -417,29 +418,33 @@ void workermain(void)
                                     msg_data, msg_src);
                     break;
             case msgtype_newplugplease:
-                    // get device from msg_data (m->deviceid)
-                    for (m = devicelist; m != NULL; m = m->next) {
-                        if (! strcmp(msg_data, m->deviceid))
+                    // get device from msg_data (d->deviceid)
+                    for (d = devicelist; d != NULL; d = d->next) {
+                        if (! strcmp(msg_data, d->deviceid))
                             break;
                     }
-                    if (m == NULL) {
+                    if (d == NULL) {
                         printerr("Error: Received unknown device id \"%s\"\n",
                                 msg_data);
                         goto nextmessage;
                     }
-                    // get plugnum from msg_data (not m->...!)
+                    // get plugnum from msg_data (not d->...!)
                     int plugnum = atoi(secondstring(msg_data));
                     printerr("hey, data = (%s,%s), plugnum = %d\n",
                         msg_data, secondstring(msg_data), plugnum);
                     // BUGGY  if no ssh is needed, a local plug should be made
-                    channel_launch(NULL, m->deviceid, plugnum);
-                    // m->reachplan.routeraddr might not be set on this device
+                    channel_launch(NULL, d->deviceid, plugnum);
+                    // d->reachplan.routeraddr might not be set on this device
                     // if it works, it will report its existence on its own...
                     break;
             case msgtype_identifydevice:
             {
+                // msg_data is the name hq thinks we have, we just loop it back
+                // so that hq can figure out itself whether it has the correct
+                // device id
                 char *deviceid = deviceidondisk();
-                sendmessage(worker_plug, hq_int, msgtype_deviceid, deviceid);
+                snprintf(buf, 90, "%s%c%s%c", msg_data, 0, deviceid, 0);
+                sendmessage2(worker_plug, hq_int, msgtype_deviceid, buf);
                 free(deviceid);
             }
             break;

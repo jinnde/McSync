@@ -507,7 +507,7 @@ void hqmain(void)
     int32 msg_src;
     int64 msg_type;
     char* msg_data;
-    device* m;
+    device* d;
 
     virtualtreeinit();
 
@@ -532,27 +532,27 @@ void hqmain(void)
                     // but not for top worker -- topworker tells us who we are)
                     printerr("Heard that plug %d is for device %s.\n",
                             msg_src, msg_data);
-                    for (m = devicelist; m != NULL; m = m->next) {
-                        if (! strcmp(m->deviceid, msg_data)) {
-                            // m is the device with the deviceid
-                            if (m->reachplan.routeraddr == msg_src) {
+                    for (d = devicelist; d != NULL; d = d->next) {
+                        if (! strcmp(d->deviceid, msg_data)) {
+                            // d is the device with the deviceid
+                            if (d->reachplan.routeraddr == msg_src) {
                                 // already set to what we would expect
                             } else {
-                                if (m->reachplan.routeraddr == -1
+                                if (d->reachplan.routeraddr == -1
                                         && msg_src == topworker_int) {
                                     // it is from the topworker
-                                    m->reachplan.routeraddr = topworker_int;
+                                    d->reachplan.routeraddr = topworker_int;
                                 } else {
                                     printerr("Error: Plug confusion!");
                                     printerr(" (%d reported name \"%s\", already"
                                             " owned by %d)\n", msg_src, msg_data,
-                                            m->reachplan.routeraddr);
+                                            d->reachplan.routeraddr);
                                 }
                             }
                             break;
                         }
                     }
-                    if (m == NULL) {
+                    if (d == NULL) {
                         printerr("Error: Reported device id not known: %s\n",
                                     msg_data);
                     }
@@ -561,7 +561,7 @@ void hqmain(void)
                         hq_init();
                     break;
             case msgtype_newplugplease1:
-                    hq_reachfor(msg_data, NULL); // msg_data is m->deviceid
+                    hq_reachfor(msg_data, NULL); // msg_data is d->deviceid
                     break;
             case msgtype_newplugplease2:
                     // msg_data is destid, sourceid
