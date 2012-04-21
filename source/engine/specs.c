@@ -57,7 +57,8 @@ void readspecs1(FILE *f) // reads the rest of a version-1 specs file
             free(line);
             drecord->status = status_inactive;
             drecord->reachplan.routeraddr = -1;
-            drecord->deviceid = drecord->nickname;
+            drecord->deviceid = nextline(f);
+
             drecord->reachplan.mcsyncdir = nextline(f);
 
             addrsp = &(drecord->reachplan.ipaddrs);
@@ -190,7 +191,13 @@ void writespecsfile(char *specsfile) // writes devicelist and graftlist
     fprintf(f, "version 1\n");
 
     for (d = devicelist; d != NULL; d = d->next) {
-        fprintf(f, "\ndevice %s\n%s\n%s\n", d->nickname, d->reachplan.mcsyncdir, d->deviceid);
+        fprintf(f, "\ndevice %s\n%s\n%s\n",
+                   d->nickname,
+                   // if the device id has not been resolved with the device
+                   // itself, we just store the local nick name reference until
+                   // it is.
+                   (d->deviceid == NULL ? d->nickname : d->deviceid),
+                   d->reachplan.mcsyncdir);
         for (s = d->reachplan.ipaddrs; s != NULL; s = s->next) {
             fprintf(f, "%s\n", s->string);
         }
