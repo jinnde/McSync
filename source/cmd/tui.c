@@ -256,9 +256,6 @@ void refreshdevices(void)
         printw("\n\n> name: ");
         editableitem(&(selm->nickname), 1);
 
-        printw("\n> mcsync's directory: ");
-        editableitem(&(selm->reachplan.mcsyncdir), 2);
-
         for (st = selm->reachplan.ipaddrs; st != NULL; st = st->next) {
             printw("\n> address: ");
             editableitem(&(st->string), 3);
@@ -797,7 +794,6 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         (*m)->nickname = strdup("newdevice");
                         (*m)->deviceid = NULL;
                         (*m)->status = status_inactive;
-                        (*m)->reachplan.mcsyncdir = strdup("~/.mcsync");
                         (*m)->reachplan.ipaddrs = NULL;
                         gi_selecteddevice = i + 1;
                         gi_editselection = 1;
@@ -918,7 +914,6 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                             free(skunk);
                                         }
                                         free(sk->nickname);
-                                        free(sk->reachplan.mcsyncdir);
                                         *m = sk->next;
                                         free(sk);
                                     } else {

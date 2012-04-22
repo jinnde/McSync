@@ -433,7 +433,7 @@ void workermain(void)
                     printerr("hey, data = (%s,%s), plugnum = %d\n",
                         msg_data, secondstring(msg_data), plugnum);
                     // BUGGY  if no ssh is needed, a local plug should be made
-                    channel_launch(NULL, d->deviceid, plugnum);
+                     channel_launch(NULL, d->deviceid, plugnum);
                     // d->reachplan.routeraddr might not be set on this device
                     // if it works, it will report its existence on its own...
                     break;

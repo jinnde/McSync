@@ -166,7 +166,6 @@ typedef struct devicelocater_struct { // all you need for locating the device
     // before we're connected, we need the net address and file system address
     stringlist *ipaddrs;    // ways to reach that device
     char *whichtouse;       // which of the ipaddrs is the one
-    char *mcsyncdir;        // obsolete
     // after we're connected, we need the router address
     int routeraddr;     // the current plug identifier for message routing (or -1)
 } devicelocater;

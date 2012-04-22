@@ -59,8 +59,6 @@ void readspecs1(FILE *f) // reads the rest of a version-1 specs file
             drecord->reachplan.routeraddr = -1;
             drecord->deviceid = nextline(f);
 
-            drecord->reachplan.mcsyncdir = nextline(f);
-
             addrsp = &(drecord->reachplan.ipaddrs);
             while (1) {
                 stringlist *string;
@@ -191,13 +189,12 @@ void writespecsfile(char *specsfile) // writes devicelist and graftlist
     fprintf(f, "version 1\n");
 
     for (d = devicelist; d != NULL; d = d->next) {
-        fprintf(f, "\ndevice %s\n%s\n%s\n",
+        fprintf(f, "\ndevice %s\n%s\n",
                    d->nickname,
                    // if the device id has not been resolved with the device
                    // itself, we just store the local nick name reference until
                    // it is.
-                   (d->deviceid == NULL ? d->nickname : d->deviceid),
-                   d->reachplan.mcsyncdir);
+                   (d->deviceid == NULL ? d->nickname : d->deviceid));
         for (s = d->reachplan.ipaddrs; s != NULL; s = s->next) {
             fprintf(f, "%s\n", s->string);
         }
@@ -224,7 +221,7 @@ int specstatevalid(void) // returns 1 if there exists a device with any reachpla
     // at least one device
     for (d = devicelist; d != NULL; d = d->next) {
         // with address and McSync folder
-        if (d->reachplan.mcsyncdir != NULL && d->reachplan.ipaddrs != NULL) {
+        if (d->reachplan.ipaddrs != NULL) {
             // and at least one corresponding graft
             for(g = graftlist; g != NULL; g = g->next) {
                 if(g->host == d)
