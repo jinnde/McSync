@@ -399,7 +399,6 @@ void workermain(connection worker_plug)
     int32 msg_src;
     int64 msg_type;
     char* msg_data;
-    device* d;
 
     snprintf(buf, 90, "%d", worker_plug->thisway->values[0]);
     sendmessage(worker_plug, hq_int, msgtype_workerisup, buf);
@@ -408,7 +407,6 @@ void workermain(connection worker_plug)
         while (! receivemessage(worker_plug, &msg_src, &msg_type, &msg_data)) {
             usleep(1000);
         }
-        // we got a message
         switch (msg_type) {
             case msgtype_info:
                     printerr("worker got info message: \"%s\" from %d\n",
@@ -441,7 +439,7 @@ void workermain(connection worker_plug)
                                     " of type %lld from %d: \"%s\"\n",
                                     msg_type, msg_src, msg_data);
         }
-        nextmessage:
+
         free(msg_data);
     }
 } // workermain

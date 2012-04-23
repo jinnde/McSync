@@ -7,10 +7,10 @@ connection cmd_plug, hq_plug, recruiter_plug, parent_plug, slave_worker_plug; //
 pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 const char* msgtypelist[] = { "error (msgtype==0)",
-    "connectdevice", "reqruitworker", "info", "workerisup",
-    "connected", "disconnect", "identifydevice", "deviceid",
-    "listvirtualdir", "virtualdir", "touch", "scanvirtualdir",
-    "scan" };
+    "connectdevice", "newplugplease", "recruitworker", "failedrecruit",
+    "info", "workerisup", "connected", "disconnect", "identifydevice",
+    "deviceid", "listvirtualdir", "virtualdir", "touch",
+    "scanvirtualdir", "scan" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -708,14 +708,34 @@ void sendscancommand(connection plug, int recipient, char *scanroot, stringlist 
     freebytestream(serialized);
 } // sendscancommand
 
-void sendrecruitcommand(connection plug, char *deviceid, stringlist *workeraddrs)
+void sendrecruitcommand(connection plug, int32 plugnum, char *address)
 {
     bytestream serialized = initbytestream(64);
-    serializestring(serialized, deviceid);
-    serializestringlist(serialized, workeraddrs);
-    nsendmessage(plug, recruiter_int, msgtype_reqruitworker, serialized->data, serialized->len);
+
+    serializeint32(serialized, plugnum);
+    serializestring(serialized, address);
+    nsendmessage(plug, recruiter_int, msgtype_recruitworker, serialized->data, serialized->len);
     freebytestream(serialized);
 } // sendrecruitcommand
+
+// only used by recruiter
+void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnum)
+{
+    bytestream serialized = initbytestream(20);
+
+    serializestring(serialized, theirreference);
+    serializeint32(serialized, plugnum);
+    nsendmessage(recruiter_plug, recipient, msgtype_newplugplease, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendnewplugresponse
+
+void sendfailedrecruitmessage(int32 recipient, int32 plugnum)
+{
+    bytestream serialized = initbytestream(4);
+    serializeint32(serialized, plugnum);
+    nsendmessage(recruiter_plug, recipient, msgtype_failedrecruit, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendfailedrecruitmessage
 
 char* secondstring(char* string)
 {
@@ -769,13 +789,25 @@ void receivescancommand(char *msg_data, char **scanroot, stringlist **prunepoint
     *prunepoints = deserializestringlist(&source);
 } // receivescancommand
 
-void receiverecruitcommand(char *msg_data, char **deviceid, stringlist **workeraddrs)
+void receiverecruitcommand(char *msg_data, int32 *plugnum, char **address)
 {
     char *source = msg_data; // pointer manipulated by deserialization
-    *deviceid = deserializestring(&source);
-    *workeraddrs = deserializestringlist(&source);
+    *plugnum = deserializeint32(&source);
+    *address = deserializestring(&source);
 } // receiverecruitcommand
 
+void receivefailedrecruitmessage(char *msg_data, int32 *plugnum)
+{
+    char *source = msg_data; // pointer manipulated by deserialization
+    *plugnum = deserializeint32(&source);
+} // receivefailedrecruitmessage
+
+void receivenewplugresponse(char *msg_data, char **reference, int32 *plugnum)
+{
+    char *source = msg_data; // pointer manipulated by deserialization
+    *reference = deserializestring(&source);
+    *plugnum = deserializeint32(&source);
+} // receivenewplugresponse
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of router /////////////////////////////////////
@@ -900,14 +932,14 @@ void channel_launch(connection plug,  channel_initializer initializer)
                     initializer, (void *)plug);
 } // channel_launch
 
-void* local_worker_channel_initializer(void *voidplug)
+void* localworker_initializer(void *voidplug)
 {
     connection plug = (connection) voidplug; // so compiler knows type
     workermain(plug);
     return NULL;
-} // local_worker_channel_initializer
+} // localworker_initializer
 
-void* parent_channel_initializer(void *voidplug)
+void* parent_initializer(void *voidplug)
 {
     connection plug = (connection) voidplug; // so compiler knows type
     // we use three threads (this + 2 others) to handle the three I/O streams
@@ -917,27 +949,27 @@ void* parent_channel_initializer(void *voidplug)
                     &stream_shipping, (void *)plug);
     stream_receiving(plug); // never returns
     return NULL; // keep compiler happy
-} // parent_channel_initializer
+} // parent_initializer
 
-void* recruiter_channel_initializer(void *argument)
+void* recruiter_initializer(void *argument)
 {
     reqruitermain(); // never returns
     return NULL;
-} // recruiter_channel_initializer
+} // recruiter_initializer
 
-void* headquarters_channel_initializer(void *argument)
+void* headquarters_initializer(void *argument)
 {
     hqmain(); // never returns
     return NULL;
-} // headquarters_channel_initializer
+} // headquarters_initializer
 
-void *cmd_channel_initializer(void *argument)
+void *cmd_initializer(void *argument)
 {
     cmd_thread_start_function(); // returns when user exits,
                                  // set by main.c to user choice (e.g. TUImain or climain)
     cleanexit(0); // kill all other threads and really exit
     return NULL;
-} // cmd_channel_initializer
+} // cmd_initializer
 
 connection connection_list = NULL;
 
@@ -992,15 +1024,17 @@ void routermain(int master, int plug_id)
         add_connection(&cmd_plug, cmd_int);
         add_connection(&recruiter_plug, recruiter_int);
 
-        channel_launch(hq_plug, &headquarters_channel_initializer);
-        channel_launch(cmd_plug, &cmd_channel_initializer);
-        channel_launch(recruiter_plug, &recruiter_channel_initializer);
+        channel_launch(hq_plug, &headquarters_initializer);
+        channel_launch(cmd_plug, &cmd_initializer);
+        channel_launch(recruiter_plug, &recruiter_initializer);
     } else {
-        add_connection(&parent_plug, 0);
-        add_connection(&slave_worker_plug, plug_id);
+        connection slaveworkerplug;
 
-        channel_launch(parent_plug, &parent_channel_initializer );
-        channel_launch(slave_worker_plug, &local_worker_channel_initializer);
+        add_connection(&parent_plug, 0);
+        add_connection(&slaveworkerplug, plug_id);
+
+        channel_launch(parent_plug, &parent_initializer );
+        channel_launch(slaveworkerplug, &localworker_initializer);
     }
 
     // now start routing
@@ -1025,6 +1059,7 @@ void routermain(int master, int plug_id)
                                     msg->source,
                                     msg->source == hq_int ? "HQ" :
                                     msg->source == cmd_int ? "CMD" :
+                                    msg->source == recruiter_int ? "REC" :
                                     "worker");
                     for (i = 0; i < msg->destinations->count; i++) {
                         printerr("%s %d",
@@ -1035,6 +1070,7 @@ void routermain(int master, int plug_id)
                         printerr(" (%s)",
                             msg->destinations->values[0] == hq_int ? "HQ" :
                             msg->destinations->values[0] == cmd_int ? "CMD" :
+                            msg->destinations->values[0] == recruiter_int ? "REC" :
                                                             "worker");
                     printerr(".\n");
                     printerr("(type = %lld (%s), contents = \"%s\")\n",

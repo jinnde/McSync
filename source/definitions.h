@@ -270,15 +270,14 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
     FILE            *tokid, *fromkid, *errfromkid;      // for remote & parent
     struct connection_struct *next;
     // from here on down is only used during creation of the connection
-    char            *address;       // which of the ipaddrs is the one
+    char            *address;       // the address we try to connect to
     pthread_t*      local_thread; // ptr to global thread var, NULL = spawn remote
     int             kidinpipe[2], kidoutpipe[2], kiderrpipe[2]; // filedescriptors
                     // r/w:  write to [WRITE_END=1], read from [READ_END=0]
     int             processpid; // the id of the process we spawn to reach remote
 } *connection; // also known as a plug
 
-extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug, slave_worker_plug; // for direct access
-// slave_worker_plug is only used when McSync is in slave mode
+extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct access
 
 #define hq_int          1
 #define cmd_int         2
@@ -286,18 +285,20 @@ extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug, slave_worker_p
 #define firstfree_int   4
 
 #define msgtype_connectdevice   1
-#define msgtype_reqruitworker   2
-#define msgtype_info            3
-#define msgtype_workerisup      4
-#define msgtype_connected       5
-#define msgtype_disconnect      6
-#define msgtype_identifydevice  7
-#define msgtype_deviceid        8
-#define msgtype_listvirtualdir  9
-#define msgtype_virtualdir      10
-#define msgtype_touch           11 // mark virtual node as touched (changed) on cmd
-#define msgtype_scanvirtualdir  12 // the message contains a virtual path (usually a request from cmd to hq)
-#define msgtype_scan            13 // the message contains a host path and prune points (usually a request from hq to wrks)
+#define msgtype_newplugplease   2
+#define msgtype_recruitworker   3
+#define msgtype_failedrecruit   4
+#define msgtype_info            5
+#define msgtype_workerisup      6
+#define msgtype_connected       7
+#define msgtype_disconnect      8
+#define msgtype_identifydevice  9
+#define msgtype_deviceid        10
+#define msgtype_listvirtualdir  11
+#define msgtype_virtualdir      12
+#define msgtype_touch           13 // mark virtual node as touched (changed) on cmd
+#define msgtype_scanvirtualdir  14 // the message contains a virtual path (usually a request from cmd to hq)
+#define msgtype_scan            15 // the message contains a host path and prune points (usually a request from hq to wrks)
 
 // if you change these^, change msgtypelist in communication.c
 
@@ -366,8 +367,14 @@ void sendscancommand(connection plug, int recipient, char *scanroot, stringlist 
 void receivescancommand(char *msg_data, char **scanroot, stringlist **prunepoints);
 
 // worker recruiting
-void receiverecruitcommand(char *msg_data, char **deviceid, stringlist **workeraddrs);
-void sendrecruitcommand(connection plug, char *deviceid, stringlist *workeraddrs);
+void sendrecruitcommand(connection plug, int32 plugnum, char *address); // allways sent to recruiter
+void receiverecruitcommand(char *msg_data, int32 *plugnum, char **address); // used by recruiter
+
+void sendfailedrecruitmessage(int32 recipient, int32 plugnum); // used by recruiter
+void receivefailedrecruitmessage(char *msg_data, int32 *plugnum);
+
+void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnum); // used by recruiter
+void receivenewplugresponse(char *msg_data, char **reference, int32 *plugnum);
 
 ////////  general purpose data structures
 
@@ -405,9 +412,10 @@ void workermain(connection workerplug);
 void reqruitermain(void);
 
 void routermain(int master, int plug_id);
-void add_connection(connection *plug, int plugnumber);
+void add_connection(connection *plug, int plugnumber); // only used by routermain and recruiter
 void channel_launch(connection plug, channel_initializer initializer); // only used by routermain and recruiter
-void* local_worker_channel_initializer(void *voidplug);
+
+void* localworker_initializer(void *voidplug); // only used by routermain and recruiter
 void* forward_raw_errors(void* voidplug);
 void* stream_receiving(void* voidplug);
 void* stream_shipping(void* voidplug);

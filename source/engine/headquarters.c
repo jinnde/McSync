@@ -278,29 +278,19 @@ void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node)
     bytestreaminsert(b, node->name, strlen(node->name));
 } // getvirtualnodepath
 
-void setstatus(char *deviceid, status_t newstatus)
+void setstatus(device **target, status_t newstatus)
 {
-    device* d;
+    device *d = *target;
     status_t oldstatus;
     char buf[90];
 
-    // find device
-    for (d = devicelist; d != NULL; d = d->next) {
-        if (!strcmp(d->deviceid, deviceid))
-            break;
-    }
-    if (d == NULL) {
-        printerr("Error: Device %s not in device list.\n", deviceid);
-        return;
-    }
     // set the new status
     oldstatus = d->status;
     d->status = newstatus;
     // take any status-change-based actions
     switch (newstatus) {
         case status_inactive:
-                sendmessage(hq_plug, cmd_int, msgtype_disconnect,
-                            d->deviceid);
+                sendmessage(hq_plug, cmd_int, msgtype_disconnect, d->deviceid);
             break;
         case status_reaching:
             break;
@@ -315,20 +305,14 @@ void setstatus(char *deviceid, status_t newstatus)
                 newstatus, statusword[newstatus]);
 } // setstatus
 
-void hq_reachfor(char* deviceid)
+void hq_reachfor(device *d)
 {
-    device* d = NULL;
-
-    for (d = devicelist; d != NULL; d = d->next)
-        if (!strcmp(d->deviceid, deviceid))
-            break;
-
-    if (d == NULL) {
-        printerr("Error: Received unknown device id \"%s\"\n", deviceid);
+    if (!d->reachplan.whichtouse) {
+        printerr("Error: \"which to use\" address not set on device! %s", d->deviceid);
         return;
     }
-    sendrecruitcommand(hq_plug, d->deviceid, d->reachplan.ipaddrs);
-    setstatus(deviceid, status_reaching);
+    sendrecruitcommand(hq_plug, d->reachplan.routeraddr, d->reachplan.whichtouse);
+    setstatus(&d, status_reaching);
 } // hq_reachfor
 
 virtualnode *findnode(virtualnode *root, char *path) // threads '/' as delimiter,
@@ -459,6 +443,24 @@ void sendvirtualnodelisting(char* path) // sends back all children of node at pa
     sendvirtualdir(hq_plug, cmd_int, path, dir);
 } // sendvirtualnodelisting
 
+device* getdevicebyid(char *deviceid) {
+    device *d;
+
+    for (d = devicelist; d != NULL; d = d->next)
+        if (!strcmp(d->deviceid, deviceid))
+            break;
+    return d;
+} // getdevice
+
+device* getdevicebyplugnum(int32 plugnum) {
+    device *d;
+
+    for (d = devicelist; d != NULL; d = d->next)
+        if (d->reachplan.routeraddr == plugnum)
+            break;
+    return d;
+} // getdevice
+
 void hqmain(void)
 {
     int32 msg_src;
@@ -479,8 +481,6 @@ void hqmain(void)
                                     msg_data, msg_src);
                     break;
             case msgtype_workerisup:
-                    for (d = devicelist; d != NULL; d = d->next)
-                        if (d->reachplan.routeraddr)
                     sendmessage(hq_plug, msg_src, msgtype_identifydevice, "");
                     // we won't say we're connected till we know to whom!
                     break;
@@ -489,12 +489,46 @@ void hqmain(void)
                             msg_src, msg_data);
                     //setstatus(msg_data, status_connected);
                     break;
-            case msgtype_connectdevice:
-                    hq_reachfor(msg_data); // msg_data is deviceid
+            case msgtype_connectdevice: // msg_data is device id
+                   if (! (d = getdevicebyid(msg_data))) {
+                        printerr("Error: Received unknown device id \"%s\"\n", msg_data);
+                        break;
+                    }
+                    if (d->reachplan.routeraddr == -1) {
+                        sendmessage(hq_plug, recruiter_int, msgtype_newplugplease, msg_data); // as reference for us
+                        break;
+                    }
+                    hq_reachfor(d);
                     break;
-            case msgtype_disconnect:
-                    setstatus(msg_data, status_inactive); // msg_data is deviceid
+            case msgtype_newplugplease:
+            {
+                char *deviceid; // we sent the device id as our reference to recruiter
+                int32 plugnum;
+                receivenewplugresponse(msg_data, &deviceid, &plugnum);
+                if (! (d = getdevicebyid(deviceid))) {
+                    printerr("Error: Received unknown device id \"%s\"\n", msg_data);
+                    free(deviceid);
                     break;
+                }
+                free(deviceid);
+                d->reachplan.routeraddr = plugnum;
+                hq_reachfor(d);
+                break;
+            }
+            case msgtype_failedrecruit: // msg_data is plugnum
+            {
+                    int32 plugnum;
+                    receivefailedrecruitmessage(msg_data, &plugnum);
+
+                    if (! (d = getdevicebyplugnum(plugnum))) {
+                        printerr("Error: Received plug number which does not belong "
+                                 "to any device (%d)\n", plugnum);
+                        break;
+                    }
+                    d->reachplan.routeraddr = -1;
+                    setstatus(&d, status_inactive); // msg_data is deviceid
+                    break;
+            }
             case msgtype_listvirtualdir:
                     // msg_data is the virtual path of the virtual directory to list
                     sendvirtualnodelisting(msg_data);
@@ -508,6 +542,7 @@ void hqmain(void)
                                     " of type %lld from %d: \"%s\"\n",
                                     msg_type, msg_src, msg_data);
         } // switch on message type
+
         free(msg_data);
     } // loop on messages
 } // hqmain

@@ -1,6 +1,7 @@
 #include "definitions.h"
 
 static int32 next_free_address = firstfree_int;
+static connection workerplugs[64]; // initialized to zero by compiler
 
 char* homedirectory(void) // caches answer -- do not alter or free!
 {
@@ -348,6 +349,43 @@ leave_terminal_mode:
     return retval; // 1 == success
 } // reachforremote
 
+int32 recruitworker(int32 plugnum, char *address)
+{
+    connection plug = workerplugs[plugnum];
+
+    if (!plug)
+        return 0;
+
+    if (!strncmp(address, "local:", 6)) {
+        channel_launch(plug, &localworker_initializer);
+        return 1;
+    }
+
+    // we need to connect to a remote device
+    plug->address = address;
+
+    if (reachforremote(plug)) { // fills workerplug with streams to remote mcsync
+       // if non 0 -> success!
+       // remote connection needs stderr forwarder
+       pthread_create(&workerplug->stderr_forwarder, pthread_attr_default,
+                                 &forward_raw_errors, (void *)plug);
+       // put two threads (this + 1 other) on the I/O stream/message conversions
+       pthread_create(&workerplug->stdout_packager, pthread_attr_default,
+                                 &stream_shipping, (void *)plug);
+
+       pthread_create(&workerplug->stdout_packager, pthread_attr_default,
+                                &stream_receiving, (void *)plug);
+    }
+
+    // if (success)
+    //     next_free_address++;
+    // else {
+    //   //  remove_connection(workerplug);
+    //     sendmessage(recruiter_plug, msg_src, msgtype_disconnect, deviceid);
+    // }
+    return 0;
+} // recruitworker
+
 void reqruitermain(void)
 {
     int32 msg_src;
@@ -364,53 +402,20 @@ void reqruitermain(void)
                     printerr("recruiter got info message: \"%s\" from %d\n",
                                     msg_data, msg_src);
                     break;
-            case msgtype_reqruitworker:
+            case msgtype_newplugplease: // msg_data is the reference we should
+                                        // send back toghether with a new plug number
+                add_connection(&workerplugs[next_free_address], next_free_address);
+                sendnewplugresponse(msg_src, msg_data, next_free_address);
+                next_free_address++;
+                break;
+            case msgtype_recruitworker:
             {
-                connection workerplug;
-                char *deviceid; // only used as reference if something went wrong
-                stringlist *workeraddrs;
-                stringlist *addr;
-                int32 success = 0;
-
-                receiverecruitcommand(msg_data, &deviceid, &workeraddrs);
-
-                add_connection(&workerplug, next_free_address);
-
-                for (addr = workeraddrs; addr != NULL; addr = addr->next) {
-                    if (! strncmp(addr->string, "local:", 6)) {
-                        channel_launch(workerplug, &local_worker_channel_initializer);
-                        success = 1;
-                        break;
-                    } else { // we got a remote address, try to reach it
-                        workerplug->address = addr->string;
-
-                        if (reachforremote(workerplug)) { // fills workerplug with streams to remote mcsync
-                            // if non 0 -> success!
-                            // remote connection needs stderr forwarder
-                            pthread_create(&workerplug->stderr_forwarder, pthread_attr_default,
-                                                &forward_raw_errors, (void *)workerplug);
-                            // put two threads (this + 1 other) on the I/O stream/message conversions
-                            pthread_create(&workerplug->stdout_packager, pthread_attr_default,
-                                                &stream_shipping, (void *)workerplug);
-
-                            pthread_create(&workerplug->stdout_packager, pthread_attr_default,
-                                                &stream_receiving, (void *)workerplug);
-                            success = 1;
-                            break;
-                        }
-
-                    }
-                }
-
-                if (success) {
-
-                    next_free_address++;
-                } else {
-                  //  remove_connection(workerplug);
-                    sendmessage(recruiter_plug, msg_src, msgtype_disconnect, deviceid);
-                }
-                free(deviceid);
-                free(workeraddrs);
+                char *address;
+                int32 plugnum;
+                receiverecruitcommand(msg_data, &plugnum, &address);
+                if (! recruitworker(plugnum, address))
+                    sendfailedrecruitmessage(msg_src, plugnum);
+                free(address);
             }
             break;
             default:
@@ -418,7 +423,7 @@ void reqruitermain(void)
                                     " of type %lld from %d: \"%s\"\n",
                                     msg_type, msg_src, msg_data);
         }
-        nextmessage:
+
         free(msg_data);
     }
 } // reqruitermain

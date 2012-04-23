@@ -777,6 +777,9 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             case 'c': // connect
                     if (gi_device != NULL
                                 && gi_device->status == status_inactive) {
+                        // TODO: Allow the user to specify which address he/she
+                        // would like to use
+                        gi_device->reachplan.whichtouse = gi_device->reachplan.ipaddrs->string;
                         sendmessage(cmd_plug, hq_int, msgtype_connectdevice,
                                     gi_device->deviceid);
                     } else {
