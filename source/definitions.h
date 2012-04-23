@@ -62,6 +62,7 @@ typedef unsigned long long int uint64;
 #define virtual_path_depth_max 1024
 #define virtual_file_name_max 256
 
+#define recruiter_max_worker_plugs 64
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of data types /////////////////////////////////
@@ -244,8 +245,8 @@ typedef struct virtualnode_struct {
 
 // messages are sent between agents -- every agent has a postal address (an integer)
 // there are 4 types of agents
-// 1. tui = CMD = 2
-// 2. algo = HQ = 1
+// 1. tui = command = CMD = 2
+// 2. headquarters = HQ = 1
 // 3. worker = WKR = 3
 // 4. parent = 0
 // at a given post office, there is a connection_list of plugs, each listing the agents

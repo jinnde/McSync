@@ -1,7 +1,7 @@
 #include "definitions.h"
 
 static int32 next_free_address = firstfree_int;
-static connection workerplugs[64]; // initialized to zero by compiler
+static connection workerplugs[recruiter_max_worker_plugs]; // initialized to zero by compiler
 
 char* homedirectory(void) // caches answer -- do not alter or free!
 {
@@ -291,7 +291,15 @@ void* raisechild(void* voidplug)
     }
     waitforstring(plug->fromkid, slave_start_string); // till mcsync is live
     fprintf(plug->tokid, "%s", hi_slave_string);
- //   put32safe(plug->tokid, plug->address);
+    int32 plugnum;
+    for (plugnum = 0; plugnum < recruiter_max_worker_plugs; plugnum++)
+        if (workerplugs[plugnum] == plug)
+            break;
+
+    if (plugnum == recruiter_max_worker_plugs)
+        printerr("Error: Could not find slave plug number!");
+    else
+        put32safe(plug->tokid, plugnum);
     fflush(plug->tokid);
     raised = 1;
     return NULL;
@@ -364,26 +372,21 @@ int32 recruitworker(int32 plugnum, char *address)
     // we need to connect to a remote device
     plug->address = address;
 
-    if (reachforremote(plug)) { // fills workerplug with streams to remote mcsync
+    if (reachforremote(plug)) { // fills plug with streams to remote mcsync
        // if non 0 -> success!
        // remote connection needs stderr forwarder
-       pthread_create(&workerplug->stderr_forwarder, pthread_attr_default,
+       pthread_create(&plug->stderr_forwarder, pthread_attr_default,
                                  &forward_raw_errors, (void *)plug);
        // put two threads (this + 1 other) on the I/O stream/message conversions
-       pthread_create(&workerplug->stdout_packager, pthread_attr_default,
+       pthread_create(&plug->stdout_packager, pthread_attr_default,
                                  &stream_shipping, (void *)plug);
 
-       pthread_create(&workerplug->stdout_packager, pthread_attr_default,
+       pthread_create(&plug->stdout_packager, pthread_attr_default,
                                 &stream_receiving, (void *)plug);
+       return 1;
     }
 
-    // if (success)
-    //     next_free_address++;
-    // else {
-    //   //  remove_connection(workerplug);
-    //     sendmessage(recruiter_plug, msg_src, msgtype_disconnect, deviceid);
-    // }
-    return 0;
+    return 0; // failed to reach
 } // recruitworker
 
 void reqruitermain(void)

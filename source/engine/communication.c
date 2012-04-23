@@ -1057,10 +1057,10 @@ void routermain(int master, int plug_id)
                     int i;
                     printerr("Message going from %d (%s) to",
                                     msg->source,
-                                    msg->source == hq_int ? "HQ" :
-                                    msg->source == cmd_int ? "CMD" :
-                                    msg->source == recruiter_int ? "REC" :
-                                    "worker");
+                                    msg->source == hq_int ? "Headquarters" :
+                                    msg->source == cmd_int ? "Command" :
+                                    msg->source == recruiter_int ? "Recruiter" :
+                                    "Worker");
                     for (i = 0; i < msg->destinations->count; i++) {
                         printerr("%s %d",
                                         i ? "," : "",
@@ -1068,10 +1068,10 @@ void routermain(int master, int plug_id)
                     }
                     if (msg->destinations->count == 1)
                         printerr(" (%s)",
-                            msg->destinations->values[0] == hq_int ? "HQ" :
-                            msg->destinations->values[0] == cmd_int ? "CMD" :
-                            msg->destinations->values[0] == recruiter_int ? "REC" :
-                                                            "worker");
+                            msg->destinations->values[0] == hq_int ? "Headquarters" :
+                            msg->destinations->values[0] == cmd_int ? "Command" :
+                            msg->destinations->values[0] == recruiter_int ? "Recruiter" :
+                                                            "Worker");
                     printerr(".\n");
                     printerr("(type = %lld (%s), contents = \"%s\")\n",
                                     msg->type, msgtypelist[msg->type],
