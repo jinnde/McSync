@@ -481,14 +481,36 @@ void hqmain(void)
                                     msg_data, msg_src);
                     break;
             case msgtype_workerisup:
-                    sendmessage(hq_plug, msg_src, msgtype_identifydevice, "");
-                    // we won't say we're connected till we know to whom!
+                    if (! (d = getdevicebyplugnum(msg_src))) {
+                        printerr("Error: Received plug number which does not belong "
+                                 "to any device (%d)\n", msg_src);
+                        break;
+                    }
+                    // send a device id suggestion to worker
+                    sendmessage(hq_plug, msg_src, msgtype_identifydevice, d->deviceid);
                     break;
             case msgtype_deviceid:
-                    printerr("Heard that plug %d is for device %s.\n",
-                            msg_src, msg_data);
+            {
+                    char *ourid = msg_data;
+                    char *remoteid = secondstring(msg_data);
+
+                    printerr("Heard that plug %d is for device we know as %s "
+                             "(It calls itself: %s).\n",
+                             msg_src, ourid, remoteid);
+
+                    if (! (d = getdevicebyid(ourid))) {
+                         printerr("Error: Received unknown device id \"%s\"\n", msg_data);
+                         break;
+                     }
+
+                    if (!strcmp(ourid, remoteid)) {
+                        d->verified = 1;
+
+                    }
+
                     //setstatus(msg_data, status_connected);
                     break;
+            }
             case msgtype_connectdevice: // msg_data is device id
                    if (! (d = getdevicebyid(msg_data))) {
                         printerr("Error: Received unknown device id \"%s\"\n", msg_data);

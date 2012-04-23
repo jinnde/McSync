@@ -4,6 +4,36 @@
 virtualnode cmd_virtualroot; // has no siblings and no name
                              // only to be used by the tui thread
 
+char *generatedeviceid() // unique device id generation using /dev/random
+{                        // allocs string, free when done!
+    char randombuf[device_id_size];
+    char *deviceid;
+    FILE *devrandom;
+    int32 i, j;
+
+    devrandom = fopen("/dev/random", "rb");
+    if (!devrandom) {
+        printerr("Error: Can't open /dev/random for unique device id creation (%s)\n",
+                 strerror(errno));
+        return NULL;
+    }
+
+    if (fread(randombuf, 1, device_id_size, devrandom) != device_id_size) {
+        printerr("Error: Can't read from /dev/random for unique device id creation (%s)\n",
+                 strerror(errno));
+        fclose(devrandom);
+        return NULL;
+    }
+    fclose(devrandom);
+
+    // store the device id in hex for human readability
+    deviceid = (char*) malloc(device_id_size * 2);
+    for (i = 0, j = 0; i < device_id_size; i++, j = i * 2) {
+        tohex(randombuf[i], &deviceid[j], &deviceid[j + 1]);
+    }
+    return deviceid;
+} // generatedeviceid
+
 char buffer[90], *bufpos; // use is private to next two functions, 90 digit max...
 
 void commanumberrec(int64 n, int dig) // helper func for commanumber
@@ -795,7 +825,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         *m = (device*) malloc(sizeof(device));
                         (*m)->next = NULL;
                         (*m)->nickname = strdup("newdevice");
-                        (*m)->deviceid = NULL;
+                        (*m)->deviceid = generatedeviceid();
+                        (*m)->verified = 0;
                         (*m)->status = status_inactive;
                         (*m)->reachplan.ipaddrs = NULL;
                         gi_selecteddevice = i + 1;

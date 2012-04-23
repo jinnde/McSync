@@ -175,6 +175,8 @@ typedef struct device_struct { // all you need to know about an arbitrary device
     struct device_struct *next;
     char *nickname;     // a user-friendly name
     char *deviceid;     // a long random unique id string, never changes on device
+    int32 verified;     // bool, whether there was a successful id verfication
+                        // with the device.
     status_t status;    // whether it is currently connected, what it's doing
     stringlist *networks;       // networks this device can usefully reach
     char *preferred_hq;         // if started on this device, use this hq (if set)

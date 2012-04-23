@@ -57,8 +57,17 @@ void readspecs1(FILE *f) // reads the rest of a version-1 specs file
             free(line);
             drecord->status = status_inactive;
             drecord->reachplan.routeraddr = -1;
-            drecord->deviceid = nextline(f);
 
+            line = nextline(f);
+            part2 = strchr(line, ' ');
+            *part2 = '\0';
+            drecord->deviceid = strdup(line);
+            if (!strcmp(part2 + 1, "[ok]"))
+                drecord->verified = 1;
+            else
+                drecord->verified = 0;
+
+            free(line);
             addrsp = &(drecord->reachplan.ipaddrs);
             while (1) {
                 stringlist *string;
@@ -189,12 +198,9 @@ void writespecsfile(char *specsfile) // writes devicelist and graftlist
     fprintf(f, "version 1\n");
 
     for (d = devicelist; d != NULL; d = d->next) {
-        fprintf(f, "\ndevice %s\n%s\n",
-                   d->nickname,
-                   // if the device id has not been resolved with the device
-                   // itself, we just store the local nick name reference until
-                   // it is.
-                   (d->deviceid == NULL ? d->nickname : d->deviceid));
+        fprintf(f, "\ndevice %s\n%s %s\n",
+                   d->nickname, d->deviceid,
+                   d->verified ? "[ok]" : "[?]");
         for (s = d->reachplan.ipaddrs; s != NULL; s = s->next) {
             fprintf(f, "%s\n", s->string);
         }
