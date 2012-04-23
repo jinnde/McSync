@@ -1,9 +1,13 @@
 #include "definitions.h"
 
-connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct access
+connection cmd_plug, hq_plug, recruiter_plug, parent_plug, slave_worker_plug; // for direct access
+
+// The new_plug function needs to stop the main routing in order to add new
+// connection to the list
+pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 const char* msgtypelist[] = { "error (msgtype==0)",
-    "newplugplease", "NPP1","NPP2", "info", "workerisup",
+    "connectdevice", "reqruitworker", "info", "workerisup",
     "connected", "disconnect", "identifydevice", "deviceid",
     "listvirtualdir", "virtualdir", "touch", "scanvirtualdir",
     "scan" };
@@ -359,8 +363,7 @@ int64 get64safe(FILE* input)
 char* threadname(void)
 {
     pthread_t us = pthread_self();
-    return (worker_plug && us == worker_plug->listener) ? "worker" :
-            (hq_plug && us == hq_plug->listener) ? "HQ" :
+    return  (hq_plug && us == hq_plug->listener) ? "HQ" :
             (cmd_plug && us == cmd_plug->listener) ? "CMD" :
             (parent_plug && us == parent_plug->listener) ? "parent" :
             "other thread";
@@ -705,6 +708,15 @@ void sendscancommand(connection plug, int recipient, char *scanroot, stringlist 
     freebytestream(serialized);
 } // sendscancommand
 
+void sendrecruitcommand(connection plug, char *deviceid, stringlist *workeraddrs)
+{
+    bytestream serialized = initbytestream(64);
+    serializestring(serialized, deviceid);
+    serializestringlist(serialized, workeraddrs);
+    nsendmessage(plug, recruiter_int, msgtype_reqruitworker, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendrecruitcommand
+
 char* secondstring(char* string)
 {
     char* pos = string;
@@ -755,7 +767,15 @@ void receivescancommand(char *msg_data, char **scanroot, stringlist **prunepoint
     char *source = msg_data; // pointer manipulated by deserialization
     *scanroot = deserializestring(&source);
     *prunepoints = deserializestringlist(&source);
-} // deserializescancommand
+} // receivescancommand
+
+void receiverecruitcommand(char *msg_data, char **deviceid, stringlist **workeraddrs)
+{
+    char *source = msg_data; // pointer manipulated by deserialization
+    *deviceid = deserializestring(&source);
+    *workeraddrs = deserializestringlist(&source);
+} // receiverecruitcommand
+
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of router /////////////////////////////////////
@@ -785,9 +805,10 @@ void* forward_raw_errors(void* voidplug)
     }
 } // forward_raw_errors
 
-void stream_receiving(connection plug)
+void* stream_receiving(void* voidplug)
 {
     FILE* stream_in;
+    connection      plug = voidplug; // so compiler knows type
 
     stream_in = plug->fromkid;
     while (1) {
@@ -854,51 +875,6 @@ void* stream_shipping(void* voidplug)
     }
 } // stream_shipping
 
-void* thread_main(void* voidplug) // all new plug threads start here
-{
-    connection      plug = voidplug; // so compiler knows type
-
-    // CMD, HQ, and worker each handle both input and output messages
-    if (plug == cmd_plug) { // from routermain init
-        cmd_thread_start_function(); // returns when user exits,
-                                     // set by main.c to user choice (e.g. TUImain or climain)
-        cleanexit(0); // kill all other threads and really exit
-        return NULL;
-    }
-    if (plug == hq_plug) { // from routermain init
-        hqmain(); // never returns
-        return NULL;
-    }
-    if (plug == worker_plug) { // from routermain init
-        workermain(); // never returns
-        return NULL;
-    }
-    // we need to process a parent plug or remote plug (2 sides of the same thing)
-    // we use three threads (this + 2 others) to handle the three I/O streams
-    if (plug == parent_plug) { // from routermain init
-        plug->tokid = stdout; // "kid" is the remote thing -- here it's the parent
-        plug->fromkid = stdin; // and stdout_packager will read from stdin, etc.
-        // parent plug doesn't actually need a stderr handler
-    } else { // a remote connection, from workermain
-        if (plug->target_device == NULL) {
-            printerr("Error: no target machine\n");
-            return NULL;
-        }
-        if (reachforremote(plug)) { // fills plug with streams to remote mcsync
-            // nonzero return means it failed
-            return NULL;
-        }
-        // remote connection needs stderr forwarder
-        pthread_create(&plug->stderr_forwarder, pthread_attr_default,
-                        &forward_raw_errors, (void *)plug);
-    }
-    // put two threads (this + 1 other) on the I/O stream/message conversions
-    pthread_create(&plug->stdout_packager, pthread_attr_default,
-                    &stream_shipping, (void *)plug);
-    stream_receiving(plug); // never returns
-    return NULL; // keep compiler happy
-} // thread_main
-
 message trivial_message_queue(void)
 {
     message tr = (message)malloc(sizeof(struct message_struct));
@@ -918,62 +894,91 @@ connection new_connection(void)
     return plug;
 } // new_connection
 
+void channel_launch(connection plug,  channel_initializer initializer)
+{
+    pthread_create(&plug->listener, pthread_attr_default,
+                    initializer, (void *)plug);
+} // channel_launch
+
+void* local_worker_channel_initializer(void *voidplug)
+{
+    connection plug = (connection) voidplug; // so compiler knows type
+    workermain(plug);
+    return NULL;
+} // local_worker_channel_initializer
+
+void* parent_channel_initializer(void *voidplug)
+{
+    connection plug = (connection) voidplug; // so compiler knows type
+    // we use three threads (this + 2 others) to handle the three I/O streams
+    plug->tokid = stdout; // "kid" is the remote thing -- here it's the parent
+    plug->fromkid = stdin; // and stdout_packager will read from stdin, etc.
+    pthread_create(&plug->stdout_packager, pthread_attr_default,
+                    &stream_shipping, (void *)plug);
+    stream_receiving(plug); // never returns
+    return NULL; // keep compiler happy
+} // parent_channel_initializer
+
+void* recruiter_channel_initializer(void *argument)
+{
+    reqruitermain(); // never returns
+    return NULL;
+} // recruiter_channel_initializer
+
+void* headquarters_channel_initializer(void *argument)
+{
+    hqmain(); // never returns
+    return NULL;
+} // headquarters_channel_initializer
+
+void *cmd_channel_initializer(void *argument)
+{
+    cmd_thread_start_function(); // returns when user exits,
+                                 // set by main.c to user choice (e.g. TUImain or climain)
+    cleanexit(0); // kill all other threads and really exit
+    return NULL;
+} // cmd_channel_initializer
+
 connection connection_list = NULL;
 
-void channel_launch(connection* store_plug_here, char* deviceid, int plugnumber)
-// plugnumber is 0 if called to start parent
-// deviceid is NULL if called by routermain's initialization of plugs
-// and non-NULL if called by a worker trying to reach another device
+// adds a connection to connection_lists. Waits until routermain stops being busy
+// and then blocks access to the list it until the new connection is added
+void add_connection(connection *store_plug_here, int32 plugnumber)
 {
-    // channel_launch is called either by the router thread at the beginning
-    // of routermain (setting up the fundamental plugs, providing plugnumber),
-    // or later by workermain (setting up a plug to a remote device, providing
-    // deviceid).  So there is no thread conflict.
     connection plug = new_connection();
-
-    if (store_plug_here != NULL) { // if caller wants the plug, we give it to them
-        *store_plug_here = plug;
-    }
 
     if (plugnumber) { // normal case (any plug but the parent plug)
         plug->thisway = singletonintlist(plugnumber);
-        // look to see if we are the plug for a device
-        if (deviceid != NULL) {
-            device* m;
-            for (m = devicelist; m != NULL; m = m->next) {
-                if (!strcmp(m->deviceid, deviceid)) {
-                    plug->target_device = m; // recover device from address
-                    m->reachplan.routeraddr = plugnumber; // might already be that
-                    // it only isn't if we are on a different device from algo
-                    break;
-                }
-            }
-            if (m == NULL) {
-                printerr("Error: Didn't find machine (id = \"%s\")\n", deviceid);
-                free(plug);
-                return;
-            }
-        }
         // add to front of list
+        pthread_mutex_lock(&connections_mutex);
         plug->next = connection_list;
         connection_list = plug;
+        pthread_mutex_unlock(&connections_mutex);
     } else {
         // it is parent (compiler might mis-optimize parent_plug)
         plug->thisway = emptyintlist(); // parent doesn't list destinations
         // add parent to end of list (it will always stay at end)
+        pthread_mutex_lock(&connections_mutex);
         connection* final = &connection_list;
         while ((*final) != NULL)
             final = &((*final)->next);
         plug->next = NULL;
         *final = plug;
+        pthread_mutex_unlock(&connections_mutex);
     }
 
-    pthread_create(&plug->listener, pthread_attr_default,
-                    &thread_main, (void *)plug);
-} // channel_launch
+    *store_plug_here = plug;
+} // add_connection
+
+// removes a connection from connection_lists. Waits until routermain tops being busy
+// and blocks accces to the list until the given connection was removed
+void remove_connection(connection skunk)
+{
+  // TODO remove connection!
+} // remove_connection
 
 void routermain(int master, int plug_id)
-// master:  0 => slave mode, 1 => master mode, 2 => batch mode, 3 => wait mode
+// master:  0 => slave mode, 1 => master mode
 // plug_id:  only used for slave mode
 {
     // stdin/stdout are used by (master ? TUI : parent)
@@ -983,12 +988,19 @@ void routermain(int master, int plug_id)
 
     // set up the basic set of channels
     if (master) {
-        channel_launch(&hq_plug, NULL, hq_int);
-        channel_launch(&cmd_plug, NULL, cmd_int);
-        channel_launch(&worker_plug, NULL, topworker_int);
+        add_connection(&hq_plug, hq_int);
+        add_connection(&cmd_plug, cmd_int);
+        add_connection(&recruiter_plug, recruiter_int);
+
+        channel_launch(hq_plug, &headquarters_channel_initializer);
+        channel_launch(cmd_plug, &cmd_channel_initializer);
+        channel_launch(recruiter_plug, &recruiter_channel_initializer);
     } else {
-        channel_launch(&parent_plug, NULL, 0); // "NULL, 0" == "parent"
-        channel_launch(&worker_plug, NULL, plug_id);
+        add_connection(&parent_plug, 0);
+        add_connection(&slave_worker_plug, plug_id);
+
+        channel_launch(parent_plug, &parent_channel_initializer );
+        channel_launch(slave_worker_plug, &local_worker_channel_initializer);
     }
 
     // now start routing
@@ -996,6 +1008,8 @@ void routermain(int master, int plug_id)
         int found_message_waiting = 0;
         connection source_plug, dest_plug;
         message head, msg;
+
+        pthread_mutex_lock(&connections_mutex);
         for (source_plug = connection_list; source_plug != NULL;
                                             source_plug = source_plug->next) {
             // see if any messages are ready (process just one from each queue)
@@ -1011,8 +1025,7 @@ void routermain(int master, int plug_id)
                                     msg->source,
                                     msg->source == hq_int ? "HQ" :
                                     msg->source == cmd_int ? "CMD" :
-                                    msg->source == topworker_int ? "topworker" :
-                                    "remote worker");
+                                    "worker");
                     for (i = 0; i < msg->destinations->count; i++) {
                         printerr("%s %d",
                                         i ? "," : "",
@@ -1022,15 +1035,11 @@ void routermain(int master, int plug_id)
                         printerr(" (%s)",
                             msg->destinations->values[0] == hq_int ? "HQ" :
                             msg->destinations->values[0] == cmd_int ? "CMD" :
-                            msg->destinations->values[0] == topworker_int ?
-                                "topworker" : "remote worker");
+                                                            "worker");
                     printerr(".\n");
                     printerr("(type = %lld (%s), contents = \"%s\")\n",
                                     msg->type, msgtypelist[msg->type],
                                     msg->len > 100 ? "long message" : msg->data);
-                    if (!master)
-                        printerr("source_plug = %p (parent = %p, worker = %p)\n",
-                                (void*)source_plug, (void*)parent_plug, (void*)worker_plug);
                 }
                 // spy on message: if workerisup then add to thisway
                 if (msg->type == msgtype_workerisup) {
@@ -1092,6 +1101,8 @@ void routermain(int master, int plug_id)
                 }
             }
         }
+        pthread_mutex_unlock(&connections_mutex);
+
         if (! found_message_waiting) { // nothing to do
             usleep(1000);
         }

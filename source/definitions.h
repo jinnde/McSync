@@ -270,34 +270,34 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
     FILE            *tokid, *fromkid, *errfromkid;      // for remote & parent
     struct connection_struct *next;
     // from here on down is only used during creation of the connection
-    device*         target_device; // information about remote device
+    char            *address;       // which of the ipaddrs is the one
     pthread_t*      local_thread; // ptr to global thread var, NULL = spawn remote
     int             kidinpipe[2], kidoutpipe[2], kiderrpipe[2]; // filedescriptors
                     // r/w:  write to [WRITE_END=1], read from [READ_END=0]
     int             processpid; // the id of the process we spawn to reach remote
 } *connection; // also known as a plug
 
-extern connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct access
+extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug, slave_worker_plug; // for direct access
+// slave_worker_plug is only used when McSync is in slave mode
 
 #define hq_int          1
 #define cmd_int         2
-#define topworker_int   3
+#define recruiter_int   3
 #define firstfree_int   4
 
-#define msgtype_newplugplease   1
-#define msgtype_newplugplease1  2
-#define msgtype_newplugplease2  3
-#define msgtype_info            4
-#define msgtype_workerisup      5
-#define msgtype_connected       6
-#define msgtype_disconnect      7
-#define msgtype_identifydevice  8
-#define msgtype_deviceid        9
-#define msgtype_listvirtualdir  10
-#define msgtype_virtualdir      11
-#define msgtype_touch           12 // mark virtual node as touched (changed) on cmd
-#define msgtype_scanvirtualdir  13 // the message contains a virtual path (usually a request from cmd to hq)
-#define msgtype_scan            14 // the message contains a host path and prune points (usually a request from hq to wrks)
+#define msgtype_connectdevice   1
+#define msgtype_reqruitworker   2
+#define msgtype_info            3
+#define msgtype_workerisup      4
+#define msgtype_connected       5
+#define msgtype_disconnect      6
+#define msgtype_identifydevice  7
+#define msgtype_deviceid        8
+#define msgtype_listvirtualdir  9
+#define msgtype_virtualdir      10
+#define msgtype_touch           11 // mark virtual node as touched (changed) on cmd
+#define msgtype_scanvirtualdir  12 // the message contains a virtual path (usually a request from cmd to hq)
+#define msgtype_scan            13 // the message contains a host path and prune points (usually a request from hq to wrks)
 
 // if you change these^, change msgtypelist in communication.c
 
@@ -307,6 +307,9 @@ extern connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct acc
 void (*cmd_thread_start_function)(); // this is the function called by the cmd thread.
                                      // depending on user choice this is currently either TUImain or climain
 
+typedef void* (*channel_initializer) (void* arguments); // is the function provided to channel_launch
+                                                        // which will turn the newly created thread into
+                                                        // the corresponding agent
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of data types ///////////////////////////////////
@@ -316,8 +319,6 @@ void (*cmd_thread_start_function)(); // this is the function called by the cmd t
 
 char* hostname(void); // caches answer -- do not alter or free!
 
-// TODO: REMOVE OR CLARFIY WITH MATTHEW ON THE USAGE OF THIS ONE!
-//char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
 char* strdupcat(const char* first, ...); // allocates new string, last arg must be NULL
 char *commanumber(int64 n); // returns human-readable integer in reused buffer
 
@@ -364,6 +365,10 @@ void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node);
 void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints);
 void receivescancommand(char *msg_data, char **scanroot, stringlist **prunepoints);
 
+// worker recruiting
+void receiverecruitcommand(char *msg_data, char **deviceid, stringlist **workeraddrs);
+void sendrecruitcommand(connection plug, char *deviceid, stringlist *workeraddrs);
+
 ////////  general purpose data structures
 
 // intlist
@@ -396,11 +401,16 @@ void *queueremove(queue q, queuenode qn); // returns pointer to data, because it
 void TUImain(void);
 void climain(void);
 void hqmain(void);
-void workermain(void);
+void workermain(connection workerplug);
+void reqruitermain(void);
 
-int reachforremote(connection plug); // try to get mcsync started on remote site
-void channel_launch(connection* store_plug_here, char* deviceid, int plugnumber);
 void routermain(int master, int plug_id);
+void add_connection(connection *plug, int plugnumber);
+void channel_launch(connection plug, channel_initializer initializer); // only used by routermain and recruiter
+void* local_worker_channel_initializer(void *voidplug);
+void* forward_raw_errors(void* voidplug);
+void* stream_receiving(void* voidplug);
+void* stream_shipping(void* voidplug);
 
 // specification file handling
 void readspecsfile(char *specsfile); // sets up devicelist and graftlist

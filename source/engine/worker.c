@@ -393,9 +393,7 @@ release_and_return:
     return deviceid;
 } // deviceidondisk
 
-void channel_launch(connection* known_plug, char* deviceid, int plugnumber);
-
-void workermain(void)
+void workermain(connection worker_plug)
 {
     char buf[90];
     int32 msg_src;
@@ -403,7 +401,6 @@ void workermain(void)
     char* msg_data;
     device* d;
 
-    // report existence
     snprintf(buf, 90, "%d", worker_plug->thisway->values[0]);
     sendmessage(worker_plug, hq_int, msgtype_workerisup, buf);
 
@@ -416,26 +413,6 @@ void workermain(void)
             case msgtype_info:
                     printerr("worker got info message: \"%s\" from %d\n",
                                     msg_data, msg_src);
-                    break;
-            case msgtype_newplugplease:
-                    // get device from msg_data (d->deviceid)
-                    for (d = devicelist; d != NULL; d = d->next) {
-                        if (! strcmp(msg_data, d->deviceid))
-                            break;
-                    }
-                    if (d == NULL) {
-                        printerr("Error: Received unknown device id \"%s\"\n",
-                                msg_data);
-                        goto nextmessage;
-                    }
-                    // get plugnum from msg_data (not d->...!)
-                    int plugnum = atoi(secondstring(msg_data));
-                    printerr("hey, data = (%s,%s), plugnum = %d\n",
-                        msg_data, secondstring(msg_data), plugnum);
-                    // BUGGY  if no ssh is needed, a local plug should be made
-                     channel_launch(NULL, d->deviceid, plugnum);
-                    // d->reachplan.routeraddr might not be set on this device
-                    // if it works, it will report its existence on its own...
                     break;
             case msgtype_identifydevice:
             {

@@ -1,7 +1,7 @@
 #include "definitions.h"
 
 virtualnode virtualroot; // has no siblings and no name
-                            // only to be used by the hq thread
+                         // only to be used by the HQ thread
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -278,101 +278,58 @@ void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node)
     bytestreaminsert(b, node->name, strlen(node->name));
 } // getvirtualnodepath
 
-void setstatus(int32 who, status_t newstatus)
+void setstatus(char *deviceid, status_t newstatus)
 {
-    device* mach;
+    device* d;
     status_t oldstatus;
     char buf[90];
 
-    // find device for "who"
-    for (mach = devicelist; mach != NULL; mach = mach->next) {
-        if (mach->reachplan.routeraddr == who)
+    // find device
+    for (d = devicelist; d != NULL; d = d->next) {
+        if (!strcmp(d->deviceid, deviceid))
             break;
     }
-    if (mach == NULL) {
-        printerr("Error: Machine %d not in machine list.\n", who);
+    if (d == NULL) {
+        printerr("Error: Device %s not in device list.\n", deviceid);
         return;
     }
     // set the new status
-    oldstatus = mach->status;
-    mach->status = newstatus;
+    oldstatus = d->status;
+    d->status = newstatus;
     // take any status-change-based actions
     switch (newstatus) {
         case status_inactive:
                 sendmessage(hq_plug, cmd_int, msgtype_disconnect,
-                            mach->deviceid);
+                            d->deviceid);
             break;
         case status_reaching:
             break;
         case status_connected:
-                snprintf(buf, 90, "%s", mach->deviceid); // unnecessary to use buf
+                snprintf(buf, 90, "%s", d->deviceid); // unnecessary to use buf
                 sendmessage(hq_plug, cmd_int, msgtype_connected, buf);
             break;
     }
-    printerr("Changed status of %d (%s) from %d (%s) to %d (%s).\n",
-                who, mach->nickname,
+    printerr("Changed status of %s from %d (%s) to %d (%s).\n",
+                d->nickname,
                 oldstatus, statusword[oldstatus],
                 newstatus, statusword[newstatus]);
 } // setstatus
 
-static int NextFreeAddress = firstfree_int;
-
-void hq_reachfor(char* deviceid, char* reachfrom_deviceid) // RFID can be NULL
+void hq_reachfor(char* deviceid)
 {
-    device* target_m = NULL;
-    device* m;
-    int reachfrom_addr = -1;
-    char buf[90];
+    device* d = NULL;
 
-    for (m = devicelist; m != NULL; m = m->next) {
-        if (!strcmp(m->deviceid, deviceid))
-            target_m = m;
-        if (reachfrom_deviceid
-            && !strcmp(m->deviceid, reachfrom_deviceid)) {
-            if (m->status == status_connected) {
-                reachfrom_addr = m->reachplan.routeraddr;
-            } else {
-                printerr("Error: Hop-from machine (id \"%s\") not connected.\n",
-                        reachfrom_deviceid);
-                return;
-            }
-        }
-    }
-    if (target_m == NULL) { // can this happen?
-        printerr("Error: Target machine id \"%s\" not found.\n", deviceid);
+    for (d = devicelist; d != NULL; d = d->next)
+        if (!strcmp(d->deviceid, deviceid))
+            break;
+
+    if (d == NULL) {
+        printerr("Error: Received unknown device id \"%s\"\n", deviceid);
         return;
     }
-    if (reachfrom_addr == -1) {
-        if (reachfrom_deviceid == NULL) { // didn't find it cause we didn't look
-            reachfrom_addr = topworker_int;
-        } else {
-            printerr("Error: Hop-from machine id \"%s\" not found.\n",
-                    reachfrom_deviceid);
-            return;
-        }
-    }
-
-    // start a remote mcsync for this device
-    target_m->reachplan.routeraddr = NextFreeAddress; // awaiting status_connected
-    setstatus(NextFreeAddress, status_reaching);
-    snprintf(buf, 90, "%s%c%d", deviceid, 0, NextFreeAddress);
-    sendmessage2(hq_plug, reachfrom_addr, msgtype_newplugplease, buf);
-    // Notice we don't send the device target_m!
-    // It will be recovered from the deviceid by topworker in channel_launch.
-    // This lets us use a worker besides topworker (multi-hop case), because
-    // the deviceid for a device is the same everywhere.
-    NextFreeAddress++;
+    sendrecruitcommand(hq_plug, d->deviceid, d->reachplan.ipaddrs);
+    setstatus(deviceid, status_reaching);
 } // hq_reachfor
-
-int waitmode = 0; // changed to 1 on startup if "-wait" flag is provided
-
-void hq_init(void) // called as soon as local worker is ready to do work
-{
-    if (waitmode)
-        return;
-    // here we do whatever the configuration file tells us to do on startup
-
-} // hq_init
 
 virtualnode *findnode(virtualnode *root, char *path) // threads '/' as delimiter,
 // e.g. "home/tmp" is equal to "[/]*home[/]+tmp[/]*)" use "validfullpath" for validation.
@@ -522,53 +479,21 @@ void hqmain(void)
                                     msg_data, msg_src);
                     break;
             case msgtype_workerisup:
-                    // we need to find out (topworker) or verify who we are
+                    for (d = devicelist; d != NULL; d = d->next)
+                        if (d->reachplan.routeraddr)
                     sendmessage(hq_plug, msg_src, msgtype_identifydevice, "");
                     // we won't say we're connected till we know to whom!
                     break;
             case msgtype_deviceid:
-                    // need to find the device with the id in msg_data
-                    // (we already know it if we asked for connection,
-                    // but not for top worker -- topworker tells us who we are)
                     printerr("Heard that plug %d is for device %s.\n",
                             msg_src, msg_data);
-                    for (d = devicelist; d != NULL; d = d->next) {
-                        if (! strcmp(d->deviceid, msg_data)) {
-                            // d is the device with the deviceid
-                            if (d->reachplan.routeraddr == msg_src) {
-                                // already set to what we would expect
-                            } else {
-                                if (d->reachplan.routeraddr == -1
-                                        && msg_src == topworker_int) {
-                                    // it is from the topworker
-                                    d->reachplan.routeraddr = topworker_int;
-                                } else {
-                                    printerr("Error: Plug confusion!");
-                                    printerr(" (%d reported name \"%s\", already"
-                                            " owned by %d)\n", msg_src, msg_data,
-                                            d->reachplan.routeraddr);
-                                }
-                            }
-                            break;
-                        }
-                    }
-                    if (d == NULL) {
-                        printerr("Error: Reported device id not known: %s\n",
-                                    msg_data);
-                    }
-                    setstatus(msg_src, status_connected);
-                    if (msg_src == topworker_int)
-                        hq_init();
+                    //setstatus(msg_data, status_connected);
                     break;
-            case msgtype_newplugplease1:
-                    hq_reachfor(msg_data, NULL); // msg_data is d->deviceid
-                    break;
-            case msgtype_newplugplease2:
-                    // msg_data is destid, sourceid
-                    hq_reachfor(msg_data, secondstring(msg_data));
+            case msgtype_connectdevice:
+                    hq_reachfor(msg_data); // msg_data is deviceid
                     break;
             case msgtype_disconnect:
-                    setstatus(atoi(msg_data), status_inactive);
+                    setstatus(msg_data, status_inactive); // msg_data is deviceid
                     break;
             case msgtype_listvirtualdir:
                     // msg_data is the virtual path of the virtual directory to list

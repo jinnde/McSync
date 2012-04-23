@@ -78,26 +78,6 @@ int main(int argc, char**argv)
     if (!checktypes())
         cleanexit(__LINE__);
 
-/*
-    if (argc == 4 && !strcmp(argv[1], "-scanandsave")) {
-        fileinfo *imageA;
-        imageA = formimage(argv[2]); // e.g. /home/cook/Common
-        writeimage(imageA, argv[3]);
-            // e.g. /home/cook/.mcsync/paradise-littlelaptop/paradise-image
-        return 0;
-    }
-
-    if (argc == 3 && !strcmp(argv[1], "-deletefiles")) {
-        deletefiles(argv[2]);
-        return 0;
-    }
-
-//    if (argc == 3 && !strcmp(argv[1], "-sync")) {
-//        syncdatamass(argv[2]);
-//        return 0;
-//    }
-*/
-
     if (argc == 2 && !strcmp(argv[1], "-slave")) {
         int32 whoami;
         raw_io(); // so waitforstring() below can receive its input
@@ -124,19 +104,6 @@ int main(int argc, char**argv)
         return 0;
     }
 
-    if (argc == 2 && !strcmp(argv[1], "-batch")) {
-        doUI = 0; // turn off UI
-        routermain(2, 0); // start in master mode, but with no interactive user
-        return 0;
-    }
-
-    if (argc == 2 && !strcmp(argv[1], "-wait")) {
-        waitmode = 1;
-        routermain(3, 0); // start in master mode, but take no automatic actions
-        return 0;
-    }
-
-
     printf("Did not understand arguments.  They were:\n");
     for (i = 0; i < argc; i++)
         printf("%d: %s\n", i, argv[i]);
@@ -148,11 +115,8 @@ int main(int argc, char**argv)
     printf("  usage:\n");
     printf("    mcsync\n");
     printf("                Interactive interface for syncing data.\n");
-    printf("    mcsync -batch\n");
-    printf("                Sync data using default judgments, no interface.\n");
-    printf("    mcsync -wait\n");
-    printf("                Start interface but take no actions until told.\n");
-    printf("                (Useful if preferences include startup actions.)\n");
+    printf("    mcsync -cli\n");
+    printf("                Command line based interface instead of TUI.\n");
     printf("    mcsync -slave N\n");
     printf("                Slave mode, does binary I/O instead of ascii.\n");
     printf("                (Invoked by mcsync when it needs a remote agent.)\n");

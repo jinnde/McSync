@@ -777,7 +777,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             case 'c': // connect
                     if (gi_device != NULL
                                 && gi_device->status == status_inactive) {
-                        sendmessage(cmd_plug, hq_int, msgtype_newplugplease1,
+                        sendmessage(cmd_plug, hq_int, msgtype_connectdevice,
                                     gi_device->deviceid);
                     } else {
                         beep();
