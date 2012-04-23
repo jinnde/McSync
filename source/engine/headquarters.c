@@ -305,6 +305,55 @@ void setstatus(device **target, status_t newstatus)
                 newstatus, statusword[newstatus]);
 } // setstatus
 
+
+/*
+Friends list file format:
+All friends device ids are stored as hex strings with no delimiter.
+*/
+void addtofriends(device *d)
+{
+    FILE *friendslist;
+
+    friendslist = fopen(friends_list_file_path, "a");
+
+    if (!friendslist) {
+        printerr("Error: Could not open friends lists (%s) Path: %s\n",
+                 strerror(errno), friends_list_file_path);
+        return;
+    }
+    if (fputs(d->deviceid, friendslist) < 0 ) {
+        printerr("Error: Could not write to friends lists (%s) Path %s\n",
+                    strerror(errno), friends_list_file_path);
+    }
+    fclose(friendslist);
+    return;
+} // addtofriends
+
+int32 isfriend(device *d) // 1 means the device is in the friendslist
+{
+    FILE *friendslist;
+    char line[double_device_id_size];
+
+    friendslist = fopen(friends_list_file_path, "r");
+    if (!friendslist) {
+        if (errno != ENOENT) {
+            printerr("Error: Could not open friends lists (%s) Path: %s\n",
+                     strerror(errno), friends_list_file_path);
+        }
+        return 0;
+    }
+
+    while (fgets(line, double_device_id_size, friendslist) != NULL) {
+        if (!strcmp(line, d->deviceid)) {
+            fclose(friendslist);
+            return 1;
+        }
+    }
+
+    fclose(friendslist);
+    return 0;
+} // isfriend
+
 void hq_reachfor(device *d)
 {
     if (!d->reachplan.whichtouse) {
@@ -504,7 +553,6 @@ void hqmain(void)
                      }
 
                     if (!strcmp(ourid, remoteid)) {
-                        d->verified = 1;
 
                     }
 

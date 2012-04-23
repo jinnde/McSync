@@ -54,9 +54,12 @@ typedef unsigned long long int uint64;
 // four bytes are: (high byte first) 79 99 144 131 (-112 -125) (hex: 4f 63 90 83)
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
-#define device_file_path "./config/.device"
+#define device_file_path "./data/device"
+#define friends_list_file_path "./data/friendslist"
 
-#define device_id_size 16
+#define device_id_size 16           // size of device id in bytes
+#define double_device_id_size 32    // size of device id when stored as hex string
+// always changes those two ^ values togheter
 
 // limit depth and file name length in virtual tree
 #define virtual_path_depth_max 1024
