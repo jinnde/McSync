@@ -1342,13 +1342,30 @@ void TUImain(void)
         if (got_msg) {
             switch (msg_type) {
                 case msgtype_connected:
-                        // device name's color will change with new status
-                        printerr("TUI heard that \"%s\" is connected.\n",
-                                        msg_data);
-                        free(msg_data);
-                        if (doUI)
-                            refreshscreen();
-                    break;
+                {
+                    device *d;
+                    int devicenum = 1;
+
+                    // device name's color will change with new status
+                    printerr("TUI heard that \"%s\" is connected.\n",
+                              msg_data);
+
+                    for (d = devicelist; d != NULL; d = d->next) {
+                        if (!strcmp(d->deviceid, msg_data)) {
+                            break;
+                        }
+                        devicenum++;
+                    }
+
+                    if (d != NULL)
+                        gi_selecteddevice = devicenum;
+
+                    free(msg_data);
+
+                    if (doUI)
+                        refreshscreen();
+                }
+                break;
                 case msgtype_disconnect:
                         // device name's color will change with new status
                         printerr("TUI heard that \"%s\" is disconnected.\n",

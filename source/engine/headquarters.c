@@ -443,7 +443,7 @@ void sendvirtualnodelisting(char* path) // sends back all children of node at pa
     sendvirtualdir(hq_plug, cmd_int, path, dir);
 } // sendvirtualnodelisting
 
-void addunknownconnecteddevice(char *deviceid, char *address, int32 routeraddr)
+device* addunknowndevice(char *deviceid, char *address, int32 routeraddr)
 {
     device **d;
     int i = 0;
@@ -459,7 +459,8 @@ void addunknownconnecteddevice(char *deviceid, char *address, int32 routeraddr)
     (*d)->reachplan.ipaddrs->next = NULL;
     (*d)->reachplan.ipaddrs->string = strdup(address);
     (*d)->reachplan.routeraddr = routeraddr;
-} // addunknownconnecteddevice
+    return *d;
+} // addunknowndevice
 
 device* getdevicebyid(char *deviceid) {
     device *d;
@@ -521,11 +522,13 @@ void identifydevice(char *localid, char *remoteid)
     } else {
         // we reached unknown device -> add it and set its status to connected
         if (targetdevice->linked) {
-            addunknownconnecteddevice(remoteid, targetdevice->reachplan.whichtouse,
-                                      targetdevice->reachplan.routeraddr);
+            reacheddevice = addunknowndevice(remoteid, targetdevice->reachplan.whichtouse,
+                                                       targetdevice->reachplan.routeraddr);
             // leave it up to the user if he/she wants to save the unknown device to specs
             targetdevice->reachplan.routeraddr = -1;
             setstatus(&targetdevice, status_inactive);
+            setstatus(&reacheddevice, status_connected);
+
         } else {
             // we had a temporary, unverified id -> believe workers id and quickly add to specs!
             if (strcmp(localid, remoteid) != 0) {
