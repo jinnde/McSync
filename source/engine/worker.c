@@ -222,7 +222,7 @@ char* deviceidondisk(char *hqs_deviceid) // returns NULL if there was a problem
     // try to get the device file lock, block for a minute before giving up
     if (!getlockfile(device_file_path, 60000)) {
         printerr("Error: Worker can't get lock file for device file.\n");
-        goto release_and_return;
+        return NULL;
     }
 
     devicefile = fopen(device_file_path, "r");

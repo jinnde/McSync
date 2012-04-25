@@ -461,11 +461,6 @@ void addunknownconnecteddevice(char *deviceid, char *address, int32 routeraddr)
     (*d)->reachplan.routeraddr = routeraddr;
 } // addunknownconnecteddevice
 
-void linkdeviceinspecs(device *d)
-{
-
-} // verifydeviceinspecs
-
 device* getdevicebyid(char *deviceid) {
     device *d;
 
@@ -487,55 +482,60 @@ device* getdevicebyplugnum(int32 plugnum) {
 void identifydevice(char *localid, char *remoteid)
 {
 
-    device *localdevice;
-    device *remotedevice; // those two might refer to the same device
+    device *targetdevice;
+    device *reacheddevice; // those two may refer to the same device
 
-    localdevice = getdevicebyid(localid);
-    remotedevice = getdevicebyid(remoteid);
+    targetdevice = getdevicebyid(localid);
+    reacheddevice = getdevicebyid(remoteid);
 
-    if (!localdevice) {
+    if (!targetdevice) { // we should always be able to find it, because it was
+                         // used to connect to reached device
         printerr("Error: Can't find device with id [%s]\n", localid);
         return;
     }
 
-    if (remotedevice != NULL) {
-        // we connected to some known device ...
-        if (remotedevice->status == status_connected) {
-            // ... which was already connected -> disconnect and remove plug
+    if (reacheddevice != NULL && reacheddevice->linked) {
+        // we reached some known device ...
+        if (reacheddevice->status == status_connected) {
+            // ... which is already connected
             printerr("Error: Device with id [%s] was connected to twice!\n", remoteid);
-            // do we need to remove a plug?
-            if (localdevice != remotedevice) {
-                sendremoveplugpleasecommand(hq_plug, localdevice->reachplan.routeraddr);
-                localdevice->reachplan.routeraddr = -1;
-                setstatus(&localdevice, status_inactive);
-            }
+            // connected through another device?
+            if (targetdevice != reacheddevice) {
+                sendremoveplugpleasecommand(hq_plug, targetdevice->reachplan.routeraddr);
+                targetdevice->reachplan.routeraddr = -1;
+                setstatus(&targetdevice, status_inactive);
+            } // else would mean we reached a connected device using the same device.
+              // this should have been caught by headquarters or command. we can't do
+              // anything about it here, because it means that the old plug was already
+              // memory leaked during the connection set up
         } else {
             // ... which we will set to be connected now -> transfer the plug if needed
-            if (localdevice != remotedevice) {
+            if (targetdevice != reacheddevice) {
                 printerr("Warning: Transferring plug from [%s] to [%s]\n", localid, remoteid);
-                remotedevice->reachplan.routeraddr = localdevice->reachplan.routeraddr;
-                localdevice->reachplan.routeraddr = -1;
-                setstatus(&localdevice, status_inactive);
+                reacheddevice->reachplan.routeraddr = targetdevice->reachplan.routeraddr;
+                targetdevice->reachplan.routeraddr = -1;
+                setstatus(&targetdevice, status_inactive);
             }
-            setstatus(&remotedevice, status_connected);
+            setstatus(&reacheddevice, status_connected);
         }
     } else {
-        // we connected to an unknown device -> add it and set as connected
-        if (localdevice->linked) {
-            addunknownconnecteddevice(remoteid, localdevice->reachplan.whichtouse,
-                                      localdevice->reachplan.routeraddr);
+        // we reached unknown device -> add it and set its status to connected
+        if (targetdevice->linked) {
+            addunknownconnecteddevice(remoteid, targetdevice->reachplan.whichtouse,
+                                      targetdevice->reachplan.routeraddr);
             // leave it up to the user if he/she wants to save the unknown device to specs
-            localdevice->reachplan.routeraddr = -1;
-            setstatus(&localdevice, status_inactive);
+            targetdevice->reachplan.routeraddr = -1;
+            setstatus(&targetdevice, status_inactive);
         } else {
-            // we had a temporary, unverified id -> believe workers id and quickly add specs!
+            // we had a temporary, unverified id -> believe workers id and quickly add to specs!
             if (strcmp(localid, remoteid) != 0) {
-                free(localdevice->deviceid);
-                localdevice->deviceid = strdup(remoteid);
+                free(targetdevice->deviceid);
+                targetdevice->deviceid = strdup(remoteid);
             }
-            localdevice->linked = 1;
-            linkdeviceinspecs(localdevice);
-            setstatus(&localdevice, status_connected);
+            targetdevice->linked = 1;
+            if (specstatevalid())
+                writespecsfile(specs_file_path);
+            setstatus(&targetdevice, status_connected);
         }
     }
 } // identifydevice
@@ -585,7 +585,7 @@ void hqmain(void)
                         break;
                     }
                     if (d->status == status_connected) {
-                        printerr("Warning: Got connect request for already connected "
+                        printerr("Error: Got connect request for already connected "
                                  "device [%s]\n", msg_data);
                         break;
                     }

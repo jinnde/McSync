@@ -590,7 +590,8 @@ void refreshhelp(void)
             // if evaluates to true, don't print help command
                (!strcmp((*arr)[i][0], "Ret") && type <= 0)
             || (!strcmp((*arr)[i][0], "C") && (type == -1
-                                        || gi_device->status != status_inactive))
+                                        || gi_device->status != status_inactive
+                                        || !specstatevalid()))
             || (!strcmp((*arr)[i][0], "DM") && type == -1)
             || (!strcmp((*arr)[i][0], "A") && type == -1)
             || (!strcmp((*arr)[i][0], "DA") && type != 3)
@@ -811,6 +812,9 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                 && gi_device->status == status_inactive) {
                         // TODO: Allow the user to specify which address he/she
                         // would like to use
+                        if (!specstatevalid())
+                            break;
+
                         if (gi_device->reachplan.ipaddrs)
                             gi_device->reachplan.whichtouse = gi_device->reachplan.ipaddrs->string;
                         sendmessage(cmd_plug, hq_int, msgtype_connectdevice,
@@ -1301,7 +1305,7 @@ void TUIstop2D(void)
     // <enter> reset <enter> to get back to the normal scrolling terminal mode
 } // TUIshutdown
 
-int doUI = 1; // can be turned off by -batch option
+int doUI = 1; // TODO: Can we remove this?
 int password_pause = 0; // signals when input should be allowed to go to ssh
 
 void TUImain(void)

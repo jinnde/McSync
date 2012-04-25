@@ -445,7 +445,7 @@ void* stream_shipping(void* voidplug);
 void freemessage(message skunk);
 
 // specification file handling
-void readspecsfile(char *specsfile); // sets up devicelist and graftlist
+int32 readspecsfile(char *specsfile); // sets up devicelist and graftlist
 int32 specstatevalid(void); // returns 1 if there exists a device with a reachplan and a graft;
 int32 writespecsfile(char *specsfile); // writes devicelist and graftlist
 

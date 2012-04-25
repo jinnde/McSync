@@ -59,11 +59,12 @@ int32 readspecs1(FILE *f) // reads the rest of a version-1 specs file,
             drecord->status = status_inactive;
             drecord->reachplan.routeraddr = -1;
 
+
+            drecord->deviceid = nextline(f);
+
             line = nextline(f);
-            part2 = strchr(line, ' ');
-            *part2 = '\0';
-            drecord->deviceid = strdup(line);
-            if (!strcmp(part2 + 1, "[linked]"))
+
+            if (!strcmp(line, "[ok]"))
                 drecord->linked = 1;
             else
                 drecord->linked = 0;
@@ -133,22 +134,17 @@ int32 readspecs1(FILE *f) // reads the rest of a version-1 specs file,
     return 1;
 } // readspecs1
 
-void readspecsfile(char *specsfile) // sets up devicelist and graftlist
+int32 readspecsfile(char *specsfile) // sets up devicelist and graftlist
 {
     FILE *f;
     char *line;
     int fileversion;
 
-    if (!getlockfile(specsfile, 60000)) {
-        printerr("Error: McSync can't get lock for specs file.\n");
-        goto release_and_exit;
-    }
-
     f = fopen(specsfile, "r");
     if (f == NULL) {
         printf("Error: Could not open specs file %s (%s)\n",
                 specsfile, strerror(errno));
-        goto release_and_exit;
+        return 0;
     }
 
     line = nextline(f);
@@ -157,13 +153,13 @@ void readspecsfile(char *specsfile) // sets up devicelist and graftlist
         printf("Error: First line of specs file (%s) should be 'version n'"
                 ", where n is the version of the file format (e.g. %d).\n",
                 specsfile, specsfileversionnumber);
-        goto release_and_exit;
+        return 0;
     }
     fileversion = atoi(line + 8);
     if (fileversion < 1) {
         printf("Error: specs file (%s) does not specify a positive integer"
                 " version.\n", specsfile);
-        goto release_and_exit;
+        return 0;
     }
     if (fileversion > specsfileversionnumber) {
         printf("Warning: specs file (%s) was written with format version %d,"
@@ -176,33 +172,15 @@ void readspecsfile(char *specsfile) // sets up devicelist and graftlist
 
     switch (fileversion) {
         case 1:
-                if (readspecs1(f)) {
-                    if (!releaselockfile(specsfile))
-                            printf("Error: McSync could not realease lock file! "
-                                   "Path: %s\n",
-                                    specsfile);
-                    return; // do not release_and_exit
-                }
+                return readspecs1(f);
                 break;
         default:
                 printf("I will try reading the specs file using format version "
                         "1.\n");
-                if (readspecs1(f)) {
-                    if (!releaselockfile(specsfile))
-                            printf("Error: McSync could not realease lock file! "
-                                   "Path: %s\n",
-                                   specsfile);
-                    return; // do not release_and_exit
-                }
+                return readspecs1(f);
                 break;
     }
-
-release_and_exit: // something went wrong!
-    if (!releaselockfile(specsfile))
-            printf("Error: McSync could not realease lock file! Path: %s\n",
-            specsfile);
     fclose(f);
-    cleanexit(__LINE__);
 } // readspecsfile
 
 int32 writespecsfile(char *specsfile) // writes devicelist and graftlist,
@@ -212,11 +190,6 @@ int32 writespecsfile(char *specsfile) // writes devicelist and graftlist,
     device *d;
     graft *g;
     stringlist *s;
-
-    if (!getlockfile(specsfile, 60000)) {
-        printerr("Error: McSync can't get lock for specs file.\n");
-        return 0;
-    }
 
     f = fopen(specsfile, "w");
     if (f == NULL) {
@@ -228,9 +201,9 @@ int32 writespecsfile(char *specsfile) // writes devicelist and graftlist,
     fprintf(f, "version 1\n");
 
     for (d = devicelist; d != NULL; d = d->next) {
-        fprintf(f, "\ndevice %s\n%s %s\n",
+        fprintf(f, "\ndevice %s\n%s\n%s\n", // <- if you change this, fix linkdeviceinspecs
                    d->nickname, d->deviceid,
-                   d->linked ? "[linked]" : "[temporary]");
+                   d->linked ? "[ok]" : "[??]");
         for (s = d->reachplan.ipaddrs; s != NULL; s = s->next) {
             fprintf(f, "%s\n", s->string);
         }
@@ -247,12 +220,6 @@ int32 writespecsfile(char *specsfile) // writes devicelist and graftlist,
     fprintf(f, "\nend of specs\n");
 
     fclose(f);
-
-    if (!releaselockfile(specsfile)) {
-            printf("Error: McSync could not realease lock file! Path: %s\n",
-            specsfile);
-            return 0;
-    }
 
     return 1;
 } // writespecsfile
