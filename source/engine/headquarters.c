@@ -620,6 +620,7 @@ void hqmain(void)
                                  "to any device (%d)\n", plugnum);
                         break;
                     }
+                    sendremoveplugpleasecommand(hq_plug, plugnum);
                     d->reachplan.routeraddr = -1;
                     setstatus(&d, status_inactive); // msg_data is deviceid
                     break;

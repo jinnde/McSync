@@ -836,6 +836,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         (*m)->linked = 0;
                         (*m)->status = status_inactive;
                         (*m)->reachplan.ipaddrs = NULL;
+                        (*m)->reachplan.routeraddr = -1;
                         gi_selecteddevice = i + 1;
                         gi_editselection = 1;
                         refreshscreen(); // just to set gi_editobject, etc.
@@ -847,7 +848,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             case 'a': // add address
                     if (gi_device != NULL) {
                         stringlist **st;
-                        int i = 3;
+                        int i = 2;
                         st = &(gi_device->reachplan.ipaddrs);
                         while (*st != NULL) {
                             st = &((*st)->next);
@@ -855,7 +856,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         }
                         *st = (stringlist*) malloc(sizeof(stringlist));
                         (*st)->next = NULL;
-                        (*st)->string = strdup("abc.com");
+                        (*st)->string = strdup("local:~/.mcsync");
                         gi_editselection = i;
                         refreshscreen(); // just to set gi_editobject, etc.
                         startediting();
