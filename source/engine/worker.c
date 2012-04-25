@@ -370,7 +370,7 @@ void workermain(connection worker_plug)
         }
         switch (msg_type) {
             case msgtype_info:
-                    printerr("worker got info message: \"%s\" from %d\n",
+                    printerr("Worker got info message: \"%s\" from %d\n",
                                     msg_data, msg_src);
                     break;
             case msgtype_identifydevice: // msg_data is hq's device id suggestion
@@ -381,9 +381,10 @@ void workermain(connection worker_plug)
                     cleanexit(__LINE__);
                 }
 
-                snprintf(buf, 90, "%s%c%s%c", msg_data, 0, deviceid, 0);
+                snprintf(buf, 90, "%s%c%s", msg_data, 0, deviceid);
                 sendmessage2(worker_plug, hq_int, msgtype_deviceid, buf);
-                free(deviceid);
+                if (deviceid != msg_data)
+                    free(deviceid);
             }
             break;
             case msgtype_scan:
@@ -397,6 +398,11 @@ void workermain(connection worker_plug)
                         freestringlist(prunepoints);
                     }
                     break;
+            case msgtype_exit:
+                printerr("Worker got exit message... good bye!");
+                sleep(10);
+                cleanexit(__LINE__);
+                break;
             default:
                     printerr("worker got unexpected message"
                                     " of type %lld from %d: \"%s\"\n",

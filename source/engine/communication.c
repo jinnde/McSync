@@ -1,16 +1,16 @@
 #include "definitions.h"
 
-connection cmd_plug, hq_plug, recruiter_plug, parent_plug, slave_worker_plug; // for direct access
+connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct access
 
 // The new_plug function needs to stop the main routing in order to add new
 // connection to the list
 pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 const char* msgtypelist[] = { "error (msgtype==0)",
-    "connectdevice", "newplugplease", "recruitworker", "failedrecruit",
-    "info", "workerisup", "connected", "disconnect", "identifydevice",
-    "deviceid", "listvirtualdir", "virtualdir", "touch",
-    "scanvirtualdir", "scan" };
+    "connectdevice", "newplugplease", "removeplugplease", "recruitworker",
+    "failedrecruit", "info", "workerisup", "connected", "disconnect",
+    "identifydevice", "deviceid", "listvirtualdir", "virtualdir", "touch",
+    "scanvirtualdir", "scan", "exit" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -718,7 +718,16 @@ void sendrecruitcommand(connection plug, int32 plugnum, char *address)
     freebytestream(serialized);
 } // sendrecruitcommand
 
-// only used by recruiter
+void sendremoveplugpleasecommand(connection plug, int32 plugnum)
+{
+    bytestream serialized = initbytestream(4);
+    serializeint32(serialized, plugnum);
+    nsendmessage(plug, recruiter_int, msgtype_removeplugplease, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendremoveplugpleasecommand
+
+//// only used by recruiter
+
 void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnum)
 {
     bytestream serialized = initbytestream(20);
@@ -766,9 +775,8 @@ int receivemessage(connection plug, listint* src, int64* type, char** data)
     return 1;
 } // receivemessage
 
-void receivevirtualdir(char *msg_data, char **path, queue receivednodes)
+void receivevirtualdir(char *source, char **path, queue receivednodes)
 {
-    char *source = msg_data; // pointer manipulated by deserialization
     *path = deserializestring(&source);
     int32 count = deserializeint32(&source);
     virtualnode *node;
@@ -782,30 +790,31 @@ void receivevirtualdir(char *msg_data, char **path, queue receivednodes)
     }
 } // receivevirtualdir
 
-void receivescancommand(char *msg_data, char **scanroot, stringlist **prunepoints)
+void receivescancommand(char *source, char **scanroot, stringlist **prunepoints)
 {
-    char *source = msg_data; // pointer manipulated by deserialization
     *scanroot = deserializestring(&source);
     *prunepoints = deserializestringlist(&source);
 } // receivescancommand
 
-void receiverecruitcommand(char *msg_data, int32 *plugnum, char **address)
+void receiverecruitcommand(char *source, int32 *plugnum, char **address)
 {
-    char *source = msg_data; // pointer manipulated by deserialization
     *plugnum = deserializeint32(&source);
     *address = deserializestring(&source);
 } // receiverecruitcommand
 
-void receivefailedrecruitmessage(char *msg_data, int32 *plugnum)
+void receivefailedrecruitmessage(char *source, int32 *plugnum)
 {
-    char *source = msg_data; // pointer manipulated by deserialization
     *plugnum = deserializeint32(&source);
 } // receivefailedrecruitmessage
 
-void receivenewplugresponse(char *msg_data, char **reference, int32 *plugnum)
+void receivenewplugresponse(char *source, char **reference, int32 *plugnum)
 {
-    char *source = msg_data; // pointer manipulated by deserialization
     *reference = deserializestring(&source);
+    *plugnum = deserializeint32(&source);
+} // receivenewplugresponse
+
+void receiveremoveplugpleasecommand(char *source, int32 *plugnum)
+{
     *plugnum = deserializeint32(&source);
 } // receivenewplugresponse
 
@@ -821,8 +830,8 @@ void receivenewplugresponse(char *msg_data, char **reference, int32 *plugnum)
 
 void* forward_raw_errors(void* voidplug)
 {
-    FILE*           stream_in;
-    connection      plug = voidplug; // so compiler knows type
+    FILE* stream_in;
+    connection plug = voidplug; // so compiler knows type
 
     stream_in = plug->errfromkid;
     while (1) {
@@ -830,7 +839,7 @@ void* forward_raw_errors(void* voidplug)
         c = getc(stream_in);
         if (c != EOF) {
             if (c == '\n')
-                printerr(" (from %d)", plug->thisway->values[0]);
+                printerr(" (from %d)", plug->plugnumber);
             printerr("%c", (char)c);
             // fflush(ourerr); probably slow and not necessary
         }
@@ -840,7 +849,7 @@ void* forward_raw_errors(void* voidplug)
 void* stream_receiving(void* voidplug)
 {
     FILE* stream_in;
-    connection      plug = voidplug; // so compiler knows type
+    connection plug = voidplug; // so compiler knows type
 
     stream_in = plug->fromkid;
     while (1) {
@@ -926,7 +935,7 @@ connection new_connection(void)
     return plug;
 } // new_connection
 
-void channel_launch(connection plug,  channel_initializer initializer)
+void channel_launch(connection plug, channel_initializer initializer)
 {
     pthread_create(&plug->listener, pthread_attr_default,
                     initializer, (void *)plug);
@@ -944,8 +953,8 @@ void* parent_initializer(void *voidplug)
     connection plug = (connection) voidplug; // so compiler knows type
     // we use three threads (this + 2 others) to handle the three I/O streams
     plug->tokid = stdout; // "kid" is the remote thing -- here it's the parent
-    plug->fromkid = stdin; // and stdout_packager will read from stdin, etc.
-    pthread_create(&plug->stdout_packager, pthread_attr_default,
+    plug->fromkid = stdin; // and stream_shipper will read from stdin, etc.
+    pthread_create(&plug->stream_shipper, pthread_attr_default,
                     &stream_shipping, (void *)plug);
     stream_receiving(plug); // never returns
     return NULL; // keep compiler happy
@@ -966,12 +975,25 @@ void* headquarters_initializer(void *argument)
 void *cmd_initializer(void *argument)
 {
     cmd_thread_start_function(); // returns when user exits,
-                                 // set by main.c to user choice (e.g. TUImain or climain)
+                                 // set by main.c to user choice
+                                 // (e.g. TUImain or climain)
     cleanexit(0); // kill all other threads and really exit
     return NULL;
 } // cmd_initializer
 
 connection connection_list = NULL;
+
+connection findconnectionbyplugnumber(int32 plugnumber)
+{
+    connection plug;
+
+    pthread_mutex_lock(&connections_mutex);
+    for (plug = connection_list; plug != NULL; plug = plug->next)
+        if (plug->plugnumber == plugnumber)
+            break;
+    pthread_mutex_unlock(&connections_mutex);
+    return plug;
+} // findconnectionbyplugnumber
 
 // adds a connection to connection_lists. Waits until routermain stops being busy
 // and then blocks access to the list it until the new connection is added
@@ -981,6 +1003,7 @@ void add_connection(connection *store_plug_here, int32 plugnumber)
 
     if (plugnumber) { // normal case (any plug but the parent plug)
         plug->thisway = singletonintlist(plugnumber);
+        plug->plugnumber = plugnumber;
         // add to front of list
         pthread_mutex_lock(&connections_mutex);
         plug->next = connection_list;
@@ -989,6 +1012,7 @@ void add_connection(connection *store_plug_here, int32 plugnumber)
     } else {
         // it is parent (compiler might mis-optimize parent_plug)
         plug->thisway = emptyintlist(); // parent doesn't list destinations
+        plug->plugnumber = 0;
         // add parent to end of list (it will always stay at end)
         pthread_mutex_lock(&connections_mutex);
         connection* final = &connection_list;
@@ -998,15 +1022,41 @@ void add_connection(connection *store_plug_here, int32 plugnumber)
         *final = plug;
         pthread_mutex_unlock(&connections_mutex);
     }
-
-    *store_plug_here = plug;
+    if (store_plug_here)
+        *store_plug_here = plug;
 } // add_connection
 
 // removes a connection from connection_lists. Waits until routermain tops being busy
 // and blocks accces to the list until the given connection was removed
-void remove_connection(connection skunk)
+connection remove_connection(int32 plugnumber)
 {
-  // TODO remove connection!
+    connection plug;
+    connection previous = NULL;
+
+    pthread_mutex_lock(&connections_mutex);
+
+    plug = connection_list;
+    while (plug != NULL) {
+        if (plug->plugnumber == plugnumber)
+            break;
+        previous = plug;
+        plug = plug->next;
+    }
+    if (!plug) {
+        printerr("Error: Post office got connection remove request with unused "
+                 "plug number [%d]", plugnumber);
+
+        pthread_mutex_unlock(&connections_mutex);
+        return NULL;
+    }
+    if (!previous)
+        connection_list = plug->next;
+    else
+        previous->next = plug->next;
+
+    pthread_mutex_unlock(&connections_mutex);
+
+    return plug;
 } // remove_connection
 
 void routermain(int master, int plug_id)

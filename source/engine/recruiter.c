@@ -1,7 +1,6 @@
 #include "definitions.h"
 
 static int32 next_free_address = firstfree_int;
-static connection workerplugs[recruiter_max_worker_plugs]; // initialized to zero by compiler
 
 char* homedirectory(void) // caches answer -- do not alter or free!
 {
@@ -291,15 +290,7 @@ void* raisechild(void* voidplug)
     }
     waitforstring(plug->fromkid, slave_start_string); // till mcsync is live
     fprintf(plug->tokid, "%s", hi_slave_string);
-    int32 plugnum;
-    for (plugnum = 0; plugnum < recruiter_max_worker_plugs; plugnum++)
-        if (workerplugs[plugnum] == plug)
-            break;
-
-    if (plugnum == recruiter_max_worker_plugs)
-        printerr("Error: Could not find slave plug number!");
-    else
-        put32safe(plug->tokid, plugnum);
+    put32safe(plug->tokid, plug->plugnumber);
     fflush(plug->tokid);
     raised = 1;
     return NULL;
@@ -348,7 +339,7 @@ int32 reachforremote(connection plug) // try to get mcsync started on remote sit
 
 leave_terminal_mode:
     if (raised == 0 || failed == 1) { // total failure
-        printerr("Could not connect!");
+        printerr("Could not connect!\n");
         retval = 0;
     }
     printerr("<leaving terminal mode>\n");
@@ -359,18 +350,17 @@ leave_terminal_mode:
 
 int32 recruitworker(int32 plugnum, char *address)
 {
-    connection plug = workerplugs[plugnum];
+    connection plug = findconnectionbyplugnumber(plugnum);
 
     if (!plug)
         return 0;
+
+    plug->address = address;
 
     if (!strncmp(address, "local:", 6)) {
         channel_launch(plug, &localworker_initializer);
         return 1;
     }
-
-    // we need to connect to a remote device
-    plug->address = address;
 
     if (reachforremote(plug)) { // fills plug with streams to remote mcsync
        // if non 0 -> success!
@@ -378,16 +368,34 @@ int32 recruitworker(int32 plugnum, char *address)
        pthread_create(&plug->stderr_forwarder, pthread_attr_default,
                                  &forward_raw_errors, (void *)plug);
        // put two threads (this + 1 other) on the I/O stream/message conversions
-       pthread_create(&plug->stdout_packager, pthread_attr_default,
+       pthread_create(&plug->stream_shipper, pthread_attr_default,
                                  &stream_shipping, (void *)plug);
 
-       pthread_create(&plug->stdout_packager, pthread_attr_default,
+       pthread_create(&plug->stream_receiver, pthread_attr_default,
                                 &stream_receiving, (void *)plug);
        return 1;
     }
 
     return 0; // failed to reach
 } // recruitworker
+
+void freeconnection(connection skunk) {
+    freeintlist(skunk->thisway);
+    if (skunk->address)
+        free(skunk->address);
+    // clear the message queue
+    // freemessage(skunk->messages_tokid_head);
+    // freemessage(skunk->messages_fromkid_head);
+    free(skunk);
+} // freeconnection
+
+
+void fireworker(connection plug)
+{
+    // is it a worker at all?
+    // local guy -> kill thread it runs in
+    // Is it a remote guy?
+} // fireworker
 
 void reqruitermain(void)
 {
@@ -407,7 +415,7 @@ void reqruitermain(void)
                     break;
             case msgtype_newplugplease: // msg_data is the reference we should
                                         // send back toghether with a new plug number
-                add_connection(&workerplugs[next_free_address], next_free_address);
+                add_connection(NULL, next_free_address);
                 sendnewplugresponse(msg_src, msg_data, next_free_address);
                 next_free_address++;
                 break;
@@ -419,6 +427,16 @@ void reqruitermain(void)
                 if (! recruitworker(plugnum, address))
                     sendfailedrecruitmessage(msg_src, plugnum);
                 free(address);
+            }
+            break;
+            case msgtype_removeplugplease:
+            {
+                int32 plugnum;
+                connection plug;
+                receiveremoveplugpleasecommand(msg_data, &plugnum);
+                printerr("Got remove plug please command for plug %d", plugnum);
+                plug = remove_connection(plugnum);
+                // fireworker(plug);
             }
             break;
             default:

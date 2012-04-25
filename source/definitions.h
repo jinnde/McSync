@@ -55,17 +55,13 @@ typedef unsigned long long int uint64;
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
 #define device_file_path "./data/device"
-#define friends_list_file_path "./data/friendslist"
+#define known_devices_list_file_path "./data/knowndevices"
 
-#define device_id_size 16           // size of device id in bytes
-#define double_device_id_size 32    // size of device id when stored as hex string
-// always changes those two ^ values togheter
+#define device_id_size 16
 
 // limit depth and file name length in virtual tree
 #define virtual_path_depth_max 1024
 #define virtual_file_name_max 256
-
-#define recruiter_max_worker_plugs 64
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of data types /////////////////////////////////
@@ -178,8 +174,6 @@ typedef struct device_struct { // all you need to know about an arbitrary device
     struct device_struct *next;
     char *nickname;     // a user-friendly name
     char *deviceid;     // a long random unique id string, never changes on device
-    int32 verified;     // bool, whether there was a successful id verfication
-                        // with the device.
     status_t status;    // whether it is currently connected, what it's doing
     stringlist *networks;       // networks this device can usefully reach
     char *preferred_hq;         // if started on this device, use this hq (if set)
@@ -268,11 +262,12 @@ typedef struct message_struct { // threads communicate by sending these
 } *message;
 
 typedef struct connection_struct { // all a router needs to provide plug  huh? XXX
+    int32           plugnumber;     // the plugnumber associated with this connection
     intlist         thisway; // what sites lie in this direction
     message         messages_tokid_tail, messages_fromkid_head; // for router
     message         messages_tokid_head, messages_fromkid_tail; // for kid r/w:h/t
     pthread_t       listener; // on local connections this also writes the output
-    pthread_t       stdout_packager, stderr_forwarder;  // for remote & parent
+    pthread_t       stream_shipper, stream_receiver, stderr_forwarder;  // for remote & parent
     FILE            *tokid, *fromkid, *errfromkid;      // for remote & parent
     struct connection_struct *next;
     // from here on down is only used during creation of the connection
@@ -290,21 +285,27 @@ extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct 
 #define recruiter_int   3
 #define firstfree_int   4
 
-#define msgtype_connectdevice   1
-#define msgtype_newplugplease   2
-#define msgtype_recruitworker   3
-#define msgtype_failedrecruit   4
-#define msgtype_info            5
-#define msgtype_workerisup      6
-#define msgtype_connected       7
-#define msgtype_disconnect      8
-#define msgtype_identifydevice  9
-#define msgtype_deviceid        10
-#define msgtype_listvirtualdir  11
-#define msgtype_virtualdir      12
-#define msgtype_touch           13 // mark virtual node as touched (changed) on cmd
-#define msgtype_scanvirtualdir  14 // the message contains a virtual path (usually a request from cmd to hq)
-#define msgtype_scan            15 // the message contains a host path and prune points (usually a request from hq to wrks)
+#define msgtype_connectdevice       1
+#define msgtype_newplugplease       2
+#define msgtype_removeplugplease    3
+#define msgtype_recruitworker       4
+#define msgtype_failedrecruit       5
+#define msgtype_info                6
+#define msgtype_workerisup          7
+#define msgtype_connected           8
+#define msgtype_disconnect          9
+#define msgtype_identifydevice      10
+#define msgtype_deviceid            11
+#define msgtype_listvirtualdir      12
+#define msgtype_virtualdir          13
+#define msgtype_touch               14
+// ^ mark virtual node as touched (changed) on cmd
+#define msgtype_scanvirtualdir      15
+// ^ the message contains a virtual path (usually a request from cmd to hq)
+#define msgtype_scan                16
+// ^ the message contains a host path and prune points (usually a request from hq to wrks)
+#define msgtype_exit                17
+// ^ the destinatin is requested to cleanexit
 
 // if you change these^, change msgtypelist in communication.c
 
@@ -365,27 +366,31 @@ char* secondstring(char* string); // read the second string from a sendmessage2 
 // virtual node comnunication between cmd and hq
 void sendvirtualnoderquest(virtualnode *root, virtualnode *node); // sends a list virtual node request, only to be used from cmd
 void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
-void receivevirtualdir(char *msg_data, char **path, queue receivednodes);
+void receivevirtualdir(char *source, char **path, queue receivednodes);
 
 // scan communication
 void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node);
 void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints);
-void receivescancommand(char *msg_data, char **scanroot, stringlist **prunepoints);
+void receivescancommand(char *source, char **scanroot, stringlist **prunepoints);
 
-// worker recruiting
-void sendrecruitcommand(connection plug, int32 plugnum, char *address); // allways sent to recruiter
-void receiverecruitcommand(char *msg_data, int32 *plugnum, char **address); // used by recruiter
+// recruiter communication
+void sendrecruitcommand(connection plug, int32 plugnum, char *address); // always sent to recruiter
+void receiverecruitcommand(char *source, int32 *plugnum, char **address); // used by recruiter
 
 void sendfailedrecruitmessage(int32 recipient, int32 plugnum); // used by recruiter
-void receivefailedrecruitmessage(char *msg_data, int32 *plugnum);
+void receivefailedrecruitmessage(char *source, int32 *plugnum);
 
 void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnum); // used by recruiter
-void receivenewplugresponse(char *msg_data, char **reference, int32 *plugnum);
+void receivenewplugresponse(char *source, char **reference, int32 *plugnum);
+
+void sendremoveplugpleasecommand(connection plug, int32 plugnum); // always sent to recruiter
+void receiveremoveplugpleasecommand(char *source, int32 *plugnum); // used by recruiter
 
 ////////  general purpose data structures
 
 // intlist
 intlist emptyintlist(void);
+void freeintlist(intlist skunk);
 void addtointlist(intlist il, listint n); // keeps list sorted, works for multisets
 void removefromintlist(intlist il, listint n);
 
@@ -418,13 +423,20 @@ void workermain(connection workerplug);
 void reqruitermain(void);
 
 void routermain(int master, int plug_id);
-void add_connection(connection *plug, int plugnumber); // only used by routermain and recruiter
-void channel_launch(connection plug, channel_initializer initializer); // only used by routermain and recruiter
+
+// post office (routermain) and recruiter interaction
+void add_connection(connection *storeplughere, int plugnumber);
+connection remove_connection(int32 plugnumber);
+
+connection findconnectionbyplugnumber(int32 plugnumber);
+void channel_launch(connection plug, channel_initializer initializer);
 
 void* localworker_initializer(void *voidplug); // only used by routermain and recruiter
 void* forward_raw_errors(void* voidplug);
 void* stream_receiving(void* voidplug);
 void* stream_shipping(void* voidplug);
+
+void freemessage(message skunk);
 
 // specification file handling
 void readspecsfile(char *specsfile); // sets up devicelist and graftlist

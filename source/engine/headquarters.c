@@ -307,52 +307,56 @@ void setstatus(device **target, status_t newstatus)
 
 
 /*
-Friends list file format:
-All friends device ids are stored as hex strings with no delimiter.
+Known devices list file format:
+The device ids including the null terminator are simply separated by newlines
 */
-void addtofriends(device *d)
+
+
+void addtoknowndevices(char* deviceid)
 {
-    FILE *friendslist;
+    FILE *knownlist;
 
-    friendslist = fopen(friends_list_file_path, "a");
+    knownlist = fopen(known_devices_list_file_path, "a");
 
-    if (!friendslist) {
-        printerr("Error: Could not open friends lists (%s) Path: %s\n",
-                 strerror(errno), friends_list_file_path);
+    if (!knownlist) {
+        printerr("Error: Could not open known devices lists (%s) Path: %s\n",
+                 strerror(errno), known_devices_list_file_path);
         return;
     }
-    if (fputs(d->deviceid, friendslist) < 0 ) {
-        printerr("Error: Could not write to friends lists (%s) Path %s\n",
-                    strerror(errno), friends_list_file_path);
+    if (fprintf(knownlist, "%s\n", deviceid) < 0 ) {
+        printerr("Error: Could not write to known devices lists (%s) Path %s\n",
+                    strerror(errno), known_devices_list_file_path);
     }
-    fclose(friendslist);
+    fclose(knownlist);
     return;
-} // addtofriends
+} // addtoknowndevices
 
-int32 isfriend(device *d) // 1 means the device is in the friendslist
+int32 isknowndevice(char *deviceid) // 1 means the device is known
 {
-    FILE *friendslist;
-    char line[double_device_id_size];
+    FILE *knownlist;
+    int32 idstringsize = device_id_size * 2 + 1; // leave room from \n
+    char *line = (char*) malloc(idstringsize);
 
-    friendslist = fopen(friends_list_file_path, "r");
-    if (!friendslist) {
+    knownlist = fopen(known_devices_list_file_path, "r");
+    if (!knownlist) {
         if (errno != ENOENT) {
-            printerr("Error: Could not open friends lists (%s) Path: %s\n",
-                     strerror(errno), friends_list_file_path);
+            printerr("Error: Could not open known devices lists (%s) Path: %s\n",
+                     strerror(errno), known_devices_list_file_path);
         }
         return 0;
     }
 
-    while (fgets(line, double_device_id_size, friendslist) != NULL) {
-        if (!strcmp(line, d->deviceid)) {
-            fclose(friendslist);
+    while (fgets(line, idstringsize + 1, knownlist) != NULL) { // read the \n
+        if (!strncmp(line, deviceid, idstringsize - 1)) {      // but ignore it
+            free(line);
+            fclose(knownlist);
             return 1;
         }
     }
-
-    fclose(friendslist);
+    free(line);
+    fclose(knownlist);
     return 0;
-} // isfriend
+} // isknowndevice
 
 void hq_reachfor(device *d)
 {
@@ -492,6 +496,23 @@ void sendvirtualnodelisting(char* path) // sends back all children of node at pa
     sendvirtualdir(hq_plug, cmd_int, path, dir);
 } // sendvirtualnodelisting
 
+void addunknownconnecteddevice(char *deviceid, char *address, int32 routeraddr)
+{
+    device **d;
+    int i = 0;
+    for (d = &devicelist; *d != NULL; d = &((*d)->next))
+        i++;
+    *d = (device*) malloc(sizeof(device));
+    (*d)->next = NULL;
+    (*d)->nickname = strdup("Unknown Device");
+    (*d)->deviceid = strdup(deviceid);
+    (*d)->status = status_connected;
+    (*d)->reachplan.ipaddrs = (stringlist*) malloc(sizeof(stringlist));
+    (*d)->reachplan.ipaddrs->next = NULL;
+    (*d)->reachplan.ipaddrs->string = strdup(address);
+    (*d)->reachplan.routeraddr = routeraddr;
+} // addunknownconnecteddevice
+
 device* getdevicebyid(char *deviceid) {
     device *d;
 
@@ -509,6 +530,65 @@ device* getdevicebyplugnum(int32 plugnum) {
             break;
     return d;
 } // getdevice
+
+void identifydevice(char *localid, char *remoteid)
+{
+
+    device *localdevice;
+    device *remotedevice; // those two might refer to the same device
+
+    localdevice = getdevicebyid(localid);
+
+    if (!localdevice) {
+        printerr("Error: Can't find device with id [%s]\n", localid);
+        return;
+    }
+
+    if (isknowndevice(remoteid)) {
+        // we connected to some known device ...
+        remotedevice = getdevicebyid(remoteid);
+        if (!remotedevice) {
+            printerr("Error: Can't find previously known device with id [%s]\n", remoteid);
+            return;
+        }
+        if (remotedevice->status == status_connected) {
+            // ... which was already connected -> disconnect and remove plug
+            printerr("Error: Device with id [%s] was connected to twice!\n", remoteid);
+            // do we need to remove a plug?
+            if (localdevice != remotedevice) {
+                sendremoveplugpleasecommand(hq_plug, localdevice->reachplan.routeraddr);
+                localdevice->reachplan.routeraddr = -1;
+                setstatus(&localdevice, status_inactive);
+            }
+        } else {
+            // ... which we will set to be connected now -> transfer the plug if needed
+            if (localdevice != remotedevice) {
+                printerr("Warning: Transferring plug from [%s] to [%s]\n", localid, remoteid);
+                remotedevice->reachplan.routeraddr = localdevice->reachplan.routeraddr;
+                localdevice->reachplan.routeraddr = -1;
+                setstatus(&localdevice, status_inactive);
+            }
+            setstatus(&remotedevice, status_connected);
+        }
+    } else {
+        // we connected to an unknown device -> add it and set as connected
+        if (isknowndevice(localid)) {
+            addunknownconnecteddevice(remoteid, localdevice->reachplan.whichtouse,
+                                      localdevice->reachplan.routeraddr);
+            addtoknowndevices(remoteid);
+            localdevice->reachplan.routeraddr = -1;
+            setstatus(&localdevice, status_inactive);
+        } else {
+            // we had a temporary, unverified id -> believe workers id!
+            if (strcmp(localid, remoteid) != 0) {
+                free(localdevice->deviceid);
+                localdevice->deviceid = strdup(remoteid);
+            }
+            addtoknowndevices(remoteid);
+            setstatus(&localdevice, status_connected);
+        }
+    }
+} // identifydevice
 
 void hqmain(void)
 {
@@ -540,28 +620,23 @@ void hqmain(void)
                     break;
             case msgtype_deviceid:
             {
-                    char *ourid = msg_data;
+                    char *localid = msg_data;
                     char *remoteid = secondstring(msg_data);
 
-                    printerr("Heard that plug %d is for device we know as %s "
-                             "(It calls itself: %s).\n",
-                             msg_src, ourid, remoteid);
+                    printerr("Heard that device we call [%s] it calls itself [%s]\n",
+                             localid, remoteid);
 
-                    if (! (d = getdevicebyid(ourid))) {
-                         printerr("Error: Received unknown device id \"%s\"\n", msg_data);
-                         break;
-                     }
-
-                    if (!strcmp(ourid, remoteid)) {
-
-                    }
-
-                    //setstatus(msg_data, status_connected);
+                    identifydevice(localid, remoteid);
                     break;
             }
             case msgtype_connectdevice: // msg_data is device id
                    if (! (d = getdevicebyid(msg_data))) {
-                        printerr("Error: Received unknown device id \"%s\"\n", msg_data);
+                        printerr("Error: Received unknown device id [%s]\n", msg_data);
+                        break;
+                    }
+                    if (d->status == status_connected) {
+                        printerr("Warning: Got connect request for already connected "
+                                 "device [%s]\n", msg_data);
                         break;
                     }
                     if (d->reachplan.routeraddr == -1) {
@@ -576,7 +651,7 @@ void hqmain(void)
                 int32 plugnum;
                 receivenewplugresponse(msg_data, &deviceid, &plugnum);
                 if (! (d = getdevicebyid(deviceid))) {
-                    printerr("Error: Received unknown device id \"%s\"\n", msg_data);
+                    printerr("Error: Received unknown device id [%s]\n", msg_data);
                     free(deviceid);
                     break;
                 }

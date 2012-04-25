@@ -9,6 +9,7 @@ char *generatedeviceid() // unique device id generation using /dev/random
     char randombuf[device_id_size];
     char *deviceid;
     FILE *devrandom;
+    int32 idstringsize = device_id_size * 2 + 1;
     int32 i, j;
 
     devrandom = fopen("/dev/random", "rb");
@@ -27,10 +28,11 @@ char *generatedeviceid() // unique device id generation using /dev/random
     fclose(devrandom);
 
     // store the device id in hex for human readability
-    deviceid = (char*) malloc(device_id_size * 2);
+    deviceid = (char*) malloc(idstringsize);
     for (i = 0, j = 0; i < device_id_size; i++, j = i * 2) {
         tohex(randombuf[i], &deviceid[j], &deviceid[j + 1]);
     }
+    *(deviceid + idstringsize) = '\0';
     return deviceid;
 } // generatedeviceid
 
@@ -809,7 +811,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                 && gi_device->status == status_inactive) {
                         // TODO: Allow the user to specify which address he/she
                         // would like to use
-                        gi_device->reachplan.whichtouse = gi_device->reachplan.ipaddrs->string;
+                        if (gi_device->reachplan.ipaddrs)
+                            gi_device->reachplan.whichtouse = gi_device->reachplan.ipaddrs->string;
                         sendmessage(cmd_plug, hq_int, msgtype_connectdevice,
                                     gi_device->deviceid);
                     } else {
@@ -826,7 +829,6 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         (*m)->next = NULL;
                         (*m)->nickname = strdup("newdevice");
                         (*m)->deviceid = generatedeviceid();
-                        (*m)->verified = 0;
                         (*m)->status = status_inactive;
                         (*m)->reachplan.ipaddrs = NULL;
                         gi_selecteddevice = i + 1;
