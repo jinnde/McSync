@@ -55,7 +55,7 @@ typedef unsigned long long int uint64;
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
 #define device_file_path "./data/device"
-#define known_devices_list_file_path "./data/knowndevices"
+#define specs_file_path "./config/specs"
 
 #define device_id_size 16
 
@@ -174,6 +174,8 @@ typedef struct device_struct { // all you need to know about an arbitrary device
     struct device_struct *next;
     char *nickname;     // a user-friendly name
     char *deviceid;     // a long random unique id string, never changes on device
+    int32 linked;       // boolean, whether this device had sucessfully agreed
+                        // upon an id with a local or remote worker.
     status_t status;    // whether it is currently connected, what it's doing
     stringlist *networks;       // networks this device can usefully reach
     char *preferred_hq;         // if started on this device, use this hq (if set)
@@ -351,6 +353,10 @@ int64 get64(FILE* input);
 char* getstring(FILE* input, char delimiter); // returns new string; free when done
 void tohex(unsigned char c, char* a, char* b);
 
+// file locking
+int32 getlockfile(char *path, int32 maxtime);
+int32 releaselockfile(char *path); //returns 1 if sucessful, 0 otherwise
+
 // communication control
 void waitforstring(FILE* input, char* string);
 void waitforsequence(FILE* input, char* sequence, int len, int echo);
@@ -440,8 +446,8 @@ void freemessage(message skunk);
 
 // specification file handling
 void readspecsfile(char *specsfile); // sets up devicelist and graftlist
-int specstatevalid(void); // returns 1 if there exists a device with a reachplan and a graft;
-void writespecsfile(char *specsfile); // writes devicelist and graftlist
+int32 specstatevalid(void); // returns 1 if there exists a device with a reachplan and a graft;
+int32 writespecsfile(char *specsfile); // writes devicelist and graftlist
 
 // virtual tree
 void initvirtualroot(virtualnode *root); // used by HQ and CMD (e.g. tui.c)

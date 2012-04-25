@@ -1066,7 +1066,7 @@ void routermain(int master, int plug_id)
     // stdin/stdout are used by (master ? TUI : parent)
     intlist cream = emptyintlist(); // cream is (almost) always empty!
 
-    readspecsfile("config/specs"); // even slaves need the list of devices
+    readspecsfile(specs_file_path); // even slaves need the list of devices
 
     // set up the basic set of channels
     if (master) {

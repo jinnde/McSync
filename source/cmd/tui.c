@@ -829,6 +829,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         (*m)->next = NULL;
                         (*m)->nickname = strdup("newdevice");
                         (*m)->deviceid = generatedeviceid();
+                        (*m)->linked = 0;
                         (*m)->status = status_inactive;
                         (*m)->reachplan.ipaddrs = NULL;
                         gi_selecteddevice = i + 1;
@@ -1054,7 +1055,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     break;
             case 's': // save specs file
                     if(specstatevalid()) {
-                        writespecsfile("config/specs");
+                        writespecsfile(specs_file_path);
                         gi_dirtyspecs = 0;
                     }
                     refreshscreen();

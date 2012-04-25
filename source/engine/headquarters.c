@@ -305,59 +305,6 @@ void setstatus(device **target, status_t newstatus)
                 newstatus, statusword[newstatus]);
 } // setstatus
 
-
-/*
-Known devices list file format:
-The device ids including the null terminator are simply separated by newlines
-*/
-
-
-void addtoknowndevices(char* deviceid)
-{
-    FILE *knownlist;
-
-    knownlist = fopen(known_devices_list_file_path, "a");
-
-    if (!knownlist) {
-        printerr("Error: Could not open known devices lists (%s) Path: %s\n",
-                 strerror(errno), known_devices_list_file_path);
-        return;
-    }
-    if (fprintf(knownlist, "%s\n", deviceid) < 0 ) {
-        printerr("Error: Could not write to known devices lists (%s) Path %s\n",
-                    strerror(errno), known_devices_list_file_path);
-    }
-    fclose(knownlist);
-    return;
-} // addtoknowndevices
-
-int32 isknowndevice(char *deviceid) // 1 means the device is known
-{
-    FILE *knownlist;
-    int32 idstringsize = device_id_size * 2 + 1; // leave room from \n
-    char *line = (char*) malloc(idstringsize);
-
-    knownlist = fopen(known_devices_list_file_path, "r");
-    if (!knownlist) {
-        if (errno != ENOENT) {
-            printerr("Error: Could not open known devices lists (%s) Path: %s\n",
-                     strerror(errno), known_devices_list_file_path);
-        }
-        return 0;
-    }
-
-    while (fgets(line, idstringsize + 1, knownlist) != NULL) { // read the \n
-        if (!strncmp(line, deviceid, idstringsize - 1)) {      // but ignore it
-            free(line);
-            fclose(knownlist);
-            return 1;
-        }
-    }
-    free(line);
-    fclose(knownlist);
-    return 0;
-} // isknowndevice
-
 void hq_reachfor(device *d)
 {
     if (!d->reachplan.whichtouse) {
@@ -507,11 +454,17 @@ void addunknownconnecteddevice(char *deviceid, char *address, int32 routeraddr)
     (*d)->nickname = strdup("Unknown Device");
     (*d)->deviceid = strdup(deviceid);
     (*d)->status = status_connected;
+    (*d)->linked = 1;
     (*d)->reachplan.ipaddrs = (stringlist*) malloc(sizeof(stringlist));
     (*d)->reachplan.ipaddrs->next = NULL;
     (*d)->reachplan.ipaddrs->string = strdup(address);
     (*d)->reachplan.routeraddr = routeraddr;
 } // addunknownconnecteddevice
+
+void linkdeviceinspecs(device *d)
+{
+
+} // verifydeviceinspecs
 
 device* getdevicebyid(char *deviceid) {
     device *d;
@@ -538,19 +491,15 @@ void identifydevice(char *localid, char *remoteid)
     device *remotedevice; // those two might refer to the same device
 
     localdevice = getdevicebyid(localid);
+    remotedevice = getdevicebyid(remoteid);
 
     if (!localdevice) {
         printerr("Error: Can't find device with id [%s]\n", localid);
         return;
     }
 
-    if (isknowndevice(remoteid)) {
+    if (remotedevice != NULL) {
         // we connected to some known device ...
-        remotedevice = getdevicebyid(remoteid);
-        if (!remotedevice) {
-            printerr("Error: Can't find previously known device with id [%s]\n", remoteid);
-            return;
-        }
         if (remotedevice->status == status_connected) {
             // ... which was already connected -> disconnect and remove plug
             printerr("Error: Device with id [%s] was connected to twice!\n", remoteid);
@@ -572,19 +521,20 @@ void identifydevice(char *localid, char *remoteid)
         }
     } else {
         // we connected to an unknown device -> add it and set as connected
-        if (isknowndevice(localid)) {
+        if (localdevice->linked) {
             addunknownconnecteddevice(remoteid, localdevice->reachplan.whichtouse,
                                       localdevice->reachplan.routeraddr);
-            addtoknowndevices(remoteid);
+            // leave it up to the user if he/she wants to save the unknown device to specs
             localdevice->reachplan.routeraddr = -1;
             setstatus(&localdevice, status_inactive);
         } else {
-            // we had a temporary, unverified id -> believe workers id!
+            // we had a temporary, unverified id -> believe workers id and quickly add specs!
             if (strcmp(localid, remoteid) != 0) {
                 free(localdevice->deviceid);
                 localdevice->deviceid = strdup(remoteid);
             }
-            addtoknowndevices(remoteid);
+            localdevice->linked = 1;
+            linkdeviceinspecs(localdevice);
             setstatus(&localdevice, status_connected);
         }
     }
