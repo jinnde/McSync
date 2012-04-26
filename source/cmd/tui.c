@@ -909,11 +909,13 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     refreshscreen(); // get the deleting help on the screen
                     gi_mode = 1; // 1 means mousing devices
                     loop:
+                        timeout(1000000);
                         ch = getch();
                         if (ch == KEY_MOUSE || ch == KEY_RESIZE) {
                             handlemouseevents(ch);
                             goto loop;
                         }
+                        timeout(-1);
                     switch (ch) {
                         case 'm': // delete device
                             if (gi_selecteddevice != 0) {
@@ -956,12 +958,16 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                             free(skunk);
                                         }
                                         free(sk->nickname);
+                                        free(sk->deviceid);
                                         *m = sk->next;
                                         free(sk);
                                     } else {
                                         m = &((*m)->next);
                                     }
                                 }
+                                if (gi_selecteddevice > 0)
+                                    gi_selecteddevice--;
+
                                 gi_dirtyspecs = 1;
                             } else {
                                 beep();
