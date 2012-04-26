@@ -488,6 +488,7 @@ struct keycommand_struct keycommand_array[] = {
 char *devicehelparray[][2] = {
     {"Ret", "Edit Entry"},
     {"C", "Connect"},
+    {"U", "Unlink"},
     {"M", "Add Machine"},
     {"DM", "Delete Machine"},
     {"A", "Add Address"},
@@ -592,6 +593,8 @@ void refreshhelp(void)
             || (!strcmp((*arr)[i][0], "C") && (type == -1
                                         || gi_device->status != status_inactive
                                         || !specstatevalid()))
+            || (!strcmp((*arr)[i][0], "U") && (type == -1
+                                        || !gi_device->linked))
             || (!strcmp((*arr)[i][0], "DM") && type == -1)
             || (!strcmp((*arr)[i][0], "A") && type == -1)
             || (!strcmp((*arr)[i][0], "DA") && type != 3)
@@ -819,6 +822,15 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                             gi_device->reachplan.whichtouse = gi_device->reachplan.ipaddrs->string;
                         sendmessage(cmd_plug, hq_int, msgtype_connectdevice,
                                     gi_device->deviceid);
+                    } else {
+                        beep();
+                    }
+                    break;
+            case 'u': // unlink a device
+                    if (gi_device != NULL && gi_device->linked) {
+                        gi_device->linked = 0;
+                        gi_dirtyspecs = 1;
+                        refreshscreen();
                     } else {
                         beep();
                     }
