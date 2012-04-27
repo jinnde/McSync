@@ -114,7 +114,7 @@ EOF
 MC_SYNC_PIDS=
 while [ -z $MC_SYNC_PIDS ]; do
     MC_SYNC_PIDS=`ps aux | grep mcsync | grep -v root | grep -v grep | awk '{print $2}'`
-    sleep 0.01
+    sleep 0.1
 done
 
 # Start cgdb and tell it to attach itself to the running McSync instance

@@ -290,7 +290,7 @@ void setstatus(device **target, status_t newstatus)
     // take any status-change-based actions
     switch (newstatus) {
         case status_inactive:
-                sendmessage(hq_plug, cmd_int, msgtype_disconnect, d->deviceid);
+                sendmessage(hq_plug, cmd_int, msgtype_disconnected, d->deviceid);
             break;
         case status_reaching:
             break;
@@ -471,11 +471,11 @@ device* getdevicebyid(char *deviceid) {
     return d;
 } // getdevice
 
-device* getdevicebyplugnum(int32 plugnum) {
+device* getdevicebyplugnum(int32 plugnumber) {
     device *d;
 
     for (d = devicelist; d != NULL; d = d->next)
-        if (d->reachplan.routeraddr == plugnum)
+        if (d->reachplan.routeraddr == plugnumber)
             break;
     return d;
 } // getdevice
@@ -502,10 +502,10 @@ void identifydevice(char *localid, char *remoteid)
             printerr("Error: Device with id [%s] was connected to twice!\n", remoteid);
             // connected through another device?
             if (targetdevice != reacheddevice) {
-                sendremoveplugpleasecommand(hq_plug, targetdevice->reachplan.routeraddr);
-                targetdevice->reachplan.routeraddr = -1;
-                setstatus(&targetdevice, status_inactive);
-            } // else would mean we reached a connected device using the same device.
+                sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease,
+                               targetdevice->reachplan.routeraddr);
+                setstatus(&targetdevice, status_reaching);
+            } // else here would mean we reached a connected device using the same device.
               // this should have been caught by headquarters or command. we can't do
               // anything about it here, because it means that the old plug was already
               // memory leaked during the connection set up
@@ -598,32 +598,65 @@ void hqmain(void)
                     }
                     hq_reachfor(d);
                     break;
-            case msgtype_newplugplease:
+            case msgtype_disconnectdevice: // msg_data is device id
+                if (! (d = getdevicebyid(msg_data))) {
+                     printerr("Error: Received unknown device id [%s]\n", msg_data);
+                     break;
+                 }
+
+                if (d->status != status_connected) {
+                    printerr("Error: Got connect request for already connected "
+                             "device [%s]\n", msg_data);
+                    break;
+                }
+
+                sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease,
+                                                        d->reachplan.routeraddr);
+
+                setstatus(&d, status_reaching);
+                break;
+            case msgtype_newplugplease: // answer from recruit to our newplugplease message,
             {
                 char *deviceid; // we sent the device id as our reference to recruiter
-                int32 plugnum;
-                receivenewplugresponse(msg_data, &deviceid, &plugnum);
+                int32 plugnumber;
+                receivenewplugresponse(msg_data, &deviceid, &plugnumber);
                 if (! (d = getdevicebyid(deviceid))) {
                     printerr("Error: Received unknown device id [%s]\n", msg_data);
                     free(deviceid);
                     break;
                 }
                 free(deviceid);
-                d->reachplan.routeraddr = plugnum;
+                d->reachplan.routeraddr = plugnumber;
                 hq_reachfor(d);
                 break;
             }
-            case msgtype_failedrecruit: // msg_data is plugnum
+            case msgtype_removeplugplease: // answer from recruiter to our removeplugplease message,
+                                           // msgdata is plugnumber of the removed device
             {
-                    int32 plugnum;
-                    receivefailedrecruitmessage(msg_data, &plugnum);
+                int32 plugnumber;
+                receiveplugnumber(msg_data, &plugnumber);
 
-                    if (! (d = getdevicebyplugnum(plugnum))) {
+                if (! (d = getdevicebyplugnum(plugnumber))) {
+                    printerr("Error: Received plug number which does not belong "
+                             "to any device (%d)\n", plugnumber);
+                    break;
+                }
+                d->reachplan.routeraddr = -1;
+                setstatus(&d, status_inactive);
+                break;
+            }
+            case msgtype_failedrecruit: // possible answer to our recruitworker message sent to the recruiter
+                                        // if the recruit was successful, we will hear form worker directly (workerisup message)
+            {                           // msg_data is plugnumber
+                    int32 plugnumber;
+                    receiveplugnumber(msg_data, &plugnumber);
+
+                    if (! (d = getdevicebyplugnum(plugnumber))) {
                         printerr("Error: Received plug number which does not belong "
-                                 "to any device (%d)\n", plugnum);
+                                 "to any device (%d)\n", plugnumber);
                         break;
                     }
-                    sendremoveplugpleasecommand(hq_plug, plugnum);
+                    sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease, plugnumber);
                     d->reachplan.routeraddr = -1;
                     setstatus(&d, status_inactive); // msg_data is deviceid
                     break;
@@ -635,6 +668,9 @@ void hqmain(void)
             case msgtype_scanvirtualdir:
                     // msg_data is the virtual path of the node to scan
                     hq_scan(msg_data);
+                    break;
+            case msgtype_exit:
+                    cleanexit(__LINE__);
                     break;
             default:
                     printerr("Headquarters got unexpected message"

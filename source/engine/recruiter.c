@@ -2,6 +2,8 @@
 
 static int32 next_free_address = firstfree_int;
 
+static queue recruitercallbacks;
+
 char* homedirectory(void) // caches answer -- do not alter or free!
 {
     static char* home = NULL;
@@ -348,14 +350,14 @@ leave_terminal_mode:
     return retval; // 1 == success
 } // reachforremote
 
-int32 recruitworker(int32 plugnum, char *address)
+int32 recruitworker(int32 plugnumber, char *address)
 {
-    connection plug = findconnectionbyplugnumber(plugnum);
+    connection plug = findconnectionbyplugnumber(plugnumber);
 
     if (!plug)
         return 0;
 
-    plug->address = address;
+    plug->address = strdup(address);
 
     if (!strncmp(address, "local:", 6)) {
         channel_launch(plug, &localworker_initializer);
@@ -379,23 +381,64 @@ int32 recruitworker(int32 plugnum, char *address)
     return 0; // failed to reach
 } // recruitworker
 
+
 void freeconnection(connection skunk) {
     freeintlist(skunk->thisway);
     if (skunk->address)
         free(skunk->address);
+
     // clear the message queue
     // freemessage(skunk->messages_tokid_head);
     // freemessage(skunk->messages_fromkid_head);
+
+    // TODO: also check for any unprocessed messages!!
     free(skunk);
 } // freeconnection
 
+void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success)
+{ // implements the message_callback_function interface
+  // success means we got a goodbye message from the device
 
-void fireworker(connection plug)
-{
-    // is it a worker at all?
-    // local guy -> kill thread it runs in
-    // Is it a remote guy?
-} // fireworker
+    int32 plugnumber = msg_src;
+    connection plug = remove_connection(plugnumber);
+
+    if (!success)
+        printerr("Warning: Disconnecting unresponsive device on plug %d", plugnumber);
+
+    // it it nearly impossible to make threads involved with I/O exit in some sane
+    // way. We use a signal that will make them exit on the spot with no way for
+    // the threads to clean up after themselves. We need this because most of the
+    // stuff the out threads do is blocking on some streams. The thing we have
+    // to worry most about are memory leaks. There is no problem for stream_shipping
+    // because it does not allocate memory and we will be able to free any left
+    // message later on. The same is true for forward_raw_errors. The stream reciever,
+    // has a point of failure which would leak memory (while it is filling up a new
+    // message). To avoid leaking this message, there is a field on the plug called
+    // plug->unprocessed_message which stores a reference to such a message. It
+    // can thus also be freed. The worst case is cancelling a local thread.
+    // This can only be an unresponsive local worker, because the exit message on head-
+    // quarters and recruiter will lead the whole process to exit. There is nothing we
+    // can really do about it, we will probably leak the workers memory in this case.
+
+    if (!success && plug->listener != NULL) { // only local plugs have the listener set
+        pthread_kill(plug->listener, SIGUSR1);
+    }
+
+    if(plug->stream_shipper != NULL) { // a remote connection
+        kill(plug->processpid, SIGKILL);
+        pthread_kill(plug->stream_shipper, SIGUSR1);
+        pthread_kill(plug->stream_receiver, SIGUSR1);
+        pthread_kill(plug->stderr_forwarder, SIGUSR1);
+
+        close(plug->kidinpipe[WRITE_END]);
+        close(plug->kidoutpipe[READ_END]);
+        close(plug->kiderrpipe[READ_END]);
+    }
+
+ //   freeconnection(plug);
+
+    sendplugnumber(recruiter_plug, hq_int, msgtype_removeplugplease, plugnumber);
+} // disconnectplug
 
 void reqruitermain(void)
 {
@@ -403,11 +446,27 @@ void reqruitermain(void)
     int64 msg_type;
     char* msg_data;
 
+    recruitercallbacks = initqueue();
+
     while (1) {
         while (! receivemessage(recruiter_plug, &msg_src, &msg_type, &msg_data)) {
+            if (recruitercallbacks->head != NULL)
+                callbacktick(recruitercallbacks, 1);
             usleep(1000);
         }
+
         // we got a message
+
+        // is someone waiting for this message ... ?
+        if (recruitercallbacks->head != NULL) {
+            if (messagearrived(recruitercallbacks, msg_type, msg_src, msg_data)) {
+                // ... yes, steal it and do not execute the regular actions described
+                // in the switch statement down bellow!
+                free(msg_data);
+                continue;
+            }
+        }
+        // ... no one is waiting, handle the message in the regular way
         switch (msg_type) {
             case msgtype_info:
                     printerr("recruiter got info message: \"%s\" from %d\n",
@@ -422,22 +481,32 @@ void reqruitermain(void)
             case msgtype_recruitworker:
             {
                 char *address;
-                int32 plugnum;
-                receiverecruitcommand(msg_data, &plugnum, &address);
-                if (! recruitworker(plugnum, address))
-                    sendfailedrecruitmessage(msg_src, plugnum);
+                int32 plugnumber;
+                receiverecruitcommand(msg_data, &plugnumber, &address);
+                if (! recruitworker(plugnumber, address))
+                    sendplugnumber(recruiter_plug, msg_src, msgtype_failedrecruit, plugnumber);
                 free(address);
             }
             break;
-            case msgtype_removeplugplease:
+            case msgtype_removeplugplease: // msg_data is the number of the plug we should remove
             {
-                int32 plugnum;
-                connection plug;
-                receiveremoveplugpleasecommand(msg_data, &plugnum);
-                printerr("Got remove plug please command for plug %d", plugnum);
-                plug = remove_connection(plugnum);
-                // fireworker(plug);
+                int32 plugnumber;
+                receiveplugnumber(msg_data, &plugnumber);
+                // we first try to reach the worker and if no response is given after
+                // some time we will be a little harsh and just disconnect or kill it.
+                // hopefully remote McSyncs will then eventually get a broken pipe signal
+                // and if it is a local stuck thread we will leak memory...
+                sendmessage(recruiter_plug, plugnumber, msgtype_exit, "");
+                waitformessage(recruitercallbacks, msgtype_goodbye, plugnumber, 1000,
+                               &disconnectplug);
             }
+            break;
+            case msgtype_goodbye: // we got a goodbye without asking to the worker to exit,
+                                  // disconnect plug immediately
+                disconnectplug(msgtype_goodbye, msg_src, msg_data, 1);
+            break;
+            case msgtype_exit:
+                cleanexit(__LINE__);
             break;
             default:
                     printerr("worker got unexpected message"

@@ -2,15 +2,17 @@
 
 connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct access
 
+int32 slavemode = 0; // whether McSync is at a possilby remote location in slave mode
+
 // The new_plug function needs to stop the main routing in order to add new
 // connection to the list
 pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 const char* msgtypelist[] = { "error (msgtype==0)",
-    "connectdevice", "newplugplease", "removeplugplease", "recruitworker",
+    "connectdevice","disconnectdevice", "newplugplease", "removeplugplease", "recruitworker",
     "failedrecruit", "info", "workerisup", "connected", "disconnect",
     "identifydevice", "deviceid", "listvirtualdir", "virtualdir", "touch",
-    "scanvirtualdir", "scan", "exit" };
+    "scanvirtualdir", "scan", "exit", "goodbye" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -204,6 +206,84 @@ void serializevirtualnode(bytestream b, virtualnode *node) // returns allocated 
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of serialization ////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////////
+/////////////////////// start of agent helper functions //////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
+
+// sometimes an agent can't really finish a task without having some message from
+// another agent. This is for example the case for the exit message which gives
+// the other agent some time to react to it before it is disconnected. We can't
+// really block, because then we would not be able to receive the message and
+// jump back to the blocking function. The solution to the problem are callback
+// functions. Every time the agent looks for a message, it will also remove some
+// waiting time from the these callback requests. If the message arrives on time
+// the callback function will be called with the success bit on. If it times out
+// before the message arrives, this bit will be off. The following functions allow
+// an agent to implement this callback functionality if needed.
+
+// adds a callback request to the queue, the call back function has to be of type
+// void (*fn) (int32 msg_type, int32 msg_src, char* msg_data, int32 success);
+void waitformessage(queue callbackqueue, int32 msg_type, int32 msg_src, int32 timeout, message_callback_function fn)
+{
+    message_callback callback = (message_callback) malloc(sizeof(struct message_callback_struct));
+    callback->msg_type = msg_type;
+    callback->msg_src = msg_src;
+    callback->timeout = timeout;
+    callback->fn = fn;
+    queueinserttail(callbackqueue, (void*) callback);
+
+} // waitformessage
+
+// is called in the message receiving loop of the agent, ticks the waiting time.
+// If a request times out, the callback function is invoked with the success bit
+// off.
+void callbacktick(queue callbackqueue, int32 milliseconds)
+{
+    queuenode node, tmp;
+    node = callbackqueue->head;
+
+    message_callback callback;
+
+    while (node != NULL) {
+        callback = (message_callback) node->data;
+        callback->timeout -= milliseconds;
+        if (callback->timeout <= 0) {
+            tmp = node->next;
+            queueremove(callbackqueue, node);
+            callback->fn(callback->msg_type, callback->msg_src, NULL, 0); // unsuccessful
+            free(callback);
+            node = tmp;
+            continue;
+        }
+        node = node->next;
+    }
+} // callbacktick
+
+// is called every time a message has arrived and checks if it is one of the messages
+// the agent has been waiting for. In this case it calls the function provided with
+// the success bit on.
+int32 messagearrived(queue callbackqueue, int32 msg_type, int32 msg_src, char *msg_data)
+{
+    queuenode node = callbackqueue->head;
+    message_callback callback;
+
+    while (node != NULL) {
+        callback = (message_callback) node->data;
+        if (callback->msg_type == msg_type && callback->msg_src == msg_src) {
+            queueremove(callbackqueue, node);
+            callback->fn(callback->msg_type, callback->msg_src, msg_data, 1);
+            free(callback);
+            return 1;
+        }
+        node = node->next;
+    }
+    return 0;
+}   // messagearrived
+
+//////////////////////////////////////////////////////////////////////////////////
+/////////////////////// end of agent helper functions ////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
 unsigned char unhex(unsigned char a, unsigned char b)
@@ -403,7 +483,6 @@ void waitforsequence(FILE* input, char* sequence, int len, int echo)
         shortestperiod[subend + 1] = period; // 123124: sp[5]=3, sp[6]=6
     }
     if (debug_out) {
-        //fprintf(debug_out, "%p %p\n", input, stdin);
         int i;
         fprintf(debug_out, "%c[0;31;47m[%s looking for \"", 27, threadname());
         for (i = 0; i < len; i++)
@@ -442,7 +521,6 @@ void waitforsequence(FILE* input, char* sequence, int len, int echo)
         fflush(stderr);
     }
     if (debug_out) {
-        //fprintf(debug_out, "%p %p\n", input, stdin);
         int i;
         fprintf(debug_out, "%c[0;31;47m[%s got \"", 27, threadname());
         for (i = 0; i < len; i++)
@@ -454,7 +532,6 @@ void waitforsequence(FILE* input, char* sequence, int len, int echo)
 
 void waitforstring(FILE* input, char* string)
 {
-    // fprintf(ourerr, "<waiting for \"%s\">\n", string);
     waitforsequence(input, string, strlen(string), 0);
 } // waitforstring
 
@@ -708,43 +785,36 @@ void sendscancommand(connection plug, int recipient, char *scanroot, stringlist 
     freebytestream(serialized);
 } // sendscancommand
 
-void sendrecruitcommand(connection plug, int32 plugnum, char *address)
+void sendrecruitcommand(connection plug, int32 plugnumber, char *address)
 {
     bytestream serialized = initbytestream(64);
 
-    serializeint32(serialized, plugnum);
+    serializeint32(serialized, plugnumber);
     serializestring(serialized, address);
     nsendmessage(plug, recruiter_int, msgtype_recruitworker, serialized->data, serialized->len);
     freebytestream(serialized);
 } // sendrecruitcommand
 
-void sendremoveplugpleasecommand(connection plug, int32 plugnum)
+void sendplugnumber(connection plug, int32 recipient, int32 type, int32 plugnumber)
 {
     bytestream serialized = initbytestream(4);
-    serializeint32(serialized, plugnum);
-    nsendmessage(plug, recruiter_int, msgtype_removeplugplease, serialized->data, serialized->len);
+    serializeint32(serialized, plugnumber);
+    nsendmessage(plug, recipient, type, serialized->data, serialized->len);
     freebytestream(serialized);
-} // sendremoveplugpleasecommand
+} // sendplugnumber
+
 
 //// only used by recruiter
 
-void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnum)
+void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnumber)
 {
     bytestream serialized = initbytestream(20);
 
     serializestring(serialized, theirreference);
-    serializeint32(serialized, plugnum);
+    serializeint32(serialized, plugnumber);
     nsendmessage(recruiter_plug, recipient, msgtype_newplugplease, serialized->data, serialized->len);
     freebytestream(serialized);
 } // sendnewplugresponse
-
-void sendfailedrecruitmessage(int32 recipient, int32 plugnum)
-{
-    bytestream serialized = initbytestream(4);
-    serializeint32(serialized, plugnum);
-    nsendmessage(recruiter_plug, recipient, msgtype_failedrecruit, serialized->data, serialized->len);
-    freebytestream(serialized);
-} // sendfailedrecruitmessage
 
 char* secondstring(char* string)
 {
@@ -796,27 +866,22 @@ void receivescancommand(char *source, char **scanroot, stringlist **prunepoints)
     *prunepoints = deserializestringlist(&source);
 } // receivescancommand
 
-void receiverecruitcommand(char *source, int32 *plugnum, char **address)
+void receiverecruitcommand(char *source, int32 *plugnumber, char **address)
 {
-    *plugnum = deserializeint32(&source);
+    *plugnumber = deserializeint32(&source);
     *address = deserializestring(&source);
 } // receiverecruitcommand
 
-void receivefailedrecruitmessage(char *source, int32 *plugnum)
-{
-    *plugnum = deserializeint32(&source);
-} // receivefailedrecruitmessage
-
-void receivenewplugresponse(char *source, char **reference, int32 *plugnum)
+void receivenewplugresponse(char *source, char **reference, int32 *plugnumber)
 {
     *reference = deserializestring(&source);
-    *plugnum = deserializeint32(&source);
+    *plugnumber = deserializeint32(&source);
 } // receivenewplugresponse
 
-void receiveremoveplugpleasecommand(char *source, int32 *plugnum)
+void receiveplugnumber(char *source, int32 *plugnumber)
 {
-    *plugnum = deserializeint32(&source);
-} // receivenewplugresponse
+    *plugnumber = deserializeint32(&source);
+} // receiveplugnumber
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of router /////////////////////////////////////
@@ -828,10 +893,27 @@ void receiveremoveplugpleasecommand(char *source, int32 *plugnum)
 // The router shuffles the messages around based on their destination.
 // Remote processes use local threads to convert between messages and stream I/O.
 
+void abort_thread_execution(int sig, siginfo_t *info, void *ucontext)
+{
+    pthread_exit(NULL);
+}   // abort_thread_execution
+
 void* forward_raw_errors(void* voidplug)
 {
     FILE* stream_in;
     connection plug = voidplug; // so compiler knows type
+    struct sigaction sa;
+
+    sa.sa_handler = NULL;
+    sa.sa_sigaction = &abort_thread_execution;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGUSR1, &sa, NULL) < 0) {
+             printerr("Error: Thread could not set the signal handler used for "
+                      "aborting its execution. It will not be executed.\n");
+             return (void *)-1;
+     }
 
     stream_in = plug->errfromkid;
     while (1) {
@@ -851,34 +933,47 @@ void* stream_receiving(void* voidplug)
     FILE* stream_in;
     connection plug = voidplug; // so compiler knows type
 
+    struct sigaction sa;
+    sa.sa_handler = NULL;
+    sa.sa_sigaction = &abort_thread_execution;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGUSR1, &sa, NULL) < 0) {
+             printerr("Error: Thread could not set the signal handler used for "
+                      "aborting its execution. It will not be executed.\n");
+             return (void *)-1;
+     }
+
     stream_in = plug->fromkid;
     while (1) {
         int64 len, pos;
-        message msg;
-        msg = (message) malloc(sizeof(struct message_struct));
+        message *msg = &plug->unprocessed_message;
+        (*msg) = (message) malloc(sizeof(struct message_struct));
         // read message from stream
         flockfile(stream_in);
         // we start each message with a cookie because then if things get mixed
         // up for any reason, they are more likely to get sorted out, and we are
         // less likely to try to malloc petabytes of memory for nothing
         waitforcookiesafe(stream_in);
-        msg->source = get32safe(stream_in);
-        msg->destinations = getintlistsafe(stream_in);
-        msg->type = get64safe(stream_in);
-        msg->len = len = get64safe(stream_in);
-        msg->data = (char*) malloc(len+1); // users can ignore the extra byte
+        (*msg)->source = get32safe(stream_in);
+        (*msg)->destinations = getintlistsafe(stream_in);
+        (*msg)->type = get64safe(stream_in);
+        (*msg)->len = len = get64safe(stream_in);
+        (*msg)->data = (char*) malloc(len+1); // users can ignore the extra byte
         for (pos = 0; pos < len; pos++) {
-            msg->data[pos] = getc_unlockedsafe(stream_in);
+            (*msg)->data[pos] = getc_unlockedsafe(stream_in);
         }
-        msg->data[pos] = 0; // we make sure a 0 follows the chars, so if you
+        (*msg)->data[pos] = 0; // we make sure a 0 follows the chars, so if you
             // know it is a short char sequence, you can treat it as a string
-        msg->nextisready = 0;
+        (*msg)->nextisready = 0;
         funlockfile(stream_in);
         // now it is ready to be added to the queue
-        plug->messages_fromkid_tail->next = msg;
+        plug->messages_fromkid_tail->next = (*msg);
         plug->messages_fromkid_tail->nextisready = 1;
         // we have now added this message
-        plug->messages_fromkid_tail = msg;
+        plug->messages_fromkid_tail = (*msg);
+        plug->unprocessed_message = NULL;
     }
 } // stream_receiving
 
@@ -888,6 +983,18 @@ void* stream_shipping(void* voidplug)
     FILE* stream_out;
     message msg; // head is an already-processed message, we process the next one
     stream_out = plug->tokid;
+
+    struct sigaction sa;
+    sa.sa_handler = NULL;
+    sa.sa_sigaction = &abort_thread_execution;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGUSR1, &sa, NULL) < 0) {
+             printerr("Error: Thread could not set the signal handler used for "
+                      "aborting its execution. It will not be executed.\n");
+             return (void *)-1;
+    }
 
     while (1) {
         if (plug->messages_tokid_head->nextisready == 1) { // is next one ready?
@@ -1001,6 +1108,15 @@ void add_connection(connection *store_plug_here, int32 plugnumber)
 {
     connection plug = new_connection();
 
+    plug->listener = NULL;
+    plug->stream_shipper = NULL;
+    plug->stream_receiver = NULL;
+    plug->stderr_forwarder = NULL;
+    plug->tokid = NULL;
+    plug->fromkid = NULL;
+    plug->errfromkid = NULL;
+    plug->unprocessed_message = NULL;
+
     if (plugnumber) { // normal case (any plug but the parent plug)
         plug->thisway = singletonintlist(plugnumber);
         plug->plugnumber = plugnumber;
@@ -1078,6 +1194,7 @@ void routermain(int master, int plug_id)
         channel_launch(cmd_plug, &cmd_initializer);
         channel_launch(recruiter_plug, &recruiter_initializer);
     } else {
+        slavemode = 1;
         connection slaveworkerplug;
 
         add_connection(&parent_plug, 0);
@@ -1127,6 +1244,7 @@ void routermain(int master, int plug_id)
                                     msg->type, msgtypelist[msg->type],
                                     msg->len > 100 ? "long message" : msg->data);
                 }
+
                 // spy on message: if workerisup then add to thisway
                 if (msg->type == msgtype_workerisup) {
                     // if we are final hopping point or worker device,

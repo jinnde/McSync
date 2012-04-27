@@ -278,9 +278,26 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
     int             kidinpipe[2], kidoutpipe[2], kiderrpipe[2]; // filedescriptors
                     // r/w:  write to [WRITE_END=1], read from [READ_END=0]
     int             processpid; // the id of the process we spawn to reach remote
+    // from here on down is used for killing local threads associated with this plug
+    message         unprocessed_message; // stream_receiving allocates the messages
+                                         // is has not fully received into this to
+                                         // avoid leaking memory on thread exits
 } *connection; // also known as a plug
 
 extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct access
+
+// the following data types are used in helper functions which allow agents to
+// wait for a message and take actions depending on whether the message was
+// received or not during a time window.
+typedef void (*message_callback_function) (int32 msg_type, int32 msg_src, char* msg_data, int32 success);
+
+typedef struct message_callback_struct {
+    int32 msg_type; // the type of the message we are waiting for
+    int32 msg_src; // its source (plugnumber)
+    int32 timeout; // how long in ms receive waiting time (the time the agent waits for messages)
+                   // should we wait before calling fn with success = 0, data = NULL
+    message_callback_function fn;   // who we should call on receive or timeout
+}* message_callback;
 
 #define hq_int          1
 #define cmd_int         2
@@ -288,28 +305,32 @@ extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct 
 #define firstfree_int   4
 
 #define msgtype_connectdevice       1
-#define msgtype_newplugplease       2
-#define msgtype_removeplugplease    3
-#define msgtype_recruitworker       4
-#define msgtype_failedrecruit       5
-#define msgtype_info                6
-#define msgtype_workerisup          7
-#define msgtype_connected           8
-#define msgtype_disconnect          9
-#define msgtype_identifydevice      10
-#define msgtype_deviceid            11
-#define msgtype_listvirtualdir      12
-#define msgtype_virtualdir          13
-#define msgtype_touch               14
+#define msgtype_disconnectdevice    2
+#define msgtype_newplugplease       3
+#define msgtype_removeplugplease    4
+#define msgtype_recruitworker       5
+#define msgtype_failedrecruit       6
+#define msgtype_info                7
+#define msgtype_workerisup          8
+#define msgtype_connected           9
+#define msgtype_disconnected        10
+#define msgtype_identifydevice      11
+#define msgtype_deviceid            12
+#define msgtype_listvirtualdir      13
+#define msgtype_virtualdir          14
+#define msgtype_touch               15
 // ^ mark virtual node as touched (changed) on cmd
-#define msgtype_scanvirtualdir      15
+#define msgtype_scanvirtualdir      16
 // ^ the message contains a virtual path (usually a request from cmd to hq)
-#define msgtype_scan                16
+#define msgtype_scan                17
 // ^ the message contains a host path and prune points (usually a request from hq to wrks)
-#define msgtype_exit                17
-// ^ the destinatin is requested to cleanexit
+#define msgtype_exit                18
+// ^ tells the receiver to stop running
+#define msgtype_goodbye             19
+// ^ is sent back from a device which has received a msgtype_exit
 
 // if you change these^, change msgtypelist in communication.c
+
 
 #define slave_start_string "this is mcsync"
 #define hi_slave_string "you are "
@@ -318,7 +339,7 @@ void (*cmd_thread_start_function)(); // this is the function called by the cmd t
                                      // depending on user choice this is currently either TUImain or climain
 
 typedef void* (*channel_initializer) (void* arguments); // is the function provided to channel_launch
-                                                        // which will turn the newly created thread into
+                                                        // which will turn a newly created thread into
                                                         // the corresponding agent
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -380,17 +401,14 @@ void sendscancommand(connection plug, int recipient, char *scanroot, stringlist 
 void receivescancommand(char *source, char **scanroot, stringlist **prunepoints);
 
 // recruiter communication
-void sendrecruitcommand(connection plug, int32 plugnum, char *address); // always sent to recruiter
-void receiverecruitcommand(char *source, int32 *plugnum, char **address); // used by recruiter
+void sendrecruitcommand(connection plug, int32 plugnumber, char *address); // always sent to recruiter
+void receiverecruitcommand(char *source, int32 *plugnumber, char **address); // used by recruiter
 
-void sendfailedrecruitmessage(int32 recipient, int32 plugnum); // used by recruiter
-void receivefailedrecruitmessage(char *source, int32 *plugnum);
+void sendplugnumber(connection plug, int32 recipient, int32 type, int32 plugnumber);
+void receiveplugnumber(char *source, int32 *plugnumber);
 
-void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnum); // used by recruiter
-void receivenewplugresponse(char *source, char **reference, int32 *plugnum);
-
-void sendremoveplugpleasecommand(connection plug, int32 plugnum); // always sent to recruiter
-void receiveremoveplugpleasecommand(char *source, int32 *plugnum); // used by recruiter
+void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnumber); // used by recruiter
+void receivenewplugresponse(char *source, char **reference, int32 *plugnumber);
 
 ////////  general purpose data structures
 
@@ -430,6 +448,11 @@ void reqruitermain(void);
 
 void routermain(int master, int plug_id);
 
+// callback helper functions for agents
+void waitformessage(queue callbackqueue, int32 msg_type, int32 msg_src, int32 timeout, message_callback_function fn);
+void callbacktick(queue callbackqueue, int32 milliseconds);
+int32 messagearrived(queue callbackqueue, int32 msg_type, int32 msg_src, char *msg_data);
+
 // post office (routermain) and recruiter interaction
 void add_connection(connection *storeplughere, int plugnumber);
 connection remove_connection(int32 plugnumber);
@@ -444,7 +467,7 @@ void* stream_shipping(void* voidplug);
 
 void freemessage(message skunk);
 
-// specification file handling
+// specs (configuration) file handling
 int32 readspecsfile(char *specsfile); // sets up devicelist and graftlist
 int32 specstatevalid(void); // returns 1 if there exists a device with a reachplan and a graft;
 int32 writespecsfile(char *specsfile); // writes devicelist and graftlist
@@ -469,6 +492,7 @@ void raw_io(void);
 extern int doUI; // can be turned off by -batch option
 extern int password_pause; // signals when input should be allowed to go to ssh
 extern int waitmode; // changed to 1 on startup if "-wait" flag is provided
+extern int slavemode; // whether we are in slave mode, thus only a remote worker and a parent
 
 void TUIstart2D(void); // enter 2D mode
 void TUIstop2D(void); // leave 2D mode, go back to scrolling terminal

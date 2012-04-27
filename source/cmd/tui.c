@@ -488,6 +488,7 @@ struct keycommand_struct keycommand_array[] = {
 char *devicehelparray[][2] = {
     {"Ret", "Edit Entry"},
     {"C", "Connect"},
+    {"X", "Disconnect"},
     {"U", "Unlink"},
     {"M", "Add Machine"},
     {"DM", "Delete Machine"},
@@ -593,6 +594,8 @@ void refreshhelp(void)
             || (!strcmp((*arr)[i][0], "C") && (type == -1
                                         || gi_device->status != status_inactive
                                         || !specstatevalid()))
+            || (!strcmp((*arr)[i][0], "X") && (type == -1
+                                        || gi_device->status != status_connected))
             || (!strcmp((*arr)[i][0], "U") && (type == -1
                                         || !gi_device->linked))
             || (!strcmp((*arr)[i][0], "DM") && type == -1)
@@ -826,6 +829,15 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         beep();
                     }
                     break;
+            case 'x': // disconnect
+                    if (gi_device != NULL
+                                && gi_device->status == status_connected) {
+                        sendmessage(cmd_plug, hq_int, msgtype_disconnectdevice,
+                                    gi_device->deviceid);
+                    } else {
+                        beep();
+                    }
+            break;
             case 'u': // unlink a device
                     if (gi_device != NULL && gi_device->linked) {
                         gi_device->linked = 0;
@@ -1384,7 +1396,7 @@ void TUImain(void)
                         refreshscreen();
                 }
                 break;
-                case msgtype_disconnect:
+                case msgtype_disconnected:
                         // device name's color will change with new status
                         printerr("TUI heard that \"%s\" is disconnected.\n",
                                         msg_data);

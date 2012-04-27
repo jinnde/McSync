@@ -311,15 +311,17 @@ release_and_return:
 
 void workermain(connection worker_plug)
 {
+    int32 dowork = 1;
     char buf[90];
     int32 msg_src;
     int64 msg_type;
-    char* msg_data;
+    char* msg_data = NULL;
+    char* deviceid = NULL;
 
-    snprintf(buf, 90, "%d", worker_plug->thisway->values[0]);
+    snprintf(buf, 90, "%d", worker_plug->plugnumber);
     sendmessage(worker_plug, hq_int, msgtype_workerisup, buf);
 
-    while (1) {
+    while (dowork) {
         while (! receivemessage(worker_plug, &msg_src, &msg_type, &msg_data)) {
             usleep(1000);
         }
@@ -330,16 +332,19 @@ void workermain(connection worker_plug)
                     break;
             case msgtype_identifydevice: // msg_data is hq's device id suggestion
             {
-                char *deviceid = deviceidondisk(msg_data);
-                if (!deviceid) {// this is serious, can't do nothing without proper id
-                    sendmessage(worker_plug, hq_int, msgtype_disconnect, "");
-                    cleanexit(__LINE__);
+                if (deviceid != NULL)
+                    free(deviceid);
+
+                deviceid = deviceidondisk(msg_data);
+
+                if (deviceid == NULL) {    // this is serious, can't do nothing without proper id
+                    printerr("Worker does not know device id, quits...\n");
+                    dowork = 0;
+                    break;
                 }
 
                 snprintf(buf, 90, "%s%c%s", msg_data, 0, deviceid);
                 sendmessage2(worker_plug, hq_int, msgtype_deviceid, buf);
-                if (deviceid != msg_data)
-                    free(deviceid);
             }
             break;
             case msgtype_scan:
@@ -354,18 +359,29 @@ void workermain(connection worker_plug)
                     }
                     break;
             case msgtype_exit:
-                printerr("Worker got exit message... good bye!");
-                sleep(10);
-                cleanexit(__LINE__);
+                printerr("Worker got exit message... good bye!\n");
+                dowork = 0;
                 break;
             default:
                     printerr("worker got unexpected message"
                                     " of type %lld from %d: \"%s\"\n",
                                     msg_type, msg_src, msg_data);
         }
-
         free(msg_data);
+        msg_data = NULL;
     }
+
+    // we are were asked to stop working...
+    sendmessage(worker_plug, recruiter_int, msgtype_goodbye, "");
+    sleep(1);
+
+    if (deviceid != NULL)
+        free(deviceid);
+
+    if (slavemode)
+        cleanexit(__LINE__);
+    else
+        pthread_exit(NULL);
 } // workermain
 
 //////////////////////////////////////////////////////////////////////////////////
