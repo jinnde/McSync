@@ -277,7 +277,6 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
     struct connection_struct *next;
     // from here on down is only used during creation of the connection
     char            *address;       // the address we try to connect to
-    //pthread_t*      local_thread; // ptr to global thread var, NULL = spawn remote
     int             kidinpipe[2], kidoutpipe[2], kiderrpipe[2]; // filedescriptors
                     // r/w:  write to [WRITE_END=1], read from [READ_END=0]
     int             processpid; // the id of the process we spawn to reach remote
