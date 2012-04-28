@@ -1,5 +1,52 @@
 #include "definitions.h"
 
+/*
+TODO: FIX THIS DOCUMENTATION TO MATCH NEW STRUCTURE
+
+This stack of functions is only called as described here.
+
+main --- the entry point for McSync, whether slave or master.  Calls routermain.
+routermain --- the post office.  Delivers mail and sets up plugs.
+                This should be the only place that calls channel_launch, but workermain
+                is still calling it.
+channel_launch --- creates a new plug, and a new thread for the other side of the plug.
+                The new thread starts in thread_main.
+thread_main --- sets up an agent: tui, algo, worker, or SR (parent or remote agent).
+                To set up a remote agent, calls reachforremote, and on success creates
+                the shipping and receiving threads.
+reachforremote --- calls givebirth on the one hand to create a child process, calls
+                raisechild (in a separate thread) on the other hand to "type" into the
+                child process until McSync is up and running, and on the third hand
+                (with the calling thread) watches whether raisechild claims success
+                within twenty seconds (polling a flag at 40 Hz).
+                It tries all this for each way it might reach the target machine,
+                and returns 0 on success.
+raisechild --- listens and types into an ssh session, perhaps logging in to further
+                remote machines, and tries to get a McSync running.
+givebirth --- like a fancy fork.  It forks, sending the child to firststeps (not back to
+                the caller).  Being fancy, it creates pipes to communicate with the kid,
+                closes the kid's ends after forking, and creates streams for the pipes.
+                The streams and pipes are stored in the plug.
+firststeps --- the child's prong of the fancy fork.  This moves the created pipes to
+                be stdin, stdout, and stderr.  Then it transfers control to transmogrify.
+                This might ought to close other file descriptors besides the pipe ends?????
+transmogrify --- this turns itself into (replaces itself with) an expect or ssh process.
+                That ends our code's control of the child process.  After that, we only
+                control the child through its stdin and stdout.  Specifically, raisechild
+                is doing this using the streams in the plug.
+
+bugs:
+* forward_raw_errors seems to never actually do anything, only being called after nothing
+more will be written on stderr.
+* the router, not the worker, should be setting up remote connections.
+* firststeps might ought to close other random file descriptors that the parent process has.
+* right now a channel_launch request by a worker winds up setting the plug number in the
+devicelocater based on the deviceid... what's the point of that contortion?
+* should deal with SIGPIPE so that a crash in the reaching process doesn't kill the
+parent.  For example, it could set the failed flag that reachforremote is polling.
+
+*/
+
 static int32 next_free_address = firstfree_int;
 
 static queue recruitercallbacks;
@@ -381,20 +428,6 @@ int32 recruitworker(int32 plugnumber, char *address)
     return 0; // failed to reach
 } // recruitworker
 
-
-void freeconnection(connection skunk) {
-    freeintlist(skunk->thisway);
-    if (skunk->address)
-        free(skunk->address);
-
-    // clear the message queue
-    // freemessage(skunk->messages_tokid_head);
-    // freemessage(skunk->messages_fromkid_head);
-
-    // TODO: also check for any unprocessed messages!!
-    free(skunk);
-} // freeconnection
-
 void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success)
 { // implements the message_callback_function interface
   // success means we got a goodbye message from the device
@@ -425,17 +458,17 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     }
 
     if(plug->stream_shipper != NULL) { // a remote connection
-        kill(plug->processpid, SIGKILL);
         pthread_kill(plug->stream_shipper, SIGUSR1);
         pthread_kill(plug->stream_receiver, SIGUSR1);
         pthread_kill(plug->stderr_forwarder, SIGUSR1);
 
+        kill(plug->processpid, SIGKILL);
         close(plug->kidinpipe[WRITE_END]);
         close(plug->kidoutpipe[READ_END]);
         close(plug->kiderrpipe[READ_END]);
     }
 
- //   freeconnection(plug);
+    freeconnection(plug);
 
     sendplugnumber(recruiter_plug, hq_int, msgtype_removeplugplease, plugnumber);
 } // disconnectplug
@@ -451,8 +484,8 @@ void reqruitermain(void)
     while (1) {
         while (! receivemessage(recruiter_plug, &msg_src, &msg_type, &msg_data)) {
             if (recruitercallbacks->head != NULL)
-                callbacktick(recruitercallbacks, 1);
-            usleep(1000);
+                callbacktick(recruitercallbacks, pollingrate);
+            usleep(pollingrate);
         }
 
         // we got a message
@@ -497,7 +530,7 @@ void reqruitermain(void)
                 // hopefully remote McSyncs will then eventually get a broken pipe signal
                 // and if it is a local stuck thread we will leak memory...
                 sendmessage(recruiter_plug, plugnumber, msgtype_exit, "");
-                waitformessage(recruitercallbacks, msgtype_goodbye, plugnumber, 1000,
+                waitformessage(recruitercallbacks, msgtype_goodbye, plugnumber, 1000000,
                                &disconnectplug);
             }
             break;

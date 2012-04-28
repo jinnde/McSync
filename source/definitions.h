@@ -63,6 +63,9 @@ typedef unsigned long long int uint64;
 #define virtual_path_depth_max 1024
 #define virtual_file_name_max 256
 
+#define pollingrate 10000
+// ^  nano seconds the agents sleep between checking for new messages
+
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of data types /////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -265,7 +268,7 @@ typedef struct message_struct { // threads communicate by sending these
 
 typedef struct connection_struct { // all a router needs to provide plug  huh? XXX
     int32           plugnumber;     // the plugnumber associated with this connection
-    intlist         thisway; // what sites lie in this direction
+    intlist         thisway; // what sites lie in this direction, including itself
     message         messages_tokid_tail, messages_fromkid_head; // for router
     message         messages_tokid_head, messages_fromkid_tail; // for kid r/w:h/t
     pthread_t       listener; // on local connections this also writes the output
@@ -274,14 +277,18 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
     struct connection_struct *next;
     // from here on down is only used during creation of the connection
     char            *address;       // the address we try to connect to
-    pthread_t*      local_thread; // ptr to global thread var, NULL = spawn remote
+    //pthread_t*      local_thread; // ptr to global thread var, NULL = spawn remote
     int             kidinpipe[2], kidoutpipe[2], kiderrpipe[2]; // filedescriptors
                     // r/w:  write to [WRITE_END=1], read from [READ_END=0]
     int             processpid; // the id of the process we spawn to reach remote
-    // from here on down is used for killing local threads associated with this plug
+    // from here on down is used for disconnecting the plug
+    int32           disconnecting; // is set by routermain when it sees an exit
+                                   // message sent to a plug in order to avoid
+                                   // lost messages
     message         unprocessed_message; // stream_receiving allocates the messages
                                          // is has not fully received into this to
                                          // avoid leaking memory on thread exits
+                                         // (only used for remote plugs)
 } *connection; // also known as a plug
 
 extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct access
@@ -456,6 +463,7 @@ int32 messagearrived(queue callbackqueue, int32 msg_type, int32 msg_src, char *m
 // post office (routermain) and recruiter interaction
 void add_connection(connection *storeplughere, int plugnumber);
 connection remove_connection(int32 plugnumber);
+void freeconnection(connection skunk);
 
 connection findconnectionbyplugnumber(int32 plugnumber);
 void channel_launch(connection plug, channel_initializer initializer);

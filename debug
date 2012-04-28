@@ -82,7 +82,7 @@ MACHINE_ARCHITECTURE=`(cc -v 2>&1 | grep Target: | sed 's/.*: *//')`
 
 # Just do memory checking with no additional terminal windows
 if [ $MEMCHECK == 1 ]; then
-    valgrind --tool=memcheck --leak-check=full --show-reachable=yes --leak-resolution=high ./bin/mcsync.$MACHINE_ARCHITECTURE
+    valgrind --tool=memcheck --leak-check=full --show-reachable=no --leak-resolution=high ./bin/mcsync.$MACHINE_ARCHITECTURE
     exit 0
 fi
 # Create a new terminal window and starts tail for real-time logging.

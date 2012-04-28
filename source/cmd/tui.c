@@ -841,6 +841,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             case 'u': // unlink a device
                     if (gi_device != NULL && gi_device->linked) {
                         gi_device->linked = 0;
+                        free(gi_device->deviceid);
+                        gi_device->deviceid = generatedeviceid();
                         gi_dirtyspecs = 1;
                         refreshscreen();
                     } else {
@@ -942,6 +944,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         timeout(-1);
                     switch (ch) {
                         case 'm': // delete device
+                            if (gi_device->status != status_inactive)
+                                break;
                             if (gi_selecteddevice != 0) {
                                 graft **g;
                                 device **m;
@@ -1494,7 +1498,7 @@ void TUImain(void)
         }
 
         if (!got_char && !got_msg)
-            usleep(1000);
+            usleep(pollingrate);
     }
 
     if (doUI)

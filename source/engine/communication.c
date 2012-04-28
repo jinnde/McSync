@@ -239,7 +239,7 @@ void waitformessage(queue callbackqueue, int32 msg_type, int32 msg_src, int32 ti
 // is called in the message receiving loop of the agent, ticks the waiting time.
 // If a request times out, the callback function is invoked with the success bit
 // off.
-void callbacktick(queue callbackqueue, int32 milliseconds)
+void callbacktick(queue callbackqueue, int32 nanoseconds)
 {
     queuenode node, tmp;
     node = callbackqueue->head;
@@ -248,7 +248,7 @@ void callbacktick(queue callbackqueue, int32 milliseconds)
 
     while (node != NULL) {
         callback = (message_callback) node->data;
-        callback->timeout -= milliseconds;
+        callback->timeout -= nanoseconds;
         if (callback->timeout <= 0) {
             tmp = node->next;
             queueremove(callbackqueue, node);
@@ -707,6 +707,16 @@ void freemessage(message skunk)
     free(skunk);
 } // freemessage
 
+void freemessagequeue(message skunk)
+{
+    message tmp;
+    while (skunk != NULL) {
+        tmp = skunk;
+        skunk = skunk->next;
+        freemessage(tmp);
+    }
+} // freemessagequeue
+
 void nsendmessage(connection plug, int recipient, int type, char* what, int len)
 {
     message msg;
@@ -721,6 +731,7 @@ void nsendmessage(connection plug, int recipient, int type, char* what, int len)
     memcpy(msg->data, what, len);
     msg->data[len] = 0; // extra unsent 0 makes it safer for diagnostic printing
     msg->nextisready = 0;
+    msg->next = NULL;
     plug->messages_fromkid_tail->next = msg;
     plug->messages_fromkid_tail->nextisready = 1;
     plug->messages_fromkid_tail = msg;
@@ -902,8 +913,9 @@ void* forward_raw_errors(void* voidplug)
 {
     FILE* stream_in;
     connection plug = voidplug; // so compiler knows type
-    struct sigaction sa;
 
+    // signal hanlding for thread abortion
+    struct sigaction sa;
     sa.sa_handler = NULL;
     sa.sa_sigaction = &abort_thread_execution;
     sa.sa_flags = SA_SIGINFO;
@@ -933,12 +945,12 @@ void* stream_receiving(void* voidplug)
     FILE* stream_in;
     connection plug = voidplug; // so compiler knows type
 
+    // signal hanlding for thread abortion
     struct sigaction sa;
     sa.sa_handler = NULL;
     sa.sa_sigaction = &abort_thread_execution;
     sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
-
     if (sigaction(SIGUSR1, &sa, NULL) < 0) {
              printerr("Error: Thread could not set the signal handler used for "
                       "aborting its execution. It will not be executed.\n");
@@ -984,12 +996,12 @@ void* stream_shipping(void* voidplug)
     message msg; // head is an already-processed message, we process the next one
     stream_out = plug->tokid;
 
+    // signal hanlding for thread abortion
     struct sigaction sa;
     sa.sa_handler = NULL;
     sa.sa_sigaction = &abort_thread_execution;
     sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
-
     if (sigaction(SIGUSR1, &sa, NULL) < 0) {
              printerr("Error: Thread could not set the signal handler used for "
                       "aborting its execution. It will not be executed.\n");
@@ -1028,6 +1040,7 @@ message trivial_message_queue(void)
     message tr = (message)malloc(sizeof(struct message_struct));
     tr->destinations = NULL; // so we know not to try to free it
     tr->data = NULL;         // so we know not to try to free it
+    tr->next = NULL;
     tr->nextisready = 0;
     return tr;
 } // trivial_message_queue
@@ -1041,6 +1054,22 @@ connection new_connection(void)
     plug->messages_fromkid_tail = trivial_message_queue();
     return plug;
 } // new_connection
+
+void freeconnection(connection skunk) {
+
+    freeintlist(skunk->thisway);
+    if (skunk->address)
+        free(skunk->address);
+
+    // clear the message queues
+    freemessagequeue(skunk->messages_fromkid_head);
+    freemessagequeue(skunk->messages_tokid_head);
+
+    if (skunk->unprocessed_message != NULL)
+        free(skunk->unprocessed_message);
+
+    free(skunk);
+} // freeconnection
 
 void channel_launch(connection plug, channel_initializer initializer)
 {
@@ -1116,6 +1145,7 @@ void add_connection(connection *store_plug_here, int32 plugnumber)
     plug->fromkid = NULL;
     plug->errfromkid = NULL;
     plug->unprocessed_message = NULL;
+    plug->disconnecting = 0;
 
     if (plugnumber) { // normal case (any plug but the parent plug)
         plug->thisway = singletonintlist(plugnumber);
@@ -1141,6 +1171,7 @@ void add_connection(connection *store_plug_here, int32 plugnumber)
     if (store_plug_here)
         *store_plug_here = plug;
 } // add_connection
+
 
 // removes a connection from connection_lists. Waits until routermain tops being busy
 // and blocks accces to the list until the given connection was removed
@@ -1180,6 +1211,7 @@ void routermain(int master, int plug_id)
 // plug_id:  only used for slave mode
 {
     // stdin/stdout are used by (master ? TUI : parent)
+
     intlist cream = emptyintlist(); // cream is (almost) always empty!
 
     readspecsfile(specs_file_path); // even slaves need the list of devices
@@ -1252,9 +1284,11 @@ void routermain(int master, int plug_id)
                     if (! intlistcontains(source_plug->thisway, msg->source))
                         addtointlist(source_plug->thisway, msg->source);
                 }
+
                 // msg is what we want to route -- look for destinations
                 for (dest_plug = connection_list; dest_plug != NULL;
                                                   dest_plug = dest_plug->next) {
+
                     // parent at end of loop if we have one (in slave mode)
                     if (dest_plug == parent_plug) {
                         intlist temp = cream; // move all remaining dests to cream
@@ -1265,7 +1299,8 @@ void routermain(int master, int plug_id)
                                         dest_plug->thisway, cream);
                     }
                     // right now, cream might not be empty -- we'll fix this soon
-                    if (cream->count != 0) {
+                    if (cream->count != 0 && dest_plug->disconnecting != 1) {
+
                         // should be sent to this plug
                         message newmsg;
                         newmsg = (message) malloc(sizeof(struct message_struct));
@@ -1283,13 +1318,21 @@ void routermain(int master, int plug_id)
                             memcpy(newmsg->data, msg->data, newmsg->len + 1);
                         }
                         newmsg->nextisready = 0;
+                        newmsg->next = NULL;
                         dest_plug->messages_tokid_tail->next = newmsg;
                         dest_plug->messages_tokid_tail->nextisready = 1;
                         dest_plug->messages_tokid_tail = newmsg;
+
+                        // the exit message is the last message to be delivered
+                        // to a plug
+                        if (msg->type == msgtype_exit) {
+                            dest_plug->disconnecting = 1;
+                        }
                     }
                 }
                 if (msg->destinations->count != 0) { // undeliverable addresses
-                    // this should never happen
+                    // this should only happen when a message has been sent to a
+                    // disconnecting device
                     int i;
                     printerr("Error! Message from %d couldn't find",
                                     msg->source);
@@ -1308,7 +1351,7 @@ void routermain(int master, int plug_id)
         pthread_mutex_unlock(&connections_mutex);
 
         if (! found_message_waiting) { // nothing to do
-            usleep(1000);
+            usleep(pollingrate);
         }
     }
 } // routermain

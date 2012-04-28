@@ -323,7 +323,7 @@ void workermain(connection worker_plug)
 
     while (dowork) {
         while (! receivemessage(worker_plug, &msg_src, &msg_type, &msg_data)) {
-            usleep(1000);
+            usleep(pollingrate);
         }
         switch (msg_type) {
             case msgtype_info:
@@ -373,7 +373,6 @@ void workermain(connection worker_plug)
 
     // we are were asked to stop working...
     sendmessage(worker_plug, recruiter_int, msgtype_goodbye, "");
-    sleep(1);
 
     if (deviceid != NULL)
         free(deviceid);
