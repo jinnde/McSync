@@ -239,7 +239,7 @@ void waitformessage(queue callbackqueue, int32 msg_type, int32 msg_src, int32 ti
 // is called in the message receiving loop of the agent, ticks the waiting time.
 // If a request times out, the callback function is invoked with the success bit
 // off.
-void callbacktick(queue callbackqueue, int32 nanoseconds)
+void callbacktick(queue callbackqueue, int32 microseconds)
 {
     queuenode node, tmp;
     node = callbackqueue->head;
@@ -248,7 +248,7 @@ void callbacktick(queue callbackqueue, int32 nanoseconds)
 
     while (node != NULL) {
         callback = (message_callback) node->data;
-        callback->timeout -= nanoseconds;
+        callback->timeout -= microseconds;
         if (callback->timeout <= 0) {
             tmp = node->next;
             queueremove(callbackqueue, node);
@@ -981,6 +981,7 @@ void* stream_receiving(void* voidplug)
         (*msg)->nextisready = 0;
         funlockfile(stream_in);
         // now it is ready to be added to the queue
+        (*msg)->next = NULL;
         plug->messages_fromkid_tail->next = (*msg);
         plug->messages_fromkid_tail->nextisready = 1;
         // we have now added this message
@@ -1042,6 +1043,8 @@ message trivial_message_queue(void)
     tr->data = NULL;         // so we know not to try to free it
     tr->next = NULL;
     tr->nextisready = 0;
+    tr->source = 0;
+    tr->type = 0;
     return tr;
 } // trivial_message_queue
 

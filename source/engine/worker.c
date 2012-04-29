@@ -373,7 +373,7 @@ void workermain(connection worker_plug)
 
     // we are were asked to stop working...
     sendmessage(worker_plug, recruiter_int, msgtype_goodbye, "");
-
+    sleep(1);
     if (deviceid != NULL)
         free(deviceid);
 

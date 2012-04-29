@@ -117,6 +117,8 @@ while [ -z $MC_SYNC_PIDS ]; do
     sleep 0.1
 done
 
+sleep 0.5
+
 # Start cgdb and tell it to attach itself to the running McSync instance
 /usr/bin/osascript <<EOF
     tell application "Terminal"

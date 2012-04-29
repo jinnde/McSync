@@ -64,7 +64,7 @@ typedef unsigned long long int uint64;
 #define virtual_file_name_max 256
 
 #define pollingrate 10000
-// ^  nano seconds the agents sleep between checking for new messages
+// ^  micro seconds the agents sleep between checking for new messages
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of data types /////////////////////////////////
