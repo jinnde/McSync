@@ -454,12 +454,16 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     // can really do about it, we will probably leak the workers memory in this case.
 
     if (!success && plug->listener != NULL) { // only local plugs have the listener set
+        pthread_detach(plug->listener);
         pthread_kill(plug->listener, SIGUSR1);
     }
 
     if(plug->stream_shipper != NULL) { // a remote connection
+        pthread_detach(plug->stream_shipper);
         pthread_kill(plug->stream_shipper, SIGUSR1);
+        pthread_detach(plug->stream_receiver);
         pthread_kill(plug->stream_receiver, SIGUSR1);
+        pthread_detach(plug->stderr_forwarder);
         pthread_kill(plug->stderr_forwarder, SIGUSR1);
 
         kill(plug->processpid, SIGKILL);
