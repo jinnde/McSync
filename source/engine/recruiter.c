@@ -251,7 +251,7 @@ void* passinput(void* streamout) // threadgiver thread starts here
             usleep(1000); // this can happen if raw_io() includes nodelay()
         }
     }
-    return NULL;
+    pthread_exit(NULL);
 } // passinput
 
 char* copynchars(char* source, int len)
@@ -289,7 +289,7 @@ void* raisechild(void* voidplug)
         }
         pthread_t inputgiver;
         passinginput = 1;
-        pthread_create(&inputgiver, pthread_attr_default, &passinput, plug->tokid);
+        pthread_create(&inputgiver, &pthread_attributes, &passinput, plug->tokid);
         while (1) {
             char* nextsep = index(sep + 1, ':');
             char* at;
@@ -329,11 +329,6 @@ void* raisechild(void* voidplug)
         }
         passinginput = 0; // kill inputgiver
         printerr("Just set passing input to 0.\n");
-        pthread_cancel(inputgiver);
-        pthread_detach(inputgiver); // docs don't say what detach/cancel mean
-        // and they don't have any effect if thread is blocked in getc!!!
-        // so there is no way to keep the thread from stealing a future char!!
-        // actually detach means don't have it wait to join other when exiting
         fprintf(plug->tokid, "\n%s/mcsync -slave\n", sep + 1);
         fflush(plug->tokid);
     }
@@ -342,7 +337,7 @@ void* raisechild(void* voidplug)
     put32safe(plug->tokid, plug->plugnumber);
     fflush(plug->tokid);
     raised = 1;
-    return NULL;
+    pthread_exit(NULL);
 } // raisechild
 
 int32 reachforremote(connection plug) // try to get mcsync started on remote site
@@ -368,7 +363,7 @@ int32 reachforremote(connection plug) // try to get mcsync started on remote sit
     failed = 0;
     struct timeval basetime, latertime;
     gettimeofday(&basetime, NULL);
-    pthread_create(&raiser, pthread_attr_default, &raisechild, (void*)plug);
+    pthread_create(&raiser, &pthread_attributes, &raisechild, (void*)plug);
 
     while (! raised && ! failed) {
         usleep(25000); // we don't know how long this actually takes
@@ -378,7 +373,6 @@ int32 reachforremote(connection plug) // try to get mcsync started on remote sit
                  + (latertime.tv_usec - basetime.tv_usec) > 20 * 1000 * 1000) {
                 printerr("Timed out.\n");
                 pthread_cancel(raiser);
-                pthread_detach(raiser); // docs don't say what detach/cancel mean
                 kill(kidpid, SIGKILL);
                 removefromintlist(OurChildren, kidpid);
                 raised = 0; // just in case it made it to 1 as it died
@@ -414,14 +408,16 @@ int32 recruitworker(int32 plugnumber, char *address)
     if (reachforremote(plug)) { // fills plug with streams to remote mcsync
        // if non 0 -> success!
        // remote connection needs stderr forwarder
-       pthread_create(&plug->stderr_forwarder, pthread_attr_default,
-                                 &forward_raw_errors, (void *)plug);
-       // put two threads (this + 1 other) on the I/O stream/message conversions
-       pthread_create(&plug->stream_shipper, pthread_attr_default,
+              // put two threads (this + 1 other) on the I/O stream/message conversions
+       pthread_create(&plug->stream_shipper, &pthread_attributes,
                                  &stream_shipping, (void *)plug);
 
-       pthread_create(&plug->stream_receiver, pthread_attr_default,
+       pthread_create(&plug->stream_receiver, &pthread_attributes,
                                 &stream_receiving, (void *)plug);
+
+       pthread_create(&plug->stderr_forwarder, &pthread_attributes,
+                                 &forward_raw_errors, (void *)plug);
+
        return 1;
     }
 
@@ -441,7 +437,7 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     // it it nearly impossible to make threads involved with I/O exit in some sane
     // way. We use a signal that will make them exit on the spot with no way for
     // the threads to clean up after themselves. We need this because most of the
-    // stuff the out threads do is blocking on some streams. The thing we have
+    // stuff our threads do is blocking on some streams. The thing we have
     // to worry most about are memory leaks. There is no problem for stream_shipping
     // because it does not allocate memory and we will be able to free any left
     // message later on. The same is true for forward_raw_errors. The stream reciever,
@@ -450,20 +446,16 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     // plug->unprocessed_message which stores a reference to such a message. It
     // can thus also be freed. The worst case is cancelling a local thread.
     // This can only be an unresponsive local worker, because the exit message on head-
-    // quarters and recruiter will lead the whole process to exit. There is nothing we
-    // can really do about it, we will probably leak the workers memory in this case.
+    // quarters and recruiter will lead the whole process to exit. In this case
+    // there will be a memory leak in the way McSync is currently set up
 
     if (!success && plug->listener != NULL) { // only local plugs have the listener set
-        pthread_detach(plug->listener);
         pthread_kill(plug->listener, SIGUSR1);
     }
 
     if(plug->stream_shipper != NULL) { // a remote connection
-        pthread_detach(plug->stream_shipper);
         pthread_kill(plug->stream_shipper, SIGUSR1);
-        pthread_detach(plug->stream_receiver);
         pthread_kill(plug->stream_receiver, SIGUSR1);
-        pthread_detach(plug->stderr_forwarder);
         pthread_kill(plug->stderr_forwarder, SIGUSR1);
 
         kill(plug->processpid, SIGKILL);

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Argument = -c
+# Argument = -h -c -t -m
 
 # debug.sh is a utility script to help debug McSync on machines running OS X.
 # It starts McSync and attaches cgdb to it. Further, it executes tail -f data/log
@@ -23,14 +23,15 @@ OPTIONS:
    -h      Show this message
    -c      Clone McSync and also show the clones log [false]
    -m      Memcheck using valgrind [false]
+   -t      Show McSyncs memory usage using top [false]
 EOF
-
 
 }
 
 CLONE=0
 MEMCHECK=0
-while getopts "hcm" OPTION
+USETOP=0
+while getopts "hcmt" OPTION
 do
     case $OPTION in
         h)
@@ -43,6 +44,9 @@ do
         m)
              MEMCHECK=1
              CLONE=0
+             ;;
+        t)
+             USETOP=1
              ;;
         ?)
              usage
@@ -118,6 +122,15 @@ while [ -z $MC_SYNC_PIDS ]; do
 done
 
 sleep 0.5
+
+# Start the top to monitor memory usage of the applicationon request
+if [ $USETOP == 1 ]; then
+/usr/bin/osascript <<EOF
+    tell application "Terminal"
+        do script "cd $DIR; top -pid $MC_SYNC_PIDS;"
+    end tell
+EOF
+fi
 
 # Start cgdb and tell it to attach itself to the running McSync instance
 /usr/bin/osascript <<EOF

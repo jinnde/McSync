@@ -914,7 +914,7 @@ void* forward_raw_errors(void* voidplug)
     FILE* stream_in;
     connection plug = voidplug; // so compiler knows type
 
-    // signal hanlding for thread abortion
+    // signal handling for thread abortion
     struct sigaction sa;
     sa.sa_handler = NULL;
     sa.sa_sigaction = &abort_thread_execution;
@@ -945,7 +945,7 @@ void* stream_receiving(void* voidplug)
     FILE* stream_in;
     connection plug = voidplug; // so compiler knows type
 
-    // signal hanlding for thread abortion
+    // signal handling for thread abortion
     struct sigaction sa;
     sa.sa_handler = NULL;
     sa.sa_sigaction = &abort_thread_execution;
@@ -997,7 +997,7 @@ void* stream_shipping(void* voidplug)
     message msg; // head is an already-processed message, we process the next one
     stream_out = plug->tokid;
 
-    // signal hanlding for thread abortion
+    // signal handling for thread abortion
     struct sigaction sa;
     sa.sa_handler = NULL;
     sa.sa_sigaction = &abort_thread_execution;
@@ -1076,7 +1076,7 @@ void freeconnection(connection skunk) {
 
 void channel_launch(connection plug, channel_initializer initializer)
 {
-    pthread_create(&plug->listener, pthread_attr_default,
+    pthread_create(&plug->listener, &pthread_attributes,
                     initializer, (void *)plug);
 } // channel_launch
 
@@ -1218,6 +1218,9 @@ void routermain(int master, int plug_id)
     intlist cream = emptyintlist(); // cream is (almost) always empty!
 
     readspecsfile(specs_file_path); // even slaves need the list of devices
+
+    pthread_attr_init(&pthread_attributes);
+    pthread_attr_setdetachstate(&pthread_attributes, PTHREAD_CREATE_DETACHED);
 
     // set up the basic set of channels
     if (master) {
