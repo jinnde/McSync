@@ -90,7 +90,7 @@ cd "$( cd "$( dirname "$0" )" && pwd )"
 cd source
 
 OPT=
-LIB="-lncurses -framework CoreServices"
+LIB="-lncurses -pthreads -framework CoreServices"
 OUT="-o ../bin/mcsync.$MACHINE_ARCHITECTURE"
 SRC="-I. engine/*.c cmd/*.c util/*.c"
 

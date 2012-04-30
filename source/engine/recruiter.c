@@ -437,8 +437,8 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     // it it nearly impossible to make threads involved with I/O exit in some sane
     // way. We use a signal that will make them exit on the spot with no way for
     // the threads to clean up after themselves. We need this because most of the
-    // stuff our threads do is blocking on some streams. The thing we have
-    // to worry most about are memory leaks. There is no problem for stream_shipping
+    // stuff our threads do is block on some streams. The thing we have to worry
+    // most about are memory leaks. There is no problem for stream_shipping
     // because it does not allocate memory and we will be able to free any left
     // message later on. The same is true for forward_raw_errors. The stream reciever,
     // has a point of failure which would leak memory (while it is filling up a new
@@ -447,7 +447,7 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     // can thus also be freed. The worst case is cancelling a local thread.
     // This can only be an unresponsive local worker, because the exit message on head-
     // quarters and recruiter will lead the whole process to exit. In this case
-    // there will be a memory leak in the way McSync is currently set up
+    // there will be a memory leak because of the way McSync is currently set up
 
     if (!success && plug->listener != NULL) { // only local plugs have the listener set
         pthread_kill(plug->listener, SIGUSR1);

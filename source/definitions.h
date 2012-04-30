@@ -54,7 +54,8 @@ typedef unsigned long long int uint64;
 // four bytes are: (high byte first) 79 99 144 131 (-112 -125) (hex: 4f 63 90 83)
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
-#define device_file_path "./data/device"
+#define device_file_path "/data/device"
+// ^ this is a partial path which will be completed by the worker using its address
 #define specs_file_path "./config/specs"
 
 #define device_id_size 16
@@ -358,6 +359,7 @@ typedef void* (*channel_initializer) (void* arguments); // is the function provi
 //////// some utility functions
 
 char* hostname(void); // caches answer -- do not alter or free!
+char* homedirectory(void); // caches answer -- do not alter or free!
 
 char* strdupcat(const char* first, ...); // allocates new string, last arg must be NULL
 char *commanumber(int64 n); // returns human-readable integer in reused buffer
