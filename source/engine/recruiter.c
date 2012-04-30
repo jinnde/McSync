@@ -424,23 +424,31 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     if (!success)
         printerr("Warning: Disconnecting unresponsive device on plug %d", plugnumber);
 
-    // it it nearly impossible to make threads involved with I/O exit in some sane
+    // it it nearly impossible to make threads involved with blocking I/O exit in some sane
     // way. We use a signal that will make them exit on the spot with no way for
     // the threads to clean up after themselves. We need this because most of the
     // stuff our threads do is block on some streams. The thing we have to worry
-    // most about are memory leaks. There is no problem for stream_shipping
+    // about are memory leaks. There is no problem for stream_shipping
     // because it does not allocate memory and we will be able to free any left
     // message later on. The same is true for forward_raw_errors. The stream reciever,
     // has a point of failure which would leak memory (while it is filling up a new
     // message). To avoid leaking this message, there is a field on the plug called
     // plug->unprocessed_message which stores a reference to such a message. It
-    // can thus also be freed. The worst case is cancelling a local thread.
-    // This can only be an unresponsive local worker, because the exit message on head-
-    // quarters and recruiter will lead the whole process to exit. In this case
-    // there will be a memory leak because of the way McSync is currently set up
+    // can thus also be freed. The worst case is cancelling a local worker thread.
+    // In this case there will be a memory leak because of the way McSync is
+    // currently set up.
+
+    // the best solution for all of this would be a signal on the plug which would
+    // be polled by all involved parties instead of blocking, letting the threads
+    // decide themselves when to exit and what to clean up. The only reason this
+    // can't be implemented at this time, is that it involed changing vast parts
+    // of the I/O functions (put32, waitforsequence et al) to support non blocking
+    // file streams and to check the field. For the regular connecting / disconnecting
+    // the current structure will 'leak' 8kb of unflushed buffer data and it should
+    // be fixed at a later point in time.
 
     if (!success && plug->listener != NULL) { // only local plugs have the listener set
-        pthread_kill(plug->listener, SIGUSR1);
+        pthread_kill(plug->listener, SIGUSR1); // will leak memory...
     }
 
     if(plug->stream_shipper != NULL) { // a remote connection
@@ -449,7 +457,7 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
         pthread_kill(plug->stderr_forwarder, SIGUSR1);
 
         kill(plug->processpid, SIGKILL);
-        close(plug->kidinpipe[WRITE_END]);
+        close(plug->kidinpipe[WRITE_END]); // does not flush an hogs the unbuffered data...
         close(plug->kidoutpipe[READ_END]);
         close(plug->kiderrpipe[READ_END]);
     }

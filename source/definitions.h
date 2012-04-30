@@ -476,6 +476,7 @@ void* localworker_initializer(void *voidplug); // only used by routermain and re
 void* forward_raw_errors(void* voidplug);
 void* stream_receiving(void* voidplug);
 void* stream_shipping(void* voidplug);
+void addabortsignallistener(void);
 
 void freemessage(message skunk);
 

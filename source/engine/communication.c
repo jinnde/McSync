@@ -909,12 +909,8 @@ void abort_thread_execution(int sig, siginfo_t *info, void *ucontext)
     pthread_exit(NULL);
 }   // abort_thread_execution
 
-void* forward_raw_errors(void* voidplug)
+void addabortsignallistener(void)
 {
-    FILE* stream_in;
-    connection plug = voidplug; // so compiler knows type
-
-    // signal handling for thread abortion
     struct sigaction sa;
     sa.sa_handler = NULL;
     sa.sa_sigaction = &abort_thread_execution;
@@ -924,8 +920,16 @@ void* forward_raw_errors(void* voidplug)
     if (sigaction(SIGUSR1, &sa, NULL) < 0) {
              printerr("Error: Thread could not set the signal handler used for "
                       "aborting its execution. It will not be executed.\n");
-             return (void *)-1;
+             return;
      }
+} // addabortsignallistener
+
+void* forward_raw_errors(void* voidplug)
+{
+    FILE* stream_in;
+    connection plug = voidplug; // so compiler knows type
+
+    addabortsignallistener();
 
     stream_in = plug->errfromkid;
     while (1) {
@@ -945,17 +949,7 @@ void* stream_receiving(void* voidplug)
     FILE* stream_in;
     connection plug = voidplug; // so compiler knows type
 
-    // signal handling for thread abortion
-    struct sigaction sa;
-    sa.sa_handler = NULL;
-    sa.sa_sigaction = &abort_thread_execution;
-    sa.sa_flags = SA_SIGINFO;
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGUSR1, &sa, NULL) < 0) {
-             printerr("Error: Thread could not set the signal handler used for "
-                      "aborting its execution. It will not be executed.\n");
-             return (void *)-1;
-     }
+    addabortsignallistener();
 
     stream_in = plug->fromkid;
     while (1) {
@@ -997,17 +991,7 @@ void* stream_shipping(void* voidplug)
     message msg; // head is an already-processed message, we process the next one
     stream_out = plug->tokid;
 
-    // signal handling for thread abortion
-    struct sigaction sa;
-    sa.sa_handler = NULL;
-    sa.sa_sigaction = &abort_thread_execution;
-    sa.sa_flags = SA_SIGINFO;
-    sigemptyset(&sa.sa_mask);
-    if (sigaction(SIGUSR1, &sa, NULL) < 0) {
-             printerr("Error: Thread could not set the signal handler used for "
-                      "aborting its execution. It will not be executed.\n");
-             return (void *)-1;
-    }
+    addabortsignallistener();
 
     while (1) {
         if (plug->messages_tokid_head->nextisready == 1) { // is next one ready?

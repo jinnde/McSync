@@ -344,6 +344,8 @@ void workermain(connection worker_plug)
     char* devicefilepath = NULL;
     char* deviceid = NULL;
 
+    addabortsignallistener(); // as a last resort, will leak memory
+
     // tell hq we are up!
     snprintf(buf, 90, "%d", worker_plug->plugnumber);
     sendmessage(worker_plug, hq_int, msgtype_workerisup, buf);
