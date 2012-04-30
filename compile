@@ -23,7 +23,7 @@ OPTIONS:
    -b      Build: production or development [production]
    -c      Compiler to use instead of cc [cc]
    -d      Display generated compiler command [false]
-   -s     Link to CoreServices [false]
+   -s      Link to CoreServices [false]
 
 EOF
 }
