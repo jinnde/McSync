@@ -1,19 +1,9 @@
 #include "definitions.h"
 
 /*
-TODO: FIX THIS DOCUMENTATION TO MATCH NEW STRUCTURE
 
 This stack of functions is only called as described here.
 
-main --- the entry point for McSync, whether slave or master.  Calls routermain.
-routermain --- the post office.  Delivers mail and sets up plugs.
-                This should be the only place that calls channel_launch, but workermain
-                is still calling it.
-channel_launch --- creates a new plug, and a new thread for the other side of the plug.
-                The new thread starts in thread_main.
-thread_main --- sets up an agent: tui, algo, worker, or SR (parent or remote agent).
-                To set up a remote agent, calls reachforremote, and on success creates
-                the shipping and receiving threads.
 reachforremote --- calls givebirth on the one hand to create a child process, calls
                 raisechild (in a separate thread) on the other hand to "type" into the
                 child process until McSync is up and running, and on the third hand
