@@ -1,5 +1,5 @@
 #!/bin/sh
-# Argument = -b p(roduction)|d(evelopment) -c compiler
+# Argument = -b p(roduction)|d(evelopment) -c compiler -d
 
 # Important: Do not move this file out of the McSync root folder.
 
@@ -23,7 +23,7 @@ OPTIONS:
    -b      Build: production or development [production]
    -c      Compiler to use instead of cc [cc]
    -d      Display generated compiler command [false]
-
+   -s     Link to CoreServices [false]
 
 EOF
 }
@@ -31,7 +31,8 @@ EOF
 BUILD=
 COMPILER=
 DIAGNOSTICS=
-while getopts "hb:c:d" OPTION
+CORESERVICES=
+while getopts "hb:c:ds" OPTION
 do
     case $OPTION in
         h)
@@ -46,6 +47,9 @@ do
              ;;
         d)
              DIAGNOSTICS=1
+             ;;
+        s)
+             CORESERVICES=1
              ;;
          ?)
              usage
@@ -75,6 +79,10 @@ fi
 if [[ -z $DIAGNOSTICS ]]; then
     DIAGNOSTICS=0
 fi
+
+if [[ -z $CORESERVICES ]]; then
+    CORESERVICES=0
+fi
 # End of command line argument handling
 
 MACHINE_ARCHITECTURE=`cc -v 2>&1 | grep Target: | sed 's/.*: *//'`
@@ -90,7 +98,7 @@ cd "$( cd "$( dirname "$0" )" && pwd )"
 cd source
 
 OPT=
-LIB="-lncurses -pthreads -framework CoreServices"
+LIB="-lncurses -pthreads"
 OUT="-o ../bin/mcsync.$MACHINE_ARCHITECTURE"
 SRC="-I. engine/*.c cmd/*.c util/*.c"
 
@@ -109,6 +117,10 @@ fi
 
 if [ $DIAGNOSTICS == 1 ]; then
    echo ${COMPILER} ${OPT} ${LIB} ${SRC} ${OUT}
+fi
+
+if [ $CORESERVICES == 1 ]; then
+    LIB="$LIB -framework CoreServices"
 fi
 
 # The actual compilation command
