@@ -325,6 +325,7 @@ void* raisechild(void* voidplug)
     waitforstring(plug->fromkid, slave_start_string); // till mcsync is live
     fprintf(plug->tokid, "%s", hi_slave_string);
     put32safe(plug->tokid, plug->plugnumber);
+    putstring(plug->tokid, plug->address);
     fflush(plug->tokid);
     raised = 1;
     pthread_exit(NULL);

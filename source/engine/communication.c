@@ -212,7 +212,7 @@ void serializevirtualnode(bytestream b, virtualnode *node) // returns allocated 
 /////////////////////// start of agent helper functions //////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-// sometimes an agent can't really finish a task without having some message from
+// sometimes an agent can't properly finish a task without having some message from
 // another agent. This is for example the case for the exit message which gives
 // the other agent some time to react to it before it is disconnected. We can't
 // really block, because then we would not be able to receive the message and
@@ -1193,9 +1193,10 @@ connection remove_connection(int32 plugnumber)
     return plug;
 } // remove_connection
 
-void routermain(int master, int plug_id)
+void routermain(int32 master, int32 plug_id, char *plug_address)
 // master:  0 => slave mode, 1 => master mode
 // plug_id:  only used for slave mode
+// plug_address: only used for slave mode
 {
     // stdin/stdout are used by (master ? TUI : parent)
 
@@ -1218,9 +1219,10 @@ void routermain(int master, int plug_id)
     } else {
         slavemode = 1;
         connection slaveworkerplug;
-
         add_connection(&parent_plug, 0);
         add_connection(&slaveworkerplug, plug_id);
+
+        slaveworkerplug->address = plug_address;
 
         channel_launch(parent_plug, &parent_initializer );
         channel_launch(slaveworkerplug, &localworker_initializer);

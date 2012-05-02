@@ -80,6 +80,7 @@ int main(int argc, char**argv)
 
     if (argc == 2 && !strcmp(argv[1], "-slave")) {
         int32 whoami;
+        char *myaddress;
         raw_io(); // so waitforstring() below can receive its input
         // which it can receive anytime after the next line
         printerr("slave started ok\n");
@@ -88,19 +89,20 @@ int main(int argc, char**argv)
         fflush(stdout);
         waitforstring(stdin, hi_slave_string);
         whoami = get32safe(stdin);
-        routermain(0, whoami); // start in slave mode
+        myaddress = getstring(stdin, 0);
+        routermain(0, whoami, myaddress); // start in slave mode
         return 0;
     }
 
     if (argc == 1) {
         cmd_thread_start_function = TUImain; // start in master mode, using tui as cmd
-        routermain(1, 0);
+        routermain(1, 0, NULL);
         return 0;
     }
 
     if (argc == 2 && !strcmp(argv[1], "-cli")) {
         cmd_thread_start_function = climain; // start in master mode, using cli as cmd
-        routermain(1, 0);
+        routermain(1, 0, NULL);
         return 0;
     }
 

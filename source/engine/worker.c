@@ -163,13 +163,6 @@ void slavewrite(void)
     // output: success
 } // slavewrite
 
-void slavesetinfo(void)
-{
-} // slavesetinfo
-
-void slaveping(void)
-{
-} // slaveping
 
 /*
 Device file format:
@@ -309,30 +302,36 @@ release_and_return:
     return deviceid;
 } // deviceidondisk
 
-void setupdevicefilepath(char **devicefilepath, char *address) // allocates string, free when done
+char *replacetilde(char *address) // allocates string, free when done
 {
-    char *location = NULL;
-    char *tildereplaced = NULL;
-    char singledot = '.';
+    char *tildereplaced;
 
-    if (!slavemode) {
-        location = index(address, ':');
-        location++; // somehow McSync was successfully reached using this address,
-                    // thus it must be of correct format and we can trust it
-        if (*location == '~') {
-            location++;
-            tildereplaced = strdupcat(homedirectory(), location, NULL);
-            location = tildereplaced;
-        }
+    if(*address == '~') {
+        address++;
+        tildereplaced = strdupcat(homedirectory(), address, NULL);
     } else
-        location = &singledot; // the slaves can use the relative address, because there
-                               // always is only a single worker on remote McSyncs
+        tildereplaced = strdup(address);
 
-    (*devicefilepath) = strdupcat(location, device_file_path, NULL);
+    return tildereplaced;
+} // replacetilde
 
-    if (tildereplaced)
-        free(tildereplaced);
-} // setupdevicefilepath
+char *assembledevicefilepath(char *deviceroot) // allocates string, free when done
+{
+    char *absolutepath = replacetilde(deviceroot);
+    char *devicefilepath = strdupcat(absolutepath, device_file_path, NULL);
+
+    free(absolutepath);
+    return devicefilepath;
+} // assembledevicefilepath
+
+char *extractdeviceroot(char *address) // allocates string, free when done
+{
+    // somehow this worker was successfully reached using the given address,
+    // thus it should be of correct format
+    char *location = index(address, ':');
+    location++;
+    return strdup(location);
+} // extractdeviceroot
 
 void workermain(connection worker_plug)
 {
@@ -340,18 +339,21 @@ void workermain(connection worker_plug)
     char buf[90];
     int32 msg_src;
     int64 msg_type;
-    char* msg_data = NULL;
-    char* devicefilepath = NULL;
-    char* deviceid = NULL;
+    char *msg_data = NULL;
 
-    addabortsignallistener(); // as a last resort, will leak memory
+    char *deviceroot = NULL;
+    char *devicefilepath = NULL;
+    char *deviceid = NULL;
+
+    addabortsignallistener(); // as last resort, will possibly leak memory
 
     // tell hq we are up!
     snprintf(buf, 90, "%d", worker_plug->plugnumber);
     sendmessage(worker_plug, hq_int, msgtype_workerisup, buf);
 
     // we need to know where to look for our id
-    setupdevicefilepath(&devicefilepath, worker_plug->address);
+    deviceroot = extractdeviceroot(worker_plug->address);
+    devicefilepath = assembledevicefilepath(deviceroot);
 
     while (dowork) {
         while (! receivemessage(worker_plug, &msg_src, &msg_type, &msg_data)) {
@@ -370,7 +372,7 @@ void workermain(connection worker_plug)
                 deviceid = deviceidondisk(msg_data, devicefilepath);
 
                 if (deviceid == NULL) { // this is serious, can't do nothing without proper id
-                    printerr("Worker does not know device id, quits...\n");
+                    printerr("Error: Worker does not know device id, quits...\n");
                     dowork = 0;
                     break;
                 }
@@ -395,7 +397,7 @@ void workermain(connection worker_plug)
                 dowork = 0;
                 break;
             default:
-                    printerr("worker got unexpected message"
+                    printerr("Worker got unexpected message"
                                     " of type %lld from %d: \"%s\"\n",
                                     msg_type, msg_src, msg_data);
         }
@@ -403,13 +405,14 @@ void workermain(connection worker_plug)
         msg_data = NULL;
     }
 
-    // we are were asked to stop working...
+    // we were asked to stop working...
     sendmessage(worker_plug, recruiter_int, msgtype_goodbye, "");
     sleep(1);
     if (deviceid != NULL)
         free(deviceid);
 
     free(devicefilepath);
+    free(deviceroot);
 
     if (slavemode)
         cleanexit(__LINE__);

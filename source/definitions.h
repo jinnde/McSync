@@ -457,7 +457,7 @@ void hqmain(void);
 void workermain(connection workerplug);
 void reqruitermain(void);
 
-void routermain(int master, int plug_id);
+void routermain(int32 master, int32 plug_id, char *plug_address);
 
 // callback helper functions for agents
 void waitformessage(queue callbackqueue, int32 msg_type, int32 msg_src, int32 timeout, message_callback_function fn);
