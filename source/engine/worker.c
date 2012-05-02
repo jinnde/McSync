@@ -142,14 +142,43 @@ void slavedelete(void)
     // output: success
 } // slavedelete
 
-void slavescan(char *scanroot, stringlist *prunepoints)
+char *replacetilde(char *address) // allocates string, free when done
 {
-    FILE *f = fopen("./data/temp.txt", "w");
+    char *tildereplaced;
+
+    if(*address == '~') {
+        address++;
+        tildereplaced = strdupcat(homedirectory(), address, NULL);
+    } else
+        tildereplaced = strdup(address);
+
+    return tildereplaced;
+} // replacetilde
+
+void workerscan(char *deviceroot, char *scanroot, stringlist *prunepoints)
+{
+    char *scanfilepath = strdupcat(deviceroot, scan_files_path, "/scan", NULL);
+    FILE *scanfile = fopen(scanfilepath, "w");
+
+    if (!scanfile) {
+        printerr("Error: Worker can't open file for scan file creation (%s) "
+                 "Path: %s \n",
+                 strerror(errno), scanfilepath);
+        free(scanfilepath);
+        return;
+    }
+
+    scanroot = replacetilde(scanroot);
     fileinfo *info = formimage(scanroot);
-    writesubimage(f, info);
-    fclose(f);
+
+    writesubimage(scanfile, info);
+
+    free(scanfilepath);
+    free(scanroot);
+    fclose(scanfile);
+
     // output: scan number, changes since previous on master
-} // slavescan
+} // workerscan
 
 void slaveread(void)
 {
@@ -206,7 +235,7 @@ int32 createdevicefile(char *path, char *deviceid)
 } // createdevicefile
 
 char* deviceidondisk(char *hqs_deviceid, char *devicefilepath) // returns NULL if there was a problem
-{
+{ // if hqs_deviceid is not NULL, will try to create a file with this id in case it does not exist or is foreign
     FILE *devicefile = NULL;
     int32 storedinode, storedosdeviceid;
     struct stat devicefilestat;
@@ -229,12 +258,14 @@ char* deviceidondisk(char *hqs_deviceid, char *devicefilepath) // returns NULL i
             goto release_and_return;
         }
         // there is no device file, create a new device file for this device
-        // with the id suggested by hq
-        if (!createdevicefile(devicefilepath, hqs_deviceid)) {
-            printerr("Error: Device file creation has failed.\n");
-            goto release_and_return;
+        // with the id suggested by hq (if given, else return NULL)
+        if (hqs_deviceid) {
+            if (!createdevicefile(devicefilepath, hqs_deviceid)) {
+                printerr("Error: Device file creation has failed.\n");
+                goto release_and_return;
+            }
+            deviceid = strdup(hqs_deviceid);
         }
-        deviceid = hqs_deviceid;
         goto release_and_return;
     }
 
@@ -263,6 +294,10 @@ char* deviceidondisk(char *hqs_deviceid, char *devicefilepath) // returns NULL i
     storedosdeviceid = get32(devicefile);
 
     if (storedinode != devicefilestat.st_ino || storedosdeviceid != devicefilestat.st_dev) {
+
+        if (!hqs_deviceid)
+            goto release_and_return;
+
         printerr("Warning: Worker detected foreign device file, "
                  "starts creation of new one!\n");
         // create a backup of the old file device
@@ -284,7 +319,7 @@ char* deviceidondisk(char *hqs_deviceid, char *devicefilepath) // returns NULL i
             printerr("Error: Device file creation has failed.\n");
             goto release_and_return;
         }
-        deviceid = hqs_deviceid;
+        deviceid = strdup(hqs_deviceid);
         goto release_and_return;
     }
 
@@ -302,35 +337,13 @@ release_and_return:
     return deviceid;
 } // deviceidondisk
 
-char *replacetilde(char *address) // allocates string, free when done
-{
-    char *tildereplaced;
-
-    if(*address == '~') {
-        address++;
-        tildereplaced = strdupcat(homedirectory(), address, NULL);
-    } else
-        tildereplaced = strdup(address);
-
-    return tildereplaced;
-} // replacetilde
-
-char *assembledevicefilepath(char *deviceroot) // allocates string, free when done
-{
-    char *absolutepath = replacetilde(deviceroot);
-    char *devicefilepath = strdupcat(absolutepath, device_file_path, NULL);
-
-    free(absolutepath);
-    return devicefilepath;
-} // assembledevicefilepath
-
 char *extractdeviceroot(char *address) // allocates string, free when done
 {
     // somehow this worker was successfully reached using the given address,
     // thus it should be of correct format
     char *location = index(address, ':');
     location++;
-    return strdup(location);
+    return replacetilde(location);
 } // extractdeviceroot
 
 void workermain(connection worker_plug)
@@ -345,7 +358,8 @@ void workermain(connection worker_plug)
     char *devicefilepath = NULL;
     char *deviceid = NULL;
 
-    addabortsignallistener(); // as last resort, will possibly leak memory
+    addabortsignallistener(); // as last resort for local worker threads,
+                              // will possibly leak memory
 
     // tell hq we are up!
     snprintf(buf, 90, "%d", worker_plug->plugnumber);
@@ -353,7 +367,7 @@ void workermain(connection worker_plug)
 
     // we need to know where to look for our id
     deviceroot = extractdeviceroot(worker_plug->address);
-    devicefilepath = assembledevicefilepath(deviceroot);
+    devicefilepath =  strdupcat(deviceroot, device_file_path, NULL);
 
     while (dowork) {
         while (! receivemessage(worker_plug, &msg_src, &msg_type, &msg_data)) {
@@ -363,7 +377,7 @@ void workermain(connection worker_plug)
             case msgtype_info:
                     printerr("Worker got info message: \"%s\" from %d\n",
                                     msg_data, msg_src);
-                    break;
+            break;
             case msgtype_identifydevice: // msg_data is hq's device id suggestion
             {
                 if (deviceid != NULL)
@@ -371,7 +385,7 @@ void workermain(connection worker_plug)
 
                 deviceid = deviceidondisk(msg_data, devicefilepath);
 
-                if (deviceid == NULL) { // this is serious, can't do nothing without proper id
+                if (deviceid == NULL) { // this is serious, can't do anything without proper id
                     printerr("Error: Worker does not know device id, quits...\n");
                     dowork = 0;
                     break;
@@ -383,19 +397,34 @@ void workermain(connection worker_plug)
             break;
             case msgtype_scan:
                     {
-                        char *scanroot;
+                        char *scanroot, *currentid;
                         stringlist *prunepoints;
 
+                        // make sure the device has not changed
+                        currentid = deviceidondisk(NULL, devicefilepath);
+
+                        if (currentid == NULL) { // this is serious, can't do anything without proper id
+                            printerr("Error: Worker does not know device id, quits...\n");
+                            dowork = 0;
+                            break;
+                        }
+
+                        if (strcmp(deviceid, currentid) != 0) {
+                            printerr("Error: Worker has detected change of "
+                                     "device at its address, quits...\n");
+                            dowork = 0;
+                            break;
+                        }
                         receivescancommand(msg_data, &scanroot, &prunepoints);
-                        slavescan(scanroot, prunepoints);
+                        workerscan(deviceroot, scanroot, prunepoints);
                         free(scanroot);
                         freestringlist(prunepoints);
                     }
-                    break;
+            break;
             case msgtype_exit:
                 printerr("Worker got exit message... good bye!\n");
                 dowork = 0;
-                break;
+            break;
             default:
                     printerr("Worker got unexpected message"
                                     " of type %lld from %d: \"%s\"\n",

@@ -510,7 +510,7 @@ char* getstring(FILE* input, char delimiter) // returns new string; free when do
     char *copy;
 
     if (buf == NULL) {
-        //printf("Initializing input string buffer\n");
+        //printerr("Initializing input string buffer\n");
         buflen = 2048;
         buf = (char*) malloc(buflen);
     }
@@ -528,22 +528,22 @@ char* getstring(FILE* input, char delimiter) // returns new string; free when do
             break;
         if (i - buf >= buflen) {
             char *newbuf;
-            //printf("Expanding input string buffer from %d to %d\n",
+            //printerr("Expanding input string buffer from %d to %d\n",
             //        buflen, 2 * buflen);
             buflen *= 2;
-            //printf("last character stored: '%c'  original buffer: %.*s\n",
+            //printerr("last character stored: '%c'  original buffer: %.*s\n",
             //        newchar, buflen/2, buf);
             newbuf = (char*) realloc(buf, buflen);
             i += newbuf - buf;
             buf = newbuf;
-            //printf("last character stored: '%c'  new buffer: %.*s\n",
+            //printerr("last character stored: '%c'  new buffer: %.*s\n",
             //        newchar, buflen, buf);
         }
     }
     copy = (char*) malloc(i - buf);
     strncpy(copy, buf, i - buf);
     copy[i - buf - 1] = 0;
-    //printf("read string '%s'\n", copy);
+    //printerr("read string '%s'\n", copy);
     return copy;
 } // getstring
 
@@ -554,7 +554,7 @@ void writesubimage(FILE* output, fileinfo* subimage)
 
     if (didtick) {
         didtick = 0;
-        printf("\015Writing image file to disk... "
+        printerr("\015Writing image file to disk... "
                 "(wrote %d directories, %d files, %d links, %d other)",
                 progress1, progress2, progress3, progress4);
         fflush(stdout);
@@ -573,7 +573,7 @@ void writesubimage(FILE* output, fileinfo* subimage)
         char *cs = strdup(ctime(&c));
         char *ms = strdup(ctime(&m)); // ctime overwrites its buffer
         char *as = strdup(ctime(&a));
-        printf("%s\n", subimage->filename);
+        printerr("%s\n", subimage->filename);
         free(cs);
         free(ms);
         free(as);
@@ -613,11 +613,11 @@ void writeimage(fileinfo* image, char* filename)
     if (image == NULL) // not clear this should ever happen
         return;
 
-    printf("Writing image file %s\n", filename);
+    printerr("Writing image file %s\n", filename);
 
     output = fopen(filename, "w");
     if (!output) {
-        printf("Error opening output file %s (%s)\n",
+        printerr("Error opening output file %s (%s)\n",
                 filename, strerror(errno));
         return;
     }
@@ -634,13 +634,13 @@ void writeimage(fileinfo* image, char* filename)
     fclose(output);
 
     stopticking();
-    printf("\015Writing image file to disk... "
+    printerr("\015Writing image file to disk... "
             "(wrote %d directories, %d files, %d links, %d other)\n",
             progress1, progress2, progress3, progress4);
 
     {
         char *g1, *g2;
-        printf("Wrote image file %s containing %s items "
+        printerr("Wrote image file %s containing %s items "
                 "(which contain %s bytes on disk).\n",
                 filename,
                 g1 = strdup(commanumber(image->subtreesize)),
@@ -680,7 +680,7 @@ fileinfo* readsubimage(FILE* input)
     subimage->subtreebytes = subimage->filelength;
 
     if (0) {
-        printf("%s\n", subimage->filename);
+        printerr("%s\n", subimage->filename);
     }
 
     switch (subimage->filetype) {
@@ -691,7 +691,7 @@ fileinfo* readsubimage(FILE* input)
     }
     if (didtick) {
         didtick = 0;
-        printf("\015Reading image file... "
+        printerr("\015Reading image file... "
                 "(read %d directories, %d files, %d links, %d other)",
                 progress1, progress2, progress3, progress4);
         fflush(stdout);
@@ -721,24 +721,24 @@ fileinfo* readimage(char* filename)
     int32 fileversion;
     int32 numberofrecords;
 
-    printf("Reading image file %s\n", filename);
+    printerr("Reading image file %s\n", filename);
 
     input = fopen(filename, "r");
     if (!input) {
-        printf("Error opening input file %s (%s)\n",
+        printerr("Error opening input file %s (%s)\n",
                 filename, strerror(errno));
         return NULL;
     }
 
     if (get32(input) != magiccookie) {
-        printf("Error: input file %s does not appear to be an image file\n",
+        printerr("Error: input file %s does not appear to be an image file\n",
                 filename);
         cleanexit(__LINE__);
     }
 
     fileversion = get32(input);
     if (fileversion > logfileversionnumber) {
-        printf("Warning: I can read file formats up to version %d,"
+        printerr("Warning: I can read file formats up to version %d,"
                 " but file %s has format version %d\n",
                 logfileversionnumber, filename, fileversion);
     }
@@ -751,12 +751,12 @@ fileinfo* readimage(char* filename)
     image = readsubimage(input);
 
     stopticking();
-    printf("\015Reading image file... "
+    printerr("\015Reading image file... "
             "(read %d directories, %d files, %d links, %d other)\n",
             progress1, progress2, progress3, progress4);
 
     if (numberofrecords != image->subtreesize) {
-        printf("Warning: image file %s claimed to have %d entries,"
+        printerr("Warning: image file %s claimed to have %d entries,"
                 " but it appears to contain %d entries instead.\n",
                 filename, numberofrecords, image->subtreesize);
     }
@@ -765,7 +765,7 @@ fileinfo* readimage(char* filename)
 
     {
         char *g1, *g2;
-        printf("Read image file %s containing %s files (%s bytes).\n",
+        printerr("Read image file %s containing %s files (%s bytes).\n",
                 filename,
                 g1 = strdup(commanumber(image->subtreesize)),
                 g2 = strdup(commanumber(image->subtreebytes)));

@@ -411,7 +411,7 @@ void hq_scan(char *scanrootpath)
         }
 
         if (*graftpathcharacter == '\0') { // we reached the end of the graft virtual path
-            char *physicalpath = strdupcat(g->hostpath, scanpathcharacter);
+            char *physicalpath = strdupcat(g->hostpath, scanpathcharacter, NULL);
             sendscancommand(hq_plug, g->host->reachplan.routeraddr, physicalpath, g->prunepoints);
             free(physicalpath);
         }

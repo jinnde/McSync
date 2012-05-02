@@ -55,7 +55,10 @@ typedef unsigned long long int uint64;
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
 #define device_file_path "/data/device"
-// ^ this is a partial path which will be completed by the worker using its address
+#define scan_files_path "/data"
+// ^ these are partial paths which will be completed by the worker using its address,
+// because they should always be relative to the device
+
 #define specs_file_path "./config/specs"
 
 #define device_id_size 16
