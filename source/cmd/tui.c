@@ -1104,7 +1104,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     gi_mode = 2; // 2 means mousing files
                     refreshscreen();
                     break;
-            case 'q':
+            case 'q': // TODO: Disconnect all devices...
                     return 1;
             case ' ':
             case '\t':

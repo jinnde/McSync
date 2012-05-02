@@ -1042,6 +1042,18 @@ connection new_connection(void)
     return plug;
 } // new_connection
 
+void freesshsession(ssh_session *skunk)
+{
+    if (skunk->uname)
+        free(skunk->uname);
+
+    if (skunk->mname)
+        free(skunk->mname);
+
+    if (skunk->path)
+        free(skunk->path);
+} // freesshsession
+
 void freeconnection(connection skunk) {
 
     freeintlist(skunk->thisway);
@@ -1054,6 +1066,8 @@ void freeconnection(connection skunk) {
 
     if (skunk->unprocessed_message != NULL)
         free(skunk->unprocessed_message);
+
+    freesshsession(&skunk->session);
 
     free(skunk);
 } // freeconnection
@@ -1133,6 +1147,9 @@ void add_connection(connection *store_plug_here, int32 plugnumber)
     plug->errfromkid = NULL;
     plug->unprocessed_message = NULL;
     plug->disconnecting = 0;
+    plug->session.uname = NULL;
+    plug->session.mname = NULL;
+    plug->session.path = NULL;
 
     if (plugnumber) { // normal case (any plug but the parent plug)
         plug->thisway = singletonintlist(plugnumber);

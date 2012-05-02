@@ -273,6 +273,12 @@ typedef struct message_struct { // threads communicate by sending these
     struct message_struct *next;
 } *message;
 
+typedef struct ssh_session_struct {
+    char *uname;        // the user name
+    char *mname;        // the machine name
+    char *path;         // where the session is stored on disk (for multiplexing)
+} ssh_session;
+
 typedef struct connection_struct { // all a router needs to provide plug  huh? XXX
     int32           plugnumber;     // the plugnumber associated with this connection
     intlist         thisway; // what sites lie in this direction, including itself
@@ -281,6 +287,8 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
     pthread_t       listener; // on local connections this also writes the output
     pthread_t       stream_shipper, stream_receiver, stderr_forwarder;  // for remote & parent
     FILE            *tokid, *fromkid, *errfromkid;      // for remote & parent
+    ssh_session     session; // used for multiplexing the ssh connection
+
     struct connection_struct *next;
     // from here on down is only used during creation of the connection
     char            *address;       // the address we try to connect to

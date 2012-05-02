@@ -71,47 +71,21 @@ char* username(void) // caches answer -- do not alter or free!
     return name;
 } // username
 
-void transmogrify(char *address) // turn into an ssh process
+void transmogrify(connection plug) // turn into an ssh process
 {
-    char* mname = NULL;
-    char* uname = NULL;
 
-    // parse address to figure out what to do
-    char* instr = address; // skips device name part if any
-    // here we just need to parse the first ssh command
-    char* pos;
-    pos = index(instr, ':'); // find first ':'
-    if (pos == NULL) {
-        printerr("Error: no ':' in address\n");
-        cleanexit(__LINE__);
-    }
-    *pos = 0; // we have already forked, so who cares if we trash it!
-    pos = index(instr, '`'); // see if there's a '`'
-    if (pos != NULL) // if so, end address there
-        *pos = 0;
-    mname = index(instr, '@');
-    if (mname == NULL) {
-        uname = username();
-        mname = instr;
-    } else {
-        uname = instr;
-        *mname = 0;
-        mname = mname + 1;
-    }
 
-    // fcntl(d, F_SETFD, 1); // makes descriptor close on successful execve
     if (1) { // ExpectOrSSH: SSH
-        execl("/usr/bin/ssh",// the program to run
-            "ssh",          // arg0, here we just follow convention
-            "-tt",          // give us a pseudo-terminal
-            //"-s",         // do the subsystem thing, whatever that is NO!
-            "-e", "none",   // don't let there be any escape char to ssh's mini-UI
-            "-l", uname,    // login as given user
-            mname,          // on given machine
-            //"\"/Users/cook/Common/Coding/Unix/McSync/"
-            //             "McSyncDeviceArchive/src/mcsync -slave 4\"",
-            // the commented things break it for unknown reasons
-            NULL);          // end of command-line arguments
+        execl("/usr/bin/ssh",               // the program to run
+            "ssh",                          // arg0, here we just follow convention
+            "-tt",                          // give us a pseudo-terminal
+            //"-s",                         // do the subsystem thing, whatever that is NO!
+            "-e", "none",                   // don't let there be any escape char to ssh's mini-UI
+            "-l", plug->session.uname,      // login as given user
+            plug->session.mname,            // on given machine
+            "-M",                           // start in master mode for session multiplexing
+            "-S", plug->session.path,       // store the session in the tmp folder
+            NULL);                          // end of command-line arguments
     } else { // ExpectOrSSH: Expect
         execl("/usr/bin/expect", "expect", "/Users/cook/Common/Coding/Unix/"
                 "McSync/McSyncDeviceArchive/config/laptop2laptop.exp", NULL);
@@ -159,7 +133,7 @@ void firststeps(connection plug) // executed by child process, doesn't return
         || close(plug->kiderrpipe[WRITE_END])) {
         ourperror("Pipe close failed in child"); // go tell mom
     }
-    transmogrify(plug->address); // doesn't return
+    transmogrify(plug); // doesn't return
 } // firststeps
 
 int givebirth(connection plug) // fork off an ssh we can talk to
@@ -382,9 +356,10 @@ leave_terminal_mode:
     return retval; // 1 == success
 } // reachforremote
 
-int32 recruitworker(int32 plugnumber, char *address)
-{
+int32 recruitworker(int32 plugnumber, char *address) // modifies remote addresses
+{ // (those who do not start with "local:")
     connection plug = findconnectionbyplugnumber(plugnumber);
+    char *pos, *uname, *mname;
 
     if (!plug)
         return 0;
@@ -396,16 +371,40 @@ int32 recruitworker(int32 plugnumber, char *address)
         return 1;
     }
 
-    if (reachforremote(plug)) { // fills plug with streams to remote mcsync
-       // if non 0 -> success!
-       // remote connection needs stderr forwarder
-              // put two threads (this + 1 other) on the I/O stream/message conversions
+    // it's a remote connection, butcher address into information for ssh
+    pos = index(address, ':');
+    if (pos == NULL) {
+        printerr("Error: no ':' in address\n");
+        return 0;
+    }
+    *pos = 0; // the plug has a full copy, so we can trash it now.
+    pos = index(address, '`'); // see if there's a '`'
+    if (pos != NULL) // if so, end address there
+        *pos = 0;
+    mname = index(address, '@');
+    if (mname == NULL) {
+        uname = username();
+        mname = address;
+    } else {
+        uname = address;
+        *mname = 0;
+        mname = mname + 1;
+    }
+    plug->session.uname = strdup(uname);
+    plug->session.mname = strdup(mname);
+    plug->session.path = strdupcat("/tmp/", uname, "@", mname, NULL);
+
+    // fill plug with streams to remote mcsync
+    if (reachforremote(plug)) { // if non 0 -> success!
+
+       // put two threads (this + 1 other) on the I/O stream/message conversions
        pthread_create(&plug->stream_shipper, &pthread_attributes,
                                  &stream_shipping, (void *)plug);
 
        pthread_create(&plug->stream_receiver, &pthread_attributes,
                                 &stream_receiving, (void *)plug);
 
+       // remote connection needs stderr forwarder
        pthread_create(&plug->stderr_forwarder, &pthread_attributes,
                                  &forward_raw_errors, (void *)plug);
 

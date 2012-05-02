@@ -173,6 +173,7 @@ void workerscan(char *deviceroot, char *scanroot, stringlist *prunepoints)
 
     writesubimage(scanfile, info);
 
+    // TODO: Free fileinfo
     free(scanfilepath);
     free(scanroot);
     fclose(scanfile);
