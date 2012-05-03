@@ -73,8 +73,6 @@ char* username(void) // caches answer -- do not alter or free!
 
 void transmogrify(connection plug) // turn into an ssh process
 {
-
-
     if (1) { // ExpectOrSSH: SSH
         execl("/usr/bin/ssh",               // the program to run
             "ssh",                          // arg0, here we just follow convention
@@ -136,7 +134,7 @@ void firststeps(connection plug) // executed by child process, doesn't return
     transmogrify(plug); // doesn't return
 } // firststeps
 
-int givebirth(connection plug) // fork off an ssh we can talk to
+int givebirth(connection plug) // fork off a process we can talk to
 {
     pid_t kidpid = -1;
 
@@ -392,7 +390,9 @@ int32 recruitworker(int32 plugnumber, char *address) // modifies remote addresse
     }
     plug->session.uname = strdup(uname);
     plug->session.mname = strdup(mname);
-    plug->session.path = strdupcat("/tmp/", uname, "@", mname, NULL);
+    plug->session.path = strdupcat("/tmp/mcsync-ssh-session-", uname, "@", mname, NULL);
+
+    remove(plug->session.path);
 
     // fill plug with streams to remote mcsync
     if (reachforremote(plug)) { // if non 0 -> success!

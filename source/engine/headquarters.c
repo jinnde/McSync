@@ -669,6 +669,41 @@ void hqmain(void)
                     // msg_data is the virtual path of the node to scan
                     hq_scan(msg_data);
                     break;
+            case msgtype_scanupdate:
+            {
+              char buf[512], *devicescanpath;
+              int  ret;
+              connection plug = findconnectionbyplugnumber(msg_src);
+
+              if (plug->session.path == NULL) // TODO: use regular file copy
+                break;
+
+              if (! (d = getdevicebyplugnum(msg_src))) {
+                  printerr("Error: Received plug number which does not belong "
+                           "to any device (%d)\n", msg_src);
+                  break;
+              }
+
+              devicescanpath = strdupcat(".", scan_files_path, "/", d->deviceid, NULL);
+
+              mkdir(devicescanpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
+              sprintf(buf, "scp -C -o 'ControlPath %s' %s@%s:%s %s/%s",
+                      plug->session.path,
+                      plug->session.uname,
+                      plug->session.mname,
+                      msg_data,
+                      devicescanpath,
+                      "scan" );
+
+              ret = system(buf);
+
+              free(devicescanpath);
+
+              if (ret)
+                printerr("Error: scp was not successful\n");
+              break;
+            }
             case msgtype_exit:
                     cleanexit(__LINE__);
                     break;

@@ -276,7 +276,7 @@ typedef struct message_struct { // threads communicate by sending these
 typedef struct ssh_session_struct {
     char *uname;        // the user name
     char *mname;        // the machine name
-    char *path;         // where the session is stored on disk (for multiplexing)
+    char *path;         // where the session is stored on disk (using SSH -M -S)
 } ssh_session;
 
 typedef struct connection_struct { // all a router needs to provide plug  huh? XXX
@@ -288,7 +288,6 @@ typedef struct connection_struct { // all a router needs to provide plug  huh? X
     pthread_t       stream_shipper, stream_receiver, stderr_forwarder;  // for remote & parent
     FILE            *tokid, *fromkid, *errfromkid;      // for remote & parent
     ssh_session     session; // used for multiplexing the ssh connection
-
     struct connection_struct *next;
     // from here on down is only used during creation of the connection
     char            *address;       // the address we try to connect to
@@ -345,13 +344,13 @@ typedef struct message_callback_struct {
 // ^ the message contains a virtual path (usually a request from cmd to hq)
 #define msgtype_scan                17
 // ^ the message contains a host path and prune points (usually a request from hq to wrks)
-#define msgtype_exit                18
+#define msgtype_scanupdate          18
+#define msgtype_exit                19
 // ^ tells the receiver to stop running
-#define msgtype_goodbye             19
-// ^ is sent back from a device which has received a msgtype_exit
+#define msgtype_goodbye             20
+// ^ is sent back from a worker who has received a msgtype_exit
 
 // if you change these^, change msgtypelist in communication.c
-
 
 #define slave_start_string "this is mcsync"
 #define hi_slave_string "you are "
@@ -509,6 +508,7 @@ void freevirtualnode(virtualnode *node);
 // disk scan for workers
 fileinfo* formimage(char* filename); // get inode info for filename (which includes path) and for any subdirectories
 void writesubimage(FILE* output, fileinfo* subimage);
+void freefileinfo(fileinfo* skunk);
 
 // tui specific
 void raw_io(void);

@@ -56,6 +56,61 @@ ssize_t sys_getxattr(const char *path, const char *name, void *value, size_t siz
 #endif
 } // sys_getxattr
 
+void freehistory(history skunk)
+{
+    if (!skunk)
+        return;
+
+    if (skunk->next)
+        freehistory(skunk->next);
+    free(skunk);
+
+} // freehistory
+
+void freeextendedattributes(extendedattributes skunk)
+{
+    if (skunk->next)
+        freeextendedattributes(skunk);
+
+    if (skunk->name)
+        free(skunk->name);
+
+    if (skunk->contents)
+        free(skunk->contents);
+
+    freehistory(skunk->hist_attr);
+
+    free(skunk);
+
+} // freeextendedattributes
+
+void freefileinfo(fileinfo* skunk)
+{
+    if (!skunk)
+        return;
+
+    freefileinfo(skunk->next);
+    freefileinfo(skunk->down);
+
+    if (skunk->user)
+        free(skunk->user);
+
+    if (skunk->group)
+        free(skunk->group);
+
+    if (skunk->filename)
+        free(skunk->filename);
+
+    freehistory(skunk->hist_modtime);
+    freehistory(skunk->hist_contents);
+    freehistory(skunk->hist_perms);
+    freehistory(skunk->hist_name);
+    freehistory(skunk->hist_loc);
+
+    free(skunk);
+
+} // freefileinfo
+
 ssize_t sys_listxattr(const char *path, char *list, size_t size)
 {
 #if defined(HAVE_LISTXATTR)
@@ -356,7 +411,7 @@ fileinfo* formimage(char* filename)
 
     // prepare some space
     image = (fileinfo*) malloc(sizeof(fileinfo));
-    image->next = image->down = image->up = NULL;
+    image->next = image->down = image->up = image->nexthardlink = NULL;
 
     // jot down a bunch of stuff about the file, see man page for stat
     image->inode = status.st_ino;
@@ -396,6 +451,12 @@ fileinfo* formimage(char* filename)
     image->user = strdup(getpwuid(status.st_uid)->pw_name);
     image->group = strdup(getgrgid(status.st_gid)->gr_name);
     image->filename = strdup(filename);
+
+    image->hist_modtime = NULL;
+    image->hist_contents = NULL;
+    image->hist_name = NULL;
+    image->hist_perms = NULL;
+    image->hist_loc = NULL;
 
     // if it is a directory, dig out the filenames and recurse
     if (image->filetype == 1) {
@@ -465,6 +526,7 @@ fileinfo* formimage(char* filename)
     }
     if (toplevel) {
         stopticking();
+        emptyhashtable();
     }
 
     return image;

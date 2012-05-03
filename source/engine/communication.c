@@ -12,7 +12,7 @@ const char* msgtypelist[] = { "error (msgtype==0)",
     "connectdevice","disconnectdevice", "newplugplease", "removeplugplease", "recruitworker",
     "failedrecruit", "info", "workerisup", "connected", "disconnect",
     "identifydevice", "deviceid", "listvirtualdir", "virtualdir", "touch",
-    "scanvirtualdir", "scan", "exit", "goodbye" };
+    "scanvirtualdir", "scan", "scanupdate", "exit", "goodbye" };
 
 
 //////////////////////////////////////////////////////////////////////////////////

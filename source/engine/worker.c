@@ -155,9 +155,13 @@ char *replacetilde(char *address) // allocates string, free when done
     return tildereplaced;
 } // replacetilde
 
-void workerscan(char *deviceroot, char *scanroot, stringlist *prunepoints)
+void workerscan(char *deviceroot, char *scanroot, char *deviceid, stringlist *prunepoints, connection worker_plug)
 {
-    char *scanfilepath = strdupcat(deviceroot, scan_files_path, "/scan", NULL);
+    char *devicescanfolder = strdupcat(deviceroot, scan_files_path, "/", deviceid, NULL);
+    char *scanfilepath = strdupcat(devicescanfolder, "/scan", NULL);
+
+    mkdir(devicescanfolder, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
     FILE *scanfile = fopen(scanfilepath, "w");
 
     if (!scanfile) {
@@ -172,11 +176,15 @@ void workerscan(char *deviceroot, char *scanroot, stringlist *prunepoints)
     fileinfo *info = formimage(scanroot);
 
     writesubimage(scanfile, info);
-
-    // TODO: Free fileinfo
-    free(scanfilepath);
-    free(scanroot);
     fclose(scanfile);
+
+    freefileinfo(info);
+    // TODO: Free fileinfo
+
+    sendmessage(worker_plug, hq_int, msgtype_scanupdate, scanfilepath);
+    free(scanfilepath);
+    free(devicescanfolder);
+    free(scanroot);
 
     // output: scan number, changes since previous on master
 } // workerscan
@@ -417,7 +425,7 @@ void workermain(connection worker_plug)
                             break;
                         }
                         receivescancommand(msg_data, &scanroot, &prunepoints);
-                        workerscan(deviceroot, scanroot, prunepoints);
+                        workerscan(deviceroot, scanroot, deviceid, prunepoints, worker_plug);
                         free(scanroot);
                         freestringlist(prunepoints);
                     }
