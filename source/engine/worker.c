@@ -155,10 +155,22 @@ char *replacetilde(char *address) // allocates string, free when done
     return tildereplaced;
 } // replacetilde
 
+
+void resetscanprogress(scan_progress *progress) // allocates scan_progress, free when done
+{
+    (*progress)->directories =
+    (*progress)->regularfiles =
+    (*progress)->links =
+    (*progress)->other =
+    (*progress)->total = 0;
+} // initscanprogress
+
 void workerscan(char *deviceroot, char *scanroot, char *deviceid, stringlist *prunepoints, connection worker_plug)
 {
     char *devicescanfolder = strdupcat(deviceroot, scan_files_path, "/", deviceid, NULL);
     char *scanfilepath = strdupcat(devicescanfolder, "/scan", NULL);
+    scan_progress progress = (scan_progress) malloc(sizeof(struct scan_progress_struct));
+
 
     mkdir(devicescanfolder, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
@@ -173,18 +185,23 @@ void workerscan(char *deviceroot, char *scanroot, char *deviceid, stringlist *pr
     }
 
     scanroot = replacetilde(scanroot);
-    fileinfo *info = formimage(scanroot);
 
-    writesubimage(scanfile, info);
+    progress->updateinterval = 1000; // report to hq on every 1000 processed files
+
+    resetscanprogress(&progress);
+    fileinfo *info = formimage(scanroot, prunepoints, worker_plug, NULL, progress);
+
+    resetscanprogress(&progress);
+    writesubimage(scanfile, info, progress);
     fclose(scanfile);
 
     freefileinfo(info);
-    // TODO: Free fileinfo
 
     sendmessage(worker_plug, hq_int, msgtype_scanupdate, scanfilepath);
     free(scanfilepath);
     free(devicescanfolder);
     free(scanroot);
+    free(progress);
 
     // output: scan number, changes since previous on master
 } // workerscan
@@ -427,6 +444,7 @@ void workermain(connection worker_plug)
                         receivescancommand(msg_data, &scanroot, &prunepoints);
                         workerscan(deviceroot, scanroot, deviceid, prunepoints, worker_plug);
                         free(scanroot);
+                        free(currentid);
                         freestringlist(prunepoints);
                     }
             break;

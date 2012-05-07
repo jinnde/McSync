@@ -7,7 +7,7 @@
 # folder, which than has a "2" added to its name.
 
 # Build McSync, abort if not successful
-./compile -b development
+./compile -b development -s
 
 if [ $? -ne 0 ]; then
     exit 1

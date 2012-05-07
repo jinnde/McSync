@@ -1,6 +1,5 @@
 #include "definitions.h"
 
-
 char* strdupcat(const char* first, ...)
 {
     va_list args;
@@ -27,7 +26,6 @@ char* strdupcat(const char* first, ...)
     va_end(args);
     return buf;
 } // strdupcat
-
 
 char *most(char *s) // allocs new string, s must contain '/' and be writable
 {
@@ -324,74 +322,13 @@ void sortchildren(fileinfo *image) // sorts so "A" comes before "Z"
     freesortertree(root);
 } // sortchildren
 
-fileinfo** hashtab;
-int hashtabsize = 0, hashtabmask, hashtabentries = 0;
-// stores files according to inode hash, to find inode repeats
-
-uint32 inthash(int32 inode) // hash function due to Thomas Wang, 2007
-{
-    uint32 key = inode;
-    key = ~key + (key << 15); // key = (key << 15) - key - 1;
-    key = key ^ (key >> 12);
-    key = key + (key << 2);
-    key = key ^ (key >> 4);
-    key = key * 2057; // key = (key + (key << 3)) + (key << 11);
-    key = key ^ (key >> 16);
-    return key & hashtabmask;
-} // inthash
-
-fileinfo* storehash(fileinfo* file) // returns file with same inode or stores new
-{
-    int32 hash; // don't compute hash yet, because mask changes when enlarging
-    int pos;
-    // do we need to enlarge the hash table?
-    if (3 * hashtabentries >= hashtabsize) { // we need to make it bigger
-        if (hashtabsize == 0) {
-            hashtabsize = 64; // a power of two
-            hashtabmask = hashtabsize - 1;
-            hashtab = (fileinfo**) calloc(hashtabsize, sizeof(fileinfo*));
-        } else {
-            int oldsize = hashtabsize, i, j;
-            fileinfo** oldtab = hashtab;
-            // first double the size
-            hashtabsize *= 2;
-            hashtabmask = hashtabsize - 1;
-            hashtab = (fileinfo**) calloc(hashtabsize, sizeof(fileinfo*));
-            // now move all the old entries into the new table
-            for (i = 0; i < oldsize; i++)
-                if (oldtab[i] != NULL) {
-                    for (j = inthash(oldtab[i]->inode); hashtab[j] != NULL;
-                                                    j = (j + 1) & hashtabmask) ;
-                    hashtab[j] = oldtab[i];
-                }
-            // now free the old table
-            free(oldtab);
-        }
-    }
-    hash = inthash(file->inode);
-    for (pos = hash; hashtab[pos] != NULL; pos = (pos + 1) & hashtabmask)
-        if (inthash(hashtab[pos]->inode) == hash)
-            return hashtab[pos];
-    hashtab[pos] = file;
-    hashtabentries++;
-    return NULL;
-} // storehash
-
-void emptyhashtable(void)
-{
-    if (hashtabsize == 0)
-        return;
-    free(hashtab);
-    hashtabsize = 0;
-    hashtabentries = 0;
-} // emptyhashtable
-
 // get inode info for filename (which includes path) and for any subdirectories
-fileinfo* formimage(char* filename)
-{
+fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
+                    hashtable h, scan_progress progress)
+{  // IMPORTANT: h has to be NULL on top level call!
     fileinfo *image, *twin;
     struct stat status;
-    int toplevel;
+    int32 toplevel = 0;
 
     // is the filename for real?
     if (    !strcmp(filename + strlen(filename) - 2, "/.")
@@ -402,11 +339,9 @@ fileinfo* formimage(char* filename)
         return NULL;
     }
 
-    toplevel = ! amticking;
-    if (toplevel) {
-        progress1 = progress2 = progress3 = progress4 = 0;
-        startticking();
-        emptyhashtable();
+    if (h == NULL) {
+        toplevel = 1;
+        h = inithashtable();
     }
 
     // prepare some space
@@ -415,13 +350,15 @@ fileinfo* formimage(char* filename)
 
     // jot down a bunch of stuff about the file, see man page for stat
     image->inode = status.st_ino;
-    twin = storehash(image);
+    twin = storehash(h, image);
     switch (status.st_mode & S_IFMT) {
-        case S_IFDIR:   image->filetype = 1;   progress1++;    break;
-        case S_IFREG:   image->filetype = 2;   progress2++;    break;
-        case S_IFLNK:   image->filetype = 3;   progress3++;    break;
-        default:        image->filetype = 4;   progress4++;    break;
+        case S_IFDIR:   image->filetype = 1;   progress->directories++;  break;
+        case S_IFREG:   image->filetype = 2;   progress->regularfiles++; break;
+        case S_IFLNK:   image->filetype = 3;   progress->links++;        break;
+        default:        image->filetype = 4;   progress->other++;        break;
     }
+    progress->total++;
+
     // Mac man page says the only attributes returned from an
     // lstat() that refer to the symbolic link itself are the
     // file type (S_IFLNK), size, blocks, and link count (always 1).
@@ -492,7 +429,8 @@ fileinfo* formimage(char* filename)
                 continue;
             }
             childname = strdupcat(filename, "/", entry->d_name, NULL);
-            child = formimage(childname);
+
+            child = formimage(childname, prunepoints, worker_plug, h, progress);
             if (child == NULL) {
                 // this is not abnormal, it can mean the entry should be ignored
                 // for example, . and .. will result in NULL
@@ -518,15 +456,14 @@ fileinfo* formimage(char* filename)
     }
     donewithdir:
 
-    if (didtick || toplevel) {
-        didtick = 0;
-        printerr("\015Scanning directories... "
-                "(found %d directories, %d files, %d links, %d other)",
-                progress1, progress2, progress3, progress4);
+    if (progress->total % progress->updateinterval == 0) {
+            printerr("\015Scanning directories... "
+             "(found %d directories, %d files, %d links, %d other)\n",
+             progress->directories, progress->regularfiles, progress->links, progress->other);
     }
+
     if (toplevel) {
-        stopticking();
-        emptyhashtable();
+        freehashtable(h);
     }
 
     return image;
@@ -609,36 +546,23 @@ char* getstring(FILE* input, char delimiter) // returns new string; free when do
     return copy;
 } // getstring
 
-void writesubimage(FILE* output, fileinfo* subimage)
+void writesubimage(FILE* output, fileinfo* subimage, scan_progress progress)
 {
     if (subimage == NULL)
         return;
 
-    if (didtick) {
-        didtick = 0;
-        printerr("\015Writing image file to disk... "
-                "(wrote %d directories, %d files, %d links, %d other)",
-                progress1, progress2, progress3, progress4);
-        fflush(stdout);
-    }
     switch (subimage->filetype) {
-        case 1:     progress1++;    break;
-        case 2:     progress2++;    break;
-        case 3:     progress3++;    break;
-        case 4:     progress4++;    break;
+        case 1:     progress->directories++;    break;
+        case 2:     progress->regularfiles++;   break;
+        case 3:     progress->links++;          break;
+        case 4:     progress->other++;          break;
     }
+    progress->total++;
 
-    if (0) {
-        time_t c = subimage->metamodtime;
-        time_t m = subimage->modificationtime;
-        time_t a = subimage->accesstime;
-        char *cs = strdup(ctime(&c));
-        char *ms = strdup(ctime(&m)); // ctime overwrites its buffer
-        char *as = strdup(ctime(&a));
-        printerr("%s\n", subimage->filename);
-        free(cs);
-        free(ms);
-        free(as);
+    if (progress->total % progress->updateinterval == 0) {
+            printerr("\015Writing image file to disk... "
+             "(found %d directories, %d files, %d links, %d other)\n",
+             progress->directories, progress->regularfiles, progress->links, progress->other);
     }
 
     put32(output, subimage->inode);
@@ -663,12 +587,12 @@ void writesubimage(FILE* output, fileinfo* subimage)
     {
         fileinfo *child;
         for (child = subimage->down; child != NULL; child = child->next) {
-            writesubimage(output, child);
+            writesubimage(output, child, progress);
         }
     }
 } // writesubimage
 
-void writeimage(fileinfo* image, char* filename)
+void writeimage(fileinfo* image, char* filename, scan_progress progress)
 {
     FILE *output;
 
@@ -684,35 +608,15 @@ void writeimage(fileinfo* image, char* filename)
         return;
     }
 
-    progress1 = progress2 = progress3 = progress4 = 0;
-    startticking();
-
     put32(output, magiccookie);
     put32(output, logfileversionnumber);
     put32(output, image->subtreesize);
 
-    writesubimage(output, image);
-
+    writesubimage(output, image, progress);
     fclose(output);
+ } // writeimage
 
-    stopticking();
-    printerr("\015Writing image file to disk... "
-            "(wrote %d directories, %d files, %d links, %d other)\n",
-            progress1, progress2, progress3, progress4);
-
-    {
-        char *g1, *g2;
-        printerr("Wrote image file %s containing %s items "
-                "(which contain %s bytes on disk).\n",
-                filename,
-                g1 = strdup(commanumber(image->subtreesize)),
-                g2 = strdup(commanumber(image->subtreebytes)));
-        free(g1);
-        free(g2);
-    }
-} // writeimage
-
-fileinfo* readsubimage(FILE* input)
+fileinfo* readsubimage(FILE* input, scan_progress progress)
 {
     fileinfo* subimage;
 
@@ -741,30 +645,22 @@ fileinfo* readsubimage(FILE* input)
     subimage->subtreesize = 1;
     subimage->subtreebytes = subimage->filelength;
 
-    if (0) {
-        printerr("%s\n", subimage->filename);
-    }
-
     switch (subimage->filetype) {
-        case 1:     progress1++;    break;
-        case 2:     progress2++;    break;
-        case 3:     progress3++;    break;
-        case 4:     progress4++;    break;
-    }
-    if (didtick) {
-        didtick = 0;
-        printerr("\015Reading image file... "
-                "(read %d directories, %d files, %d links, %d other)",
-                progress1, progress2, progress3, progress4);
-        fflush(stdout);
+        case 1:     progress->directories++;    break;
+        case 2:     progress->regularfiles++;   break;
+        case 3:     progress->links++;          break;
+        case 4:     progress->other++;          break;
     }
 
-    {
+    printerr("\015Reading image file... "
+             "(read %d directories, %d files, %d links, %d other)",
+             progress->directories, progress->regularfiles, progress->links, progress->other);
+   {
         int childnum;
         fileinfo *child, **womb;
         womb = &(subimage->down);
         for (childnum = subimage->numchildren; childnum > 0; childnum--) {
-            child = readsubimage(input);
+            child = readsubimage(input, progress);
             *womb = child;
             womb = &(child->next);
             child->up = subimage;
@@ -776,7 +672,7 @@ fileinfo* readsubimage(FILE* input)
     return subimage;
 } // readsubimage
 
-fileinfo* readimage(char* filename)
+fileinfo* readimage(char* filename, scan_progress progress)
 {
     fileinfo *image;
     FILE *input;
@@ -807,15 +703,13 @@ fileinfo* readimage(char* filename)
 
     numberofrecords = get32(input);
 
-    progress1 = progress2 = progress3 = progress4 = 0;
-    startticking();
+    progress->directories = progress->regularfiles = progress->links = progress->other = 0;
 
-    image = readsubimage(input);
+    image = readsubimage(input, progress);
 
-    stopticking();
     printerr("\015Reading image file... "
             "(read %d directories, %d files, %d links, %d other)\n",
-            progress1, progress2, progress3, progress4);
+            progress->directories, progress->regularfiles, progress->links, progress->other);
 
     if (numberofrecords != image->subtreesize) {
         printerr("Warning: image file %s claimed to have %d entries,"

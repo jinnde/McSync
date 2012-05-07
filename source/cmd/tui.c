@@ -62,46 +62,6 @@ char *commanumber(int64 n) // returns human-readable integer in reused buffer
         return buffer + 1;
 } // commanumber
 
-
-// to show progress on a task, do:
-// startticking();
-// loop(... if (didtick) {didtick = 0; show progress;} ...);
-// stopticking();
-
-int didtick = 0;
-int amticking = 0;
-int progress1, progress2, progress3, progress4;
-
-void sigalarmhandler(int x)
-{
-    signal(SIGALRM, &sigalarmhandler);
-    didtick = 1;
-} // sigalarmhandler
-
-struct itimerval timerparameters;
-
-void startticking(void)
-{
-    signal(SIGALRM, &sigalarmhandler);
-    timerparameters.it_interval.tv_sec = timerparameters.it_value.tv_sec = 0;
-    timerparameters.it_interval.tv_usec =
-        timerparameters.it_value.tv_usec = 200000; // optimal for human viewers
-    setitimer(ITIMER_REAL, & timerparameters, NULL);
-    didtick = 0;
-    amticking = 1;
-} // startticking
-
-void stopticking(void)
-{
-    signal(SIGALRM, SIG_DFL); // stop listening to sig_alarm
-    timerparameters.it_interval.tv_sec = timerparameters.it_value.tv_sec = 0;
-    timerparameters.it_interval.tv_usec = timerparameters.it_value.tv_usec = 0;
-    setitimer(ITIMER_REAL, &timerparameters, NULL); // interval timer off
-    didtick = 0;
-    amticking = 0;
-} // stopticking
-
-
 int SelectedMachineColor[3];
 int UnselectedMachineColor[3];
 

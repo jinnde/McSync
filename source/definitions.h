@@ -102,13 +102,20 @@ typedef struct queuenode_struct {
     struct queuenode_struct *next;
     struct queuenode_struct *prev;
     void *data;
-} *queuenode;
+}* queuenode;
 
 typedef struct queue_struct {
     queuenode head;
     queuenode tail;
     uint32 size;
-} *queue;
+}* queue;
+
+typedef struct hashtable_struct {
+    struct fileinfo_struct **table;
+    int32 size;
+    int32 mask;
+    int32 entries;
+}* hashtable;
 
 // mcsync's notion of an aspect's "history" is captured in the history struct
 
@@ -319,6 +326,16 @@ typedef struct message_callback_struct {
     message_callback_function fn;   // who we should call on receive or timeout
 }* message_callback;
 
+// used to keep track of progress in the recursive formimage, diskscan function
+typedef struct scan_progress_struct {
+    int32 directories;
+    int32 regularfiles;
+    int32 links;
+    int32 other;
+    int32 total; // for easy access
+    int32 updateinterval;
+}* scan_progress;
+
 #define hq_int          1
 #define cmd_int         2
 #define recruiter_int   3
@@ -377,12 +394,6 @@ char *commanumber(int64 n); // returns human-readable integer in reused buffer
 // error handling
 void ourperror(char* whatdidnotwork); // writes to ourerr, not stderr
 void cleanexit(int code); // kills children and exits
-
-// progress monitoring
-extern int didtick, amticking;
-extern int progress1, progress2, progress3, progress4;
-void startticking(void);
-void stopticking(void);
 
 // file io
 void put32(FILE* output, int32 data);
@@ -458,6 +469,12 @@ void queueinserthead(queue q, void *data);
 void queueinserttail(queue q, void *data);
 void *queueremove(queue q, queuenode qn); // returns pointer to data, because it will not be freed!!
 
+// hashtable - for fileinfos
+hashtable inithashtable(void);
+void freehashtable(hashtable h);
+
+fileinfo* storehash(hashtable h, fileinfo* file); // returns file with same inode or stores new
+
 //////// actual interaction between program parts
 
 // agent system
@@ -506,8 +523,9 @@ void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // 
 void freevirtualnode(virtualnode *node);
 
 // disk scan for workers
-fileinfo* formimage(char* filename); // get inode info for filename (which includes path) and for any subdirectories
-void writesubimage(FILE* output, fileinfo* subimage);
+fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
+                    hashtable h, scan_progress progress); // get inode info for filename (which includes path) and for any subdirectories
+void writesubimage(FILE* output, fileinfo* subimage, scan_progress progress);
 void freefileinfo(fileinfo* skunk);
 
 // tui specific
