@@ -412,7 +412,26 @@ void hq_scan(char *scanrootpath)
 
         if (*graftpathcharacter == '\0') { // we reached the end of the graft virtual path
             char *physicalpath = strdupcat(g->hostpath, scanpathcharacter, NULL);
-            sendscancommand(hq_plug, g->host->reachplan.routeraddr, physicalpath, g->prunepoints);
+
+            // replace virtual with host path in prunepoints
+            stringlist *graftprunes, *deviceprunes, *tmp;
+            int32 virtualpathlen = strlen(g->virtualpath);
+
+            deviceprunes = tmp = NULL;
+            graftprunes = g->prunepoints;
+            while (graftprunes != NULL) {
+                tmp = deviceprunes;
+                deviceprunes = (stringlist*) malloc(sizeof(struct stringlist_struct));
+                deviceprunes->next = tmp;
+                if (! strncmp(g->virtualpath, graftprunes->string, virtualpathlen))
+                    deviceprunes->string = strdupcat(g->hostpath, graftprunes->string + virtualpathlen, NULL);
+                else
+                    deviceprunes->string = strdup(graftprunes->string);
+                graftprunes = graftprunes->next;
+            }
+
+            sendscancommand(hq_plug, g->host->reachplan.routeraddr, physicalpath, deviceprunes);
+            freestringlist(deviceprunes);
             free(physicalpath);
         }
     }
@@ -694,7 +713,7 @@ void hqmain(void)
                       plug->session.mname,
                       msg_data,
                       devicescanpath,
-                      "scan" );
+                      "scan");
 
               ret = system(buf);
 

@@ -334,6 +334,8 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
     if (    !strcmp(filename + strlen(filename) - 2, "/.")
          || !strcmp(filename + strlen(filename) - 3, "/..")) // inefficient
         return NULL;
+    if (stringlistcontains(prunepoints, filename) != NULL)
+        return NULL;
     if (lstat(filename, &status)) {
         printerr("Scan Warning: Could not stat %s (%s)\n", filename, strerror(errno));
         return NULL;

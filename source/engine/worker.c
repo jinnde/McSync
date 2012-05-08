@@ -142,19 +142,34 @@ void slavedelete(void)
     // output: success
 } // slavedelete
 
-char *replacetilde(char *address) // allocates string, free when done
+char *replacetilde(char *path) // allocates string, free when done
 {
     char *tildereplaced;
 
-    if(*address == '~') {
-        address++;
-        tildereplaced = strdupcat(homedirectory(), address, NULL);
+    if(*path == '~') {
+        path++;
+        tildereplaced = strdupcat(homedirectory(), path, NULL);
     } else
-        tildereplaced = strdup(address);
+        tildereplaced = strdup(path);
 
     return tildereplaced;
 } // replacetilde
 
+void replacetildeinstringlist(stringlist *prunepoints)
+{
+    char *path;
+    stringlist* prunepoint = prunepoints;
+
+    while (prunepoint != NULL) {
+        path = prunepoint->string;
+        if (path) {
+            prunepoint->string = replacetilde(path);
+            free(path);
+        }
+        prunepoint = prunepoint->next;
+    }
+
+} // replacetildeinstringlist
 
 void resetscanprogress(scan_progress *progress) // allocates scan_progress, free when done
 {
@@ -165,17 +180,18 @@ void resetscanprogress(scan_progress *progress) // allocates scan_progress, free
     (*progress)->total = 0;
 } // initscanprogress
 
-void workerscan(char *deviceroot, char *scanroot, char *deviceid, stringlist *prunepoints, connection worker_plug)
+void workerscan(char *deviceroot, char *scanroot, char *deviceid,
+                stringlist *prunepoints, connection worker_plug)
 {
-    char *devicescanfolder = strdupcat(deviceroot, scan_files_path, "/", deviceid, NULL);
-    char *scanfilepath = strdupcat(devicescanfolder, "/scan", NULL);
-    scan_progress progress = (scan_progress) malloc(sizeof(struct scan_progress_struct));
+    FILE *scanfile;
+    char *devicescanfolder, *scanfilepath;
+    scan_progress progress;
 
-
+    // create the device scan folder and scan file
+    devicescanfolder = strdupcat(deviceroot, scan_files_path, "/", deviceid, NULL);
     mkdir(devicescanfolder, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-
-    FILE *scanfile = fopen(scanfilepath, "w");
-
+    scanfilepath = strdupcat(devicescanfolder, "/scan", NULL);
+    scanfile = fopen(scanfilepath, "w");
     if (!scanfile) {
         printerr("Error: Worker can't open file for scan file creation (%s) "
                  "Path: %s \n",
@@ -183,21 +199,26 @@ void workerscan(char *deviceroot, char *scanroot, char *deviceid, stringlist *pr
         free(scanfilepath);
         return;
     }
-
     scanroot = replacetilde(scanroot);
+    replacetildeinstringlist(prunepoints);
 
+    // set up scan progress reporting
+    progress = (scan_progress) malloc(sizeof(struct scan_progress_struct));
+    resetscanprogress(&progress);
     progress->updateinterval = 1000; // report to hq on every 1000 processed files
 
-    resetscanprogress(&progress);
+    // recursively scan scanroot
     fileinfo *info = formimage(scanroot, prunepoints, worker_plug, NULL, progress);
 
+    // write fresh scans to disk
     resetscanprogress(&progress);
     writesubimage(scanfile, info, progress);
     fclose(scanfile);
 
-    freefileinfo(info);
-
+    // tell hq we're done and send location of the new scan file
     sendmessage(worker_plug, hq_int, msgtype_scanupdate, scanfilepath);
+
+    freefileinfo(info);
     free(scanfilepath);
     free(devicescanfolder);
     free(scanroot);
@@ -385,7 +406,7 @@ void workermain(connection worker_plug)
     char *deviceid = NULL;
 
     addabortsignallistener(); // as last resort for local worker threads,
-                              // will possibly leak memory
+                              // will very likely leak memory
 
     // tell hq we are up!
     snprintf(buf, 90, "%d", worker_plug->plugnumber);
@@ -393,7 +414,7 @@ void workermain(connection worker_plug)
 
     // we need to know where to look for our id
     deviceroot = extractdeviceroot(worker_plug->address);
-    devicefilepath =  strdupcat(deviceroot, device_file_path, NULL);
+    devicefilepath = strdupcat(deviceroot, device_file_path, NULL);
 
     while (dowork) {
         while (! receivemessage(worker_plug, &msg_src, &msg_type, &msg_data)) {
@@ -423,7 +444,7 @@ void workermain(connection worker_plug)
             break;
             case msgtype_scan:
                     {
-                        char *scanroot, *currentid;
+                        char *scanroot, *currentid  ;
                         stringlist *prunepoints;
 
                         // make sure the device has not changed
@@ -442,6 +463,7 @@ void workermain(connection worker_plug)
                             break;
                         }
                         receivescancommand(msg_data, &scanroot, &prunepoints);
+
                         workerscan(deviceroot, scanroot, deviceid, prunepoints, worker_plug);
                         free(scanroot);
                         free(currentid);

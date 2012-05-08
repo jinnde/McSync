@@ -57,7 +57,8 @@ typedef unsigned long long int uint64;
 #define device_file_path "/data/device"
 #define scan_files_path "/data"
 // ^ these are partial paths which will be completed by the worker using its address,
-// because they should always be relative to the device
+// because they should always be relative to the device. Be aware that McSync expects
+// those directories to exists and will not try to create them for you.
 
 #define specs_file_path "./config/specs"
 
@@ -360,7 +361,7 @@ typedef struct scan_progress_struct {
 #define msgtype_scanvirtualdir      16
 // ^ the message contains a virtual path (usually a request from cmd to hq)
 #define msgtype_scan                17
-// ^ the message contains a host path and prune points (usually a request from hq to wrks)
+// ^ the message contains a host path and prune points (usually a request from hq to workers)
 #define msgtype_scanupdate          18
 #define msgtype_exit                19
 // ^ tells the receiver to stop running
@@ -452,6 +453,7 @@ void removefromintlist(intlist il, listint n);
 
 // stringlist
 void freestringlist(stringlist *skunk);
+stringlist* stringlistcontains(stringlist *s, char *str);
 
 // bytestream - dynamically re-allocated string (doubling allocated memory when full)
 bytestream initbytestream(uint32 len); // allocates new bytestream, free when done

@@ -11,3 +11,15 @@ void freestringlist(stringlist *skunk)
         free(temp);
     }
 } // freestringlist
+
+stringlist* stringlistcontains(stringlist *s, char *str)
+{
+    stringlist* listitem = s;
+
+    while (listitem != NULL) {
+        if (! strcmp(listitem->string, str))
+            return listitem;
+        listitem = listitem->next;
+    }
+    return NULL;
+} // stringlistcontains
