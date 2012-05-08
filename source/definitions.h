@@ -54,7 +54,7 @@ typedef unsigned long long int uint64;
 // four bytes are: (high byte first) 79 99 144 131 (-112 -125) (hex: 4f 63 90 83)
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
-#define device_file_path "/data/device"
+#define device_id_file_path "/data/id"
 #define scan_files_path "/data"
 #define time_file_path "/data/time"
 // ^ these are partial paths which will be completed by the worker using its address,

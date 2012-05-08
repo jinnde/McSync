@@ -239,33 +239,33 @@ void slavewrite(void)
 
 
 /*
-Device file format:
+Device id file format:
 int32   McSync magic cookie
 int32   version
-int32   inode of device file (st_ino)
-int32   id of OS device on which the device file is stored (st_dev)
+int32   inode of device id file (st_ino)
+int32   id of OS device on which the device id file is stored (st_dev)
 string  unique device identifier (see device_id_size for byte size)
 */
-int32 createdevicefile(char *path, char *deviceid)
-{// creates a new device file and stores a given id in it. Returns 1 if sucessful, 0 otherwise
+int32 createdeviceidfile(char *path, char *deviceid)
+{// creates a new device id file and stores a given id in it. Returns 1 if sucessful, 0 otherwise
     FILE *devicefile;
     struct stat devicefileinfo;
 
-    // collection of meta data on the device file created
+    // collection of meta data on the device id file created
     devicefile = fopen(path, "w");
     if (!devicefile) {
-        printerr("Error: Worker can't open file for device file creation (%s) "
+        printerr("Error: Worker can't open file for device id file creation (%s) "
                  "Path: %s \n",
                  strerror(errno), path);
         return 0;
     }
     if (lstat(path, &devicefileinfo) == -1) {
-        printerr("Error: Worker can't access stat info of device file (%s) "
+        printerr("Error: Worker can't access stat info of device id file (%s) "
                  "Path: %s\n",
                  strerror(errno), path);
         fclose(devicefile);
         if (remove(path) == -1)
-            printerr("Error: Worker can't remove incomplete device file (%s) "
+            printerr("Error: Worker can't remove incomplete device id file (%s) "
                      "remove it manually! Path: %s\n",
                      strerror(errno), path);
         return 0;
@@ -277,36 +277,36 @@ int32 createdevicefile(char *path, char *deviceid)
     putstring(devicefile, deviceid);
     fclose(devicefile);
     return 1;
-} // createdevicefile
+} // createdeviceidfile
 
-char* deviceidondisk(char *hqs_deviceid, char *devicefilepath) // returns NULL if there was a problem
+char* deviceidondisk(char *hqs_deviceid, char *deviceidfilepath) // returns NULL if there was a problem
 { // if hqs_deviceid is not NULL, will try to create a file with this id in case it does not exist or is foreign
     FILE *devicefile = NULL;
     int32 storedinode, storedosdeviceid;
     struct stat devicefilestat;
     char *deviceid = NULL;
 
-    // try to get the device file lock, block for a minute before giving up
-    if (!getlockfile(devicefilepath, 60000)) {
-        printerr("Error: Worker can't get lock file for device file.\n");
+    // try to get the device id file lock, block for a minute before giving up
+    if (!getlockfile(deviceidfilepath, 60000)) {
+        printerr("Error: Worker can't get lock file for device id file.\n");
         return NULL;
     }
 
-    devicefile = fopen(devicefilepath, "r");
+    devicefile = fopen(deviceidfilepath, "r");
 
     if (!devicefile) {
         if (errno != ENOENT) {
-            // there is some other problem other than the lack of a device file
-            printerr("Error: Worker can't open device file for reading (%s)"
+            // there is some other problem other than the lack of a device id file
+            printerr("Error: Worker can't open device id file for reading (%s)"
                      "Path: %s\n",
-                     strerror(errno), devicefilepath);
+                     strerror(errno), deviceidfilepath);
             goto release_and_return;
         }
-        // there is no device file, create a new device file for this device
+        // there is no device id file, create a new device id file for this device
         // with the id suggested by hq (if given, else return NULL)
         if (hqs_deviceid) {
-            if (!createdevicefile(devicefilepath, hqs_deviceid)) {
-                printerr("Error: Device file creation has failed.\n");
+            if (!createdeviceidfile(deviceidfilepath, hqs_deviceid)) {
+                printerr("Error: device id file creation has failed.\n");
                 goto release_and_return;
             }
             deviceid = strdup(hqs_deviceid);
@@ -314,27 +314,27 @@ char* deviceidondisk(char *hqs_deviceid, char *devicefilepath) // returns NULL i
         goto release_and_return;
     }
 
-    // make sure we have opened a proper device file
+    // make sure we have opened a proper device id file
     if (get32(devicefile) != magiccookie) {
-        printerr("Error: Worker read invalid magic cookie in device file: %s\n",
-                devicefilepath);
+        printerr("Error: Worker read invalid magic cookie in device id file: %s\n",
+                deviceidfilepath);
         goto release_and_return;
     }
 
     if (get32(devicefile) != devicefileversionnumber) {
-        printerr("Error: Worker can't read device file because of a wrong device "
+        printerr("Error: Worker can't read device id file because of a wrong device "
                  "file version.\n");
         goto release_and_return;
     }
 
-    // check if the device file is a left over from another McSync device archive
-    if (lstat(devicefilepath, &devicefilestat) == -1) {
-        printerr("Error: Worker can't access stat info of device file: %s\n",
-                 devicefilepath);
+    // check if the device id file is a left over from another McSync device archive
+    if (lstat(deviceidfilepath, &devicefilestat) == -1) {
+        printerr("Error: Worker can't access stat info of device id file: %s\n",
+                 deviceidfilepath);
         goto release_and_return;
     }
 
-    // we use the inode of the device file and its devices id to guess whether we are on the same device
+    // we use the inode of the device id file and its devices id to guess whether we are on the same device
     storedinode = get32(devicefile);
     storedosdeviceid = get32(devicefile);
 
@@ -343,25 +343,25 @@ char* deviceidondisk(char *hqs_deviceid, char *devicefilepath) // returns NULL i
         if (!hqs_deviceid)
             goto release_and_return;
 
-        printerr("Warning: Worker detected foreign device file, "
+        printerr("Warning: Worker detected foreign device id file, "
                  "starts creation of new one!\n");
         // create a backup of the old file device
-        char *backup = strdupcat(devicefilepath, ".backup", NULL);
+        char *backup = strdupcat(deviceidfilepath, ".backup", NULL);
         // does not matter if removing an old backup file fails, it does not have
         // to exist other problems are probably caught by rename further down any way
         (void)remove(backup);
         fclose(devicefile);
-        if (rename(devicefilepath, backup) == -1) {
-            printerr("Error: Backup of foreign device file failed (%s)\n",
+        if (rename(deviceidfilepath, backup) == -1) {
+            printerr("Error: Backup of foreign device id file failed (%s)\n",
                      strerror(errno));
             free(backup);
             goto release_and_return;
         }
         free(backup);
 
-        // create a new device file with the id from hq
-        if (!createdevicefile(devicefilepath, hqs_deviceid)) {
-            printerr("Error: Device file creation has failed.\n");
+        // create a new device id file with the id from hq
+        if (!createdeviceidfile(deviceidfilepath, hqs_deviceid)) {
+            printerr("Error: Device id file creation has failed.\n");
             goto release_and_return;
         }
         deviceid = strdup(hqs_deviceid);
@@ -372,9 +372,9 @@ char* deviceidondisk(char *hqs_deviceid, char *devicefilepath) // returns NULL i
 
 release_and_return:
 
-    if(!releaselockfile(devicefilepath))
+    if(!releaselockfile(deviceidfilepath))
         printerr("Error: Worker could not realease lock file! Path: %s\n",
-                 devicefilepath);
+                 deviceidfilepath);
 
     if (devicefile)
         fclose(devicefile);
@@ -400,7 +400,7 @@ void workermain(connection worker_plug)
     char *msg_data = NULL;
 
     char *deviceroot = NULL;
-    char *devicefilepath = NULL;
+    char *deviceidfilepath = NULL;
     char *deviceid = NULL;
 
     addabortsignallistener(); // as last resort for local worker threads,
@@ -412,7 +412,7 @@ void workermain(connection worker_plug)
 
     // we need to know where to look for our id
     deviceroot = extractdeviceroot(worker_plug->address);
-    devicefilepath = strdupcat(deviceroot, device_file_path, NULL);
+    deviceidfilepath = strdupcat(deviceroot, device_id_file_path, NULL);
 
     while (dowork) {
         while (! receivemessage(worker_plug, &msg_src, &msg_type, &msg_data)) {
@@ -428,7 +428,7 @@ void workermain(connection worker_plug)
                 if (deviceid != NULL)
                     free(deviceid);
 
-                deviceid = deviceidondisk(msg_data, devicefilepath);
+                deviceid = deviceidondisk(msg_data, deviceidfilepath);
 
                 if (deviceid == NULL) { // this is serious, can't do anything without proper id
                     printerr("Error: Worker does not know device id, quits...\n");
@@ -446,7 +446,7 @@ void workermain(connection worker_plug)
                         stringlist *prunepoints;
 
                         // make sure the device has not changed
-                        currentid = deviceidondisk(NULL, devicefilepath);
+                        currentid = deviceidondisk(NULL, deviceidfilepath);
 
                         if (currentid == NULL) { // this is serious, can't do anything without proper id
                             printerr("Error: Worker does not know device id, quits...\n");
@@ -487,7 +487,7 @@ void workermain(connection worker_plug)
     if (deviceid != NULL)
         free(deviceid);
 
-    free(devicefilepath);
+    free(deviceidfilepath);
     free(deviceroot);
 
     if (slavemode)
