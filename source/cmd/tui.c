@@ -473,7 +473,7 @@ char *browserhelparray[][2] = {
     {"+", "More Columns"},
     {"-", "Fewer Columns"},
     {"Space", "Toggle Detail View"},
-    {"V", "View Machines"},
+    {"V", "View Devices"},
     {"S", "Start Scans"},
     {"VQ", "Quit"},
     {NULL, NULL}};

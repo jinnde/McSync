@@ -413,7 +413,7 @@ void hq_scan(char *scanrootpath)
         if (*graftpathcharacter == '\0') { // we reached the end of the graft virtual path
             char *physicalpath = strdupcat(g->hostpath, scanpathcharacter, NULL);
 
-            // replace virtual with host path in prunepoints
+            // get rid of the virtual graft path in the prunes list..
             stringlist *graftprunes, *deviceprunes, *tmp;
             int32 virtualpathlen = strlen(g->virtualpath);
 
@@ -430,6 +430,7 @@ void hq_scan(char *scanrootpath)
                 graftprunes = graftprunes->next;
             }
 
+            // send scan command to workers using only host paths
             sendscancommand(hq_plug, g->host->reachplan.routeraddr, physicalpath, deviceprunes);
             freestringlist(deviceprunes);
             free(physicalpath);
@@ -707,7 +708,7 @@ void hqmain(void)
 
               mkdir(devicescanpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-              sprintf(buf, "scp -C -o 'ControlPath %s' %s@%s:%s %s/%s",
+              sprintf(buf, "/usr/bin/scp -C -o 'ControlPath %s' %s@%s:%s %s/%s",
                       plug->session.path,
                       plug->session.uname,
                       plug->session.mname,
@@ -716,11 +717,13 @@ void hqmain(void)
                       "scan");
 
               ret = system(buf);
-
               free(devicescanpath);
 
-              if (ret)
-                printerr("Error: scp was not successful\n");
+              if (ret) {
+                printerr("Error: Transfer of scan file to Headquarters was not successful\n");
+                break;
+              }
+
               break;
             }
             case msgtype_exit:

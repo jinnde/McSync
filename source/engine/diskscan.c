@@ -334,6 +334,7 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
     if (    !strcmp(filename + strlen(filename) - 2, "/.")
          || !strcmp(filename + strlen(filename) - 3, "/..")) // inefficient
         return NULL;
+    // is the file on the prunelist?
     if (stringlistcontains(prunepoints, filename) != NULL)
         return NULL;
     if (lstat(filename, &status)) {

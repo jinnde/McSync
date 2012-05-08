@@ -171,7 +171,7 @@ void replacetildeinstringlist(stringlist *prunepoints)
 
 } // replacetildeinstringlist
 
-void resetscanprogress(scan_progress *progress) // allocates scan_progress, free when done
+void resetscanprogress(scan_progress *progress) //does not alter progress->updateinteval
 {
     (*progress)->directories =
     (*progress)->regularfiles =
@@ -205,7 +205,7 @@ void workerscan(char *deviceroot, char *scanroot, char *deviceid,
     // set up scan progress reporting
     progress = (scan_progress) malloc(sizeof(struct scan_progress_struct));
     resetscanprogress(&progress);
-    progress->updateinterval = 1000; // report to hq on every 1000 processed files
+    progress->updateinterval = 1000; // report on every 1000 processed files
 
     // recursively scan scanroot
     fileinfo *info = formimage(scanroot, prunepoints, worker_plug, NULL, progress);
@@ -223,8 +223,6 @@ void workerscan(char *deviceroot, char *scanroot, char *deviceid,
     free(devicescanfolder);
     free(scanroot);
     free(progress);
-
-    // output: scan number, changes since previous on master
 } // workerscan
 
 void slaveread(void)
@@ -442,9 +440,9 @@ void workermain(connection worker_plug)
                 sendmessage2(worker_plug, hq_int, msgtype_deviceid, buf);
             }
             break;
-            case msgtype_scan:
+            case msgtype_scan: // msg_data is a scan root dir and prune points
                     {
-                        char *scanroot, *currentid  ;
+                        char *scanroot, *currentid;
                         stringlist *prunepoints;
 
                         // make sure the device has not changed
