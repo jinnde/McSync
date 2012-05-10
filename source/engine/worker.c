@@ -10,7 +10,7 @@ int removefile(char *skunk) // full path name of file
 {
     struct stat status;
     struct utimbuf times;
-    char *i = rindex(skunk, '/');
+    char *i = strrchr(skunk, '/');
 
     // first store modtime of parent
     if (i == NULL) {

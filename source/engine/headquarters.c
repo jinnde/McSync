@@ -22,7 +22,7 @@ virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir stri
     char *pos;
     if (dir[0] != '/') // in general true only for "" (otherwise dir was bad)
         return root;
-    pos = rindex(dir, '/');
+    pos = strrchr(dir, '/');
     *pos = 0; // truncate string
     parent = conjuredirectory(root, dir);
     *pos = '/';
