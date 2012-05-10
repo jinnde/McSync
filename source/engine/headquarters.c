@@ -714,7 +714,7 @@ void hqmain(void)
                       plug->session.mname,
                       msg_data,
                       devicescanpath,
-                      "scan");
+                      (strrchr(msg_data, '/') + 1));
 
               ret = system(buf);
               free(devicescanpath);
