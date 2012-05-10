@@ -390,9 +390,7 @@ int32 recruitworker(int32 plugnumber, char *address) // modifies remote addresse
     }
     plug->session.uname = strdup(uname);
     plug->session.mname = strdup(mname);
-    plug->session.path = strdupcat("/tmp/mcsync-ssh-session-", uname, "@", mname, NULL);
-
-    remove(plug->session.path);
+    plug->session.path = strdupcat(tmpnam(NULL), "-mcsync-ssh-session-", uname, "@", mname, NULL);
 
     // fill plug with streams to remote mcsync
     if (reachforremote(plug)) { // if non 0 -> success!

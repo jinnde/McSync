@@ -1050,8 +1050,10 @@ void freesshsession(ssh_session *skunk)
     if (skunk->mname)
         free(skunk->mname);
 
-    if (skunk->path)
+    if (skunk->path) {
+        remove(skunk->path);
         free(skunk->path);
+    }
 } // freesshsession
 
 void freeconnection(connection skunk) {
