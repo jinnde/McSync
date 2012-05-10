@@ -455,7 +455,7 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
         pthread_kill(plug->stderr_forwarder, SIGUSR1);
 
         kill(plug->processpid, SIGKILL);
-        close(plug->kidinpipe[WRITE_END]); // does not flush an hogs the unbuffered data...
+        close(plug->kidinpipe[WRITE_END]); // does not flush and we hog the unbuffered data...
         close(plug->kidoutpipe[READ_END]);
         close(plug->kiderrpipe[READ_END]);
     }
