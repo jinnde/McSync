@@ -180,17 +180,89 @@ void resetscanprogress(scan_progress *progress) //does not alter progress->updat
     (*progress)->total = 0;
 } // initscanprogress
 
-void workerscan(char *deviceroot, char *scanroot, char *deviceid,
+/*
+Device time file format:
+int32   McSync magic cookie
+int32   version
+int32   device time
+*/
+
+int32 readdevicetimefromdisk(char *path) // returns 0 if file does not exist and
+{                                        // -1 no every other error
+    FILE *timefile;
+    int32 devicetime;
+
+    timefile = fopen(path, "r");
+    if (!timefile) {
+        if (errno == ENOENT)
+            return 0;
+
+        printerr("Error: Worker can't open device time file for reading (%s)"
+                 "Path: %s\n",
+                 strerror(errno), path);
+        return -1;
+    }
+    // make sure we have opened a proper device id file
+    if (get32(timefile) != magiccookie) {
+        printerr("Error: Worker read invalid magic cookie in device time file: %s\n",
+                path);
+        return -1;
+    }
+    if (get32(timefile) != devicetimefileversionnumber) {
+        printerr("Error: Worker can't read device time file because of a wrong "
+                 "file version.\n");
+        return -1;
+    }
+    devicetime = get32(timefile);
+    fclose(timefile);
+
+    return devicetime;
+} // readdevicetimefromdisk
+
+void writedevicetimetodisk(char *path, int32 devicetime)
+{
+    FILE *timefile;
+    timefile = fopen(path, "w");
+
+    if (!timefile) {
+        printerr("Error: Worker can't open device time file for writing (%s) "
+                 "Path: %s \n",
+                 strerror(errno), path);
+        return;
+    }
+    put32(timefile, magiccookie);
+    put32(timefile, devicetimefileversionnumber);
+    put32(timefile, devicetime);
+    fclose(timefile);
+} // writedevicetimetodisk
+
+int32 incrementdevicetime(char *path) // returns -1 on error
+{
+    int32 devicetime = readdevicetimefromdisk(path);
+
+    if (devicetime < 0)
+        return -1;
+
+    devicetime++;
+    writedevicetimetodisk(path, devicetime);
+    return devicetime;
+} // incrementdevicetime
+
+void workerscan(char *scanroot, char *devicetimefilepath, char *devicescanfolderpath,
                 stringlist *prunepoints, connection worker_plug)
 {
     FILE *scanfile;
-    char *devicescanfolder, *scanfilepath;
+    char *scanfilepath, buf[16];
+    int32 devicetime;
     scan_progress progress;
 
-    // create the device scan folder and scan file
-    devicescanfolder = strdupcat(deviceroot, scan_files_path, "/", deviceid, NULL);
-    mkdir(devicescanfolder, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    scanfilepath = strdupcat(devicescanfolder, "/scan", NULL);
+    // every device has its own scan folder...
+    mkdir(devicescanfolderpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    // and its own device time
+    if ((devicetime = incrementdevicetime(devicetimefilepath)) < 0)
+        return;
+    sprintf(buf, "%d", devicetime);
+    scanfilepath = strdupcat(devicescanfolderpath, "/", scan_files_prefix, buf, NULL);
     scanfile = fopen(scanfilepath, "w");
     if (!scanfile) {
         printerr("Error: Worker can't open file for scan file creation (%s) "
@@ -199,28 +271,23 @@ void workerscan(char *deviceroot, char *scanroot, char *deviceid,
         free(scanfilepath);
         return;
     }
+    // adjust for local paths
     scanroot = replacetilde(scanroot);
     replacetildeinstringlist(prunepoints);
-
     // set up scan progress reporting
     progress = (scan_progress) malloc(sizeof(struct scan_progress_struct));
     resetscanprogress(&progress);
     progress->updateinterval = 1000; // report on every 1000 processed files
-
     // recursively scan scanroot
     fileinfo *info = formimage(scanroot, prunepoints, worker_plug, NULL, progress);
-
     // write fresh scans to disk
     resetscanprogress(&progress);
     writesubimage(scanfile, info, progress);
     fclose(scanfile);
-
     // tell hq we're done and send location of the new scan file
     sendmessage(worker_plug, hq_int, msgtype_scanupdate, scanfilepath);
-
     freefileinfo(info);
     free(scanfilepath);
-    free(devicescanfolder);
     free(scanroot);
     free(progress);
 } // workerscan
@@ -271,7 +338,7 @@ int32 createdeviceidfile(char *path, char *deviceid)
         return 0;
     }
     put32(devicefile, magiccookie);
-    put32(devicefile, devicefileversionnumber);
+    put32(devicefile, deviceidfileversionnumber);
     put32(devicefile, devicefileinfo.st_ino);
     put32(devicefile, devicefileinfo.st_dev);
     putstring(devicefile, deviceid);
@@ -279,8 +346,9 @@ int32 createdeviceidfile(char *path, char *deviceid)
     return 1;
 } // createdeviceidfile
 
-char* deviceidondisk(char *hqs_deviceid, char *deviceidfilepath) // returns NULL if there was a problem
-{ // if hqs_deviceid is not NULL, will try to create a file with this id in case it does not exist or is foreign
+char* deviceidondisk(char *hqs_deviceid, char *deviceidfilepath, char *devicetimefilepath) // returns NULL if there was a problem
+{ // if hqs_deviceid is not NULL, will try to create a file with this id in case it does not exist or is foreign, this will also
+  // reset the device time file
     FILE *devicefile = NULL;
     int32 storedinode, storedosdeviceid;
     struct stat devicefilestat;
@@ -321,7 +389,7 @@ char* deviceidondisk(char *hqs_deviceid, char *deviceidfilepath) // returns NULL
         goto release_and_return;
     }
 
-    if (get32(devicefile) != devicefileversionnumber) {
+    if (get32(devicefile) != deviceidfileversionnumber) {
         printerr("Error: Worker can't read device id file because of a wrong device "
                  "file version.\n");
         goto release_and_return;
@@ -365,6 +433,8 @@ char* deviceidondisk(char *hqs_deviceid, char *deviceidfilepath) // returns NULL
             goto release_and_return;
         }
         deviceid = strdup(hqs_deviceid);
+        // make sure we don't use a foreign device time
+        (void)remove(devicetimefilepath);
         goto release_and_return;
     }
 
@@ -402,6 +472,8 @@ void workermain(connection worker_plug)
     char *deviceroot = NULL;
     char *deviceidfilepath = NULL;
     char *deviceid = NULL;
+    char *devicetimefilepath = NULL;
+    char *devicescanfolderpath = NULL;
 
     addabortsignallistener(); // as last resort for local worker threads,
                               // will very likely leak memory
@@ -410,9 +482,10 @@ void workermain(connection worker_plug)
     snprintf(buf, 90, "%d", worker_plug->plugnumber);
     sendmessage(worker_plug, hq_int, msgtype_workerisup, buf);
 
-    // we need to know where to look for our id
+    // assemble paths relative to the worker address
     deviceroot = extractdeviceroot(worker_plug->address);
     deviceidfilepath = strdupcat(deviceroot, device_id_file_path, NULL);
+    devicetimefilepath = strdupcat(deviceroot, device_time_file_path, NULL);
 
     while (dowork) {
         while (! receivemessage(worker_plug, &msg_src, &msg_type, &msg_data)) {
@@ -428,7 +501,7 @@ void workermain(connection worker_plug)
                 if (deviceid != NULL)
                     free(deviceid);
 
-                deviceid = deviceidondisk(msg_data, deviceidfilepath);
+                deviceid = deviceidondisk(msg_data, deviceidfilepath, devicetimefilepath);
 
                 if (deviceid == NULL) { // this is serious, can't do anything without proper id
                     printerr("Error: Worker does not know device id, quits...\n");
@@ -446,7 +519,7 @@ void workermain(connection worker_plug)
                         stringlist *prunepoints;
 
                         // make sure the device has not changed
-                        currentid = deviceidondisk(NULL, deviceidfilepath);
+                        currentid = deviceidondisk(NULL, deviceidfilepath, devicetimefilepath);
 
                         if (currentid == NULL) { // this is serious, can't do anything without proper id
                             printerr("Error: Worker does not know device id, quits...\n");
@@ -462,7 +535,10 @@ void workermain(connection worker_plug)
                         }
                         receivescancommand(msg_data, &scanroot, &prunepoints);
 
-                        workerscan(deviceroot, scanroot, deviceid, prunepoints, worker_plug);
+                        if (devicescanfolderpath == NULL)
+                            devicescanfolderpath = strdupcat(deviceroot, scan_files_path, "/", deviceid, NULL);
+
+                        workerscan(scanroot, devicetimefilepath, devicescanfolderpath, prunepoints, worker_plug);
                         free(scanroot);
                         free(currentid);
                         freestringlist(prunepoints);
@@ -488,6 +564,8 @@ void workermain(connection worker_plug)
         free(deviceid);
 
     free(deviceidfilepath);
+    free(devicetimefilepath);
+    free(devicescanfolderpath);
     free(deviceroot);
 
     if (slavemode)

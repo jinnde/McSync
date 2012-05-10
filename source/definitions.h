@@ -45,21 +45,25 @@ typedef unsigned int uint32;
 typedef long long int int64;
 typedef unsigned long long int uint64;
 
-#define programversionnumber    ((int32) 1)
-#define logfileversionnumber    ((int32) 1)
-#define specsfileversionnumber  ((int32) 1)
-#define devicefileversionnumber ((int32) 1)
-#define magiccookie             ((int32) 1331925123)
+#define programversionnumber ((int32) 1)
+#define logfileversionnumber ((int32) 1)
+#define specsfileversionnumber ((int32) 1)
+#define deviceidfileversionnumber ((int32) 1)
+#define devicetimefileversionnumber ((int32) 1)
+#define magiccookie ((int32) 1331925123)
 // cookie is from letters m=13, c=3, s=19, y=25, n=12, c=3.
 // four bytes are: (high byte first) 79 99 144 131 (-112 -125) (hex: 4f 63 90 83)
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
 #define device_id_file_path "/data/id"
+#define device_time_file_path "/data/time"
 #define scan_files_path "/data"
-#define time_file_path "/data/time"
 // ^ these are partial paths which will be completed by the worker using its address,
 // because they should always be relative to the device. Be aware that McSync expects
-// those directories to exists and will not try to create them for you.
+// all directories to exists and will not try to create them for you.
+
+#define scan_files_prefix "scan"
+// ^ naming of the scan files, the scan number will be appended
 
 #define specs_file_path "./config/specs"
 

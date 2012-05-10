@@ -11,7 +11,7 @@ hashtable inithashtable(void) // allocs hashtable, free when done
 
 void freehashtable(hashtable h)
 {
-    if (h->table);
+    if (h->table)
         free(h->table);
     free(h);
 } // freehashtable
