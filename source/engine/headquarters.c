@@ -689,14 +689,11 @@ void hqmain(void)
                     // msg_data is the virtual path of the node to scan
                     hq_scan(msg_data);
                     break;
-            case msgtype_scanupdate:
+            case msgtype_scanupdate: // msg_data is the path of the remote scan file
             {
-              char buf[512], *devicescanpath;
+              char buf[512], *devicepath, *scanpath;
               int  ret;
               connection plug = findconnectionbyplugnumber(msg_src);
-
-              if (plug->session.path == NULL) // TODO: use regular file copy
-                break;
 
               if (! (d = getdevicebyplugnum(msg_src))) {
                   printerr("Error: Received plug number which does not belong "
@@ -704,23 +701,27 @@ void hqmain(void)
                   break;
               }
 
-              devicescanpath = strdupcat(".", scan_files_path, "/", d->deviceid, NULL);
+              devicepath = strdupcat(".", scan_files_path, "/", d->deviceid, "/", NULL);
+              scanpath = strdupcat(devicepath, (strrchr(msg_data, '/') + 1), NULL);
+              mkdir(devicepath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+              free(devicepath);
 
-              mkdir(devicescanpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-
-              sprintf(buf, "/usr/bin/scp -C -o 'ControlPath %s' %s@%s:%s %s/%s",
-                      plug->session.path,
-                      plug->session.uname,
-                      plug->session.mname,
-                      msg_data,
-                      devicescanpath,
-                      (strrchr(msg_data, '/') + 1));
+              if (plug->session.path == NULL) { // the connection is local
+                    sprintf(buf, "/bin/cp %s %s 2> /dev/null", msg_data, scanpath);
+              } else {
+                    sprintf(buf, "/usr/bin/scp -C -o 'ControlPath %s' %s@%s:%s %s",
+                            plug->session.path,
+                            plug->session.uname,
+                            plug->session.mname,
+                            msg_data,
+                            scanpath);
+              }
 
               ret = system(buf);
-              free(devicescanpath);
+              free(scanpath);
 
               if (ret) {
-                printerr("Error: Transfer of scan file to Headquarters was not successful\n");
+                printerr("Error: System call on Headquarters was not successful\n");
                 break;
               }
 
