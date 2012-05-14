@@ -463,6 +463,33 @@ void sendvirtualnodelisting(char* path) // sends back all children of node at pa
     sendvirtualdir(hq_plug, cmd_int, path, dir);
 } // sendvirtualnodelisting
 
+char *getdevicefolderpath(device *d) // allocates string, free when done
+{ // creates device folder if is does not exist, returns the device folder path
+    char *devicefolderpath = strdupcat(".", scan_files_path, "/", d->deviceid, "/", NULL);
+    (void)mkdir(devicefolderpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    return devicefolderpath;
+} // getdevicefolderpath
+
+void transferfile(connection plug, char *localpath, char *remotepath, int32 direction)
+{ // direction: 0 -> download (remote to local), 1 -> upload (local to remote)
+    char *source, *destination, buf[512];
+
+    source = (direction == 0) ? remotepath : localpath;
+    destination = (direction == 0) ? localpath : remotepath;
+
+    if (plug->session.path == NULL) { // a local worker, no ssh session
+        sprintf(buf, "/bin/cp %s %s 2> /dev/null", source, destination);
+    } else {
+        remotepath = strdupcat(plug->session.uname, "@", plug->session.mname, ":", remotepath, NULL);
+        sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath %s' %s %s",
+                plug->session.path,
+                source,
+                destination);
+        free(remotepath);
+    }
+    system(buf);
+} // transferfile
+
 device* addunknowndevice(char *deviceid, char *address, int32 routeraddr)
 {
     device **d;
@@ -691,8 +718,7 @@ void hqmain(void)
                     break;
             case msgtype_scanupdate: // msg_data is the path of the remote scan file
             {
-              char buf[512], *devicepath, *scanpath;
-              int  ret;
+              char *devicefolderpath, *localscanfilepath;
               connection plug = findconnectionbyplugnumber(msg_src);
 
               if (! (d = getdevicebyplugnum(msg_src))) {
@@ -701,30 +727,13 @@ void hqmain(void)
                   break;
               }
 
-              devicepath = strdupcat(".", scan_files_path, "/", d->deviceid, "/", NULL);
-              scanpath = strdupcat(devicepath, (strrchr(msg_data, '/') + 1), NULL);
-              mkdir(devicepath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-              free(devicepath);
+              devicefolderpath = getdevicefolderpath(d);
+              localscanfilepath = strdupcat(devicefolderpath, (strrchr(msg_data, '/') + 1), NULL);
 
-              if (plug->session.path == NULL) { // the connection is local
-                    sprintf(buf, "/bin/cp %s %s 2> /dev/null", msg_data, scanpath);
-              } else {
-                    sprintf(buf, "/usr/bin/scp -C -o 'ControlPath %s' %s@%s:%s %s",
-                            plug->session.path,
-                            plug->session.uname,
-                            plug->session.mname,
-                            msg_data,
-                            scanpath);
-              }
+              transferfile(plug, localscanfilepath, msg_data, transfer_type_download);
 
-              ret = system(buf);
-              free(scanpath);
-
-              if (ret) {
-                printerr("Error: System call on Headquarters was not successful\n");
-                break;
-              }
-
+              free(devicefolderpath);
+              free(localscanfilepath);
               break;
             }
             case msgtype_exit:

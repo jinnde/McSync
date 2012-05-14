@@ -76,6 +76,9 @@ typedef unsigned long long int uint64;
 #define pollingrate 10000
 // ^  micro seconds the agents sleep between checking for new messages
 
+#define transfer_type_download 0
+#define transfer_type_upload 1
+
 pthread_attr_t pthread_attributes;
 // ^ used to initialize the agent threads (including forwarder, shipper, receiver)
 
