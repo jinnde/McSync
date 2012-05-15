@@ -57,13 +57,16 @@ typedef unsigned long long int uint64;
 
 #define device_id_file_path "/data/id"
 #define device_time_file_path "/data/time"
-#define scan_files_path "/data"
+#define device_folders_path "/data"
 // ^ these are partial paths which will be completed by the worker using its address,
 // because they should always be relative to the device. Be aware that McSync expects
 // all directories to exists and will not try to create them for you.
 
+// the following relate to files stored in the device folder
 #define scan_files_prefix "scan"
 // ^ naming of the scan files, the scan number will be appended
+#define history_file_name "history"
+// ^ the history file is stored in the device folder
 
 #define specs_file_path "./config/specs"
 
@@ -370,7 +373,7 @@ typedef struct scan_progress_struct {
 // ^ the message contains a virtual path (usually a request from cmd to hq)
 #define msgtype_scan                17
 // ^ the message contains a host path and prune points (usually a request from hq to workers)
-#define msgtype_scanupdate          18
+#define msgtype_scandone            18
 #define msgtype_exit                19
 // ^ tells the receiver to stop running
 #define msgtype_goodbye             20
@@ -437,9 +440,11 @@ void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir
 void receivevirtualdir(char *source, char **path, queue receivednodes);
 
 // scan communication
-void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node);
-void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints);
+void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node); // to hq
+void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints); // to workers
 void receivescancommand(char *source, char **scanroot, stringlist **prunepoints);
+void sendscandonemessage(connection plug, char *scanfilepath, char *historyfilepath); // to hq
+void receivescandonemessage(char *source, char **scanfilepath, char **historyfilepath);
 
 // recruiter communication
 void sendrecruitcommand(connection plug, int32 plugnumber, char *address); // always sent to recruiter
@@ -532,11 +537,14 @@ void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode); // free
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // writes the path of node into b
 void freevirtualnode(virtualnode *node);
 
-// disk scan for workers
+
+// disk scan related
 fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
                     hashtable h, scan_progress progress); // get inode info for filename (which includes path) and for any subdirectories
-void writesubimage(FILE* output, fileinfo* subimage, scan_progress progress);
+void writeimage(fileinfo* image, char* filename, scan_progress progress);
+fileinfo* readimage(char* filename, scan_progress progress);
 void freefileinfo(fileinfo* skunk);
+void resetscanprogress(scan_progress *progress); //does not alter progress->updateinteval
 
 // tui specific
 void raw_io(void);

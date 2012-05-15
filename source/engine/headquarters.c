@@ -463,12 +463,14 @@ void sendvirtualnodelisting(char* path) // sends back all children of node at pa
     sendvirtualdir(hq_plug, cmd_int, path, dir);
 } // sendvirtualnodelisting
 
-char *getdevicefolderpath(device *d) // allocates string, free when done
+char *getdevicefolderpathonhq(char *deviceid) // allocates string, free when done
 { // creates device folder if is does not exist, returns the device folder path
-    char *devicefolderpath = strdupcat(".", scan_files_path, "/", d->deviceid, "/", NULL);
+  // can't be used from workers, because they might be local and not representing
+  // the device hq is running on (they parse their address to find their correct path)
+    char *devicefolderpath = strdupcat(".", device_folders_path, "/", deviceid, NULL);
     (void)mkdir(devicefolderpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     return devicefolderpath;
-} // getdevicefolderpath
+} // getdevicefolderpathonhq
 
 void transferfile(connection plug, char *localpath, char *remotepath, int32 direction)
 { // direction: 0 -> download (remote to local), 1 -> upload (local to remote)
@@ -477,11 +479,11 @@ void transferfile(connection plug, char *localpath, char *remotepath, int32 dire
     source = (direction == 0) ? remotepath : localpath;
     destination = (direction == 0) ? localpath : remotepath;
 
-    if (plug->session.path == NULL) { // a local worker, no ssh session
+    if (plug->session.path == NULL) { // a local connection, no ssh session
         sprintf(buf, "/bin/cp %s %s 2> /dev/null", source, destination);
     } else {
         remotepath = strdupcat(plug->session.uname, "@", plug->session.mname, ":", remotepath, NULL);
-        sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath %s' %s %s",
+        sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath %s' %s %s 2>/dev/null",
                 plug->session.path,
                 source,
                 destination);
@@ -589,6 +591,21 @@ void identifydevice(char *localid, char *remoteid)
         }
     }
 } // identifydevice
+
+fileinfo *loadremoteimage(connection plug, char *localpath, char *remotepath)
+{
+    fileinfo *result;
+    scan_progress progress;
+
+    transferfile(plug, localpath, remotepath, transfer_type_download);
+    // read transffered file into memory
+    progress = (scan_progress) malloc(sizeof(struct scan_progress_struct));
+    resetscanprogress(&progress);
+    progress->updateinterval = 1000; // report on every 1000 processed files
+    result = readimage(localpath, progress);
+    free(progress);
+    return result;
+} // loadremoteimage
 
 void hqmain(void)
 {
@@ -716,9 +733,12 @@ void hqmain(void)
                     // msg_data is the virtual path of the node to scan
                     hq_scan(msg_data);
                     break;
-            case msgtype_scanupdate: // msg_data is the path of the remote scan file
+            case msgtype_scandone: // msg_data is the path of the remote scan file
             {
-              char *devicefolderpath, *localscanfilepath;
+              char *localdevicefolderpath, *localscanpath, *localhistorypath;
+              char *remotehistorypath, *remotescanpath;
+              fileinfo *scan, *history;
+
               connection plug = findconnectionbyplugnumber(msg_src);
 
               if (! (d = getdevicebyplugnum(msg_src))) {
@@ -727,13 +747,19 @@ void hqmain(void)
                   break;
               }
 
-              devicefolderpath = getdevicefolderpath(d);
-              localscanfilepath = strdupcat(devicefolderpath, (strrchr(msg_data, '/') + 1), NULL);
+              receivescandonemessage(msg_data, &remotescanpath, &remotehistorypath);
 
-              transferfile(plug, localscanfilepath, msg_data, transfer_type_download);
+              localdevicefolderpath = getdevicefolderpathonhq(d->deviceid);
+              localscanpath = strdupcat(localdevicefolderpath, strrchr(remotescanpath, '/'), NULL);
+              localhistorypath = strdupcat(localdevicefolderpath, "/", history_file_name, NULL);
 
-              free(devicefolderpath);
-              free(localscanfilepath);
+              scan = loadremoteimage(plug, localscanpath, remotescanpath);
+              history = loadremoteimage(plug, localhistorypath, remotehistorypath);
+
+              free(localdevicefolderpath);
+              free(localscanpath);
+              free(localhistorypath);
+
               break;
             }
             case msgtype_exit:

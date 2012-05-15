@@ -1,5 +1,14 @@
 #include "definitions.h"
 
+void resetscanprogress(scan_progress *progress) //does not alter progress->updateinteval
+{
+    (*progress)->directories =
+    (*progress)->regularfiles =
+    (*progress)->links =
+    (*progress)->other =
+    (*progress)->total = 0;
+} // initscanprogress
+
 char* strdupcat(const char* first, ...)
 {
     va_list args;
@@ -694,7 +703,7 @@ fileinfo* readimage(char* filename, scan_progress progress)
     if (get32(input) != magiccookie) {
         printerr("Error: input file %s does not appear to be an image file\n",
                 filename);
-        cleanexit(__LINE__);
+        return NULL;
     }
 
     fileversion = get32(input);

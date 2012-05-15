@@ -171,14 +171,6 @@ void replacetildeinstringlist(stringlist *prunepoints)
 
 } // replacetildeinstringlist
 
-void resetscanprogress(scan_progress *progress) //does not alter progress->updateinteval
-{
-    (*progress)->directories =
-    (*progress)->regularfiles =
-    (*progress)->links =
-    (*progress)->other =
-    (*progress)->total = 0;
-} // initscanprogress
 
 /*
 Device time file format:
@@ -248,29 +240,21 @@ int32 incrementdevicetime(char *path) // returns -1 on error
     return devicetime;
 } // incrementdevicetime
 
-void workerscan(char *scanroot, char *devicetimefilepath, char *devicescanfolderpath,
+void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
                 stringlist *prunepoints, connection worker_plug)
 {
-    FILE *scanfile;
-    char *scanfilepath, buf[16];
+    fileinfo *scan;
     int32 devicetime;
     scan_progress progress;
+    char *scanfilepath, *historyfilepath, buf[16];
 
     // every device has its own scan folder...
-    mkdir(devicescanfolderpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    (void)mkdir(devicefolder, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     // and its own device time
     if ((devicetime = incrementdevicetime(devicetimefilepath)) < 0)
         return;
     sprintf(buf, "%d", devicetime);
-    scanfilepath = strdupcat(devicescanfolderpath, "/", scan_files_prefix, buf, NULL);
-    scanfile = fopen(scanfilepath, "w");
-    if (!scanfile) {
-        printerr("Error: Worker can't open file for scan file creation (%s) "
-                 "Path: %s \n",
-                 strerror(errno), scanfilepath);
-        free(scanfilepath);
-        return;
-    }
+    scanfilepath = strdupcat(devicefolder, "/", scan_files_prefix, buf, NULL);
     // adjust for local paths
     scanroot = replacetilde(scanroot);
     replacetildeinstringlist(prunepoints);
@@ -279,15 +263,16 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicescanfolder
     resetscanprogress(&progress);
     progress->updateinterval = 1000; // report on every 1000 processed files
     // recursively scan scanroot
-    fileinfo *info = formimage(scanroot, prunepoints, worker_plug, NULL, progress);
+    scan = formimage(scanroot, prunepoints, worker_plug, NULL, progress);
     // write fresh scans to disk
     resetscanprogress(&progress);
-    writesubimage(scanfile, info, progress);
-    fclose(scanfile);
-    // tell hq we're done and send location of the new scan file
-    sendmessage(worker_plug, hq_int, msgtype_scanupdate, scanfilepath);
-    freefileinfo(info);
+    writeimage(scan, scanfilepath, progress);
+    // tell hq we're done and send location of the new scan file and history file
+    historyfilepath = strdupcat(devicefolder, "/", history_file_name, NULL);
+    sendscandonemessage(worker_plug, scanfilepath, historyfilepath);
+    freefileinfo(scan);
     free(scanfilepath);
+    free(historyfilepath);
     free(scanroot);
     free(progress);
 } // workerscan
@@ -473,7 +458,7 @@ void workermain(connection worker_plug)
     char *deviceidfilepath = NULL;
     char *deviceid = NULL;
     char *devicetimefilepath = NULL;
-    char *devicescanfolderpath = NULL;
+    char *devicefolder = NULL;
 
     addabortsignallistener(); // as last resort for local worker threads,
                               // will very likely leak memory
@@ -535,10 +520,10 @@ void workermain(connection worker_plug)
                         }
                         receivescancommand(msg_data, &scanroot, &prunepoints);
 
-                        if (devicescanfolderpath == NULL)
-                            devicescanfolderpath = strdupcat(deviceroot, scan_files_path, "/", deviceid, NULL);
+                        if (devicefolder == NULL)
+                            devicefolder = strdupcat(deviceroot, device_folders_path, "/", deviceid, NULL);
 
-                        workerscan(scanroot, devicetimefilepath, devicescanfolderpath, prunepoints, worker_plug);
+                        workerscan(scanroot, devicetimefilepath, devicefolder, prunepoints, worker_plug);
                         free(scanroot);
                         free(currentid);
                         freestringlist(prunepoints);
@@ -565,7 +550,7 @@ void workermain(connection worker_plug)
 
     free(deviceidfilepath);
     free(devicetimefilepath);
-    free(devicescanfolderpath);
+    free(devicefolder);
     free(deviceroot);
 
     if (slavemode)

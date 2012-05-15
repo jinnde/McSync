@@ -12,7 +12,7 @@ const char* msgtypelist[] = { "error (msgtype==0)",
     "connectdevice","disconnectdevice", "newplugplease", "removeplugplease", "recruitworker",
     "failedrecruit", "info", "workerisup", "connected", "disconnect",
     "identifydevice", "deviceid", "listvirtualdir", "virtualdir", "touch",
-    "scanvirtualdir", "scan", "scanupdate", "exit", "goodbye" };
+    "scanvirtualdir", "scan", "scandone", "exit", "goodbye" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -809,11 +809,21 @@ void sendrecruitcommand(connection plug, int32 plugnumber, char *address)
 void sendplugnumber(connection plug, int32 recipient, int32 type, int32 plugnumber)
 {
     bytestream serialized = initbytestream(4);
+
     serializeint32(serialized, plugnumber);
     nsendmessage(plug, recipient, type, serialized->data, serialized->len);
     freebytestream(serialized);
 } // sendplugnumber
 
+void sendscandonemessage(connection plug, char *scanfilepath, char *historyfilepath)
+{
+    bytestream serialized = initbytestream(256);
+
+    serializestring(serialized, scanfilepath);
+    serializestring(serialized, historyfilepath);
+    nsendmessage(plug, hq_int, msgtype_scandone, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendscandonemessage
 
 //// only used by recruiter
 
@@ -893,6 +903,12 @@ void receiveplugnumber(char *source, int32 *plugnumber)
 {
     *plugnumber = deserializeint32(&source);
 } // receiveplugnumber
+
+void receivescandonemessage(char *source, char **scanfilepath, char **historyfilepath)
+{
+    *scanfilepath = deserializestring(&source);
+    *historyfilepath = deserializestring(&source);
+} // receivescandonemessage
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of router /////////////////////////////////////
