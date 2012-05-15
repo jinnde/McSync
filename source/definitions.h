@@ -335,7 +335,7 @@ typedef struct message_callback_struct {
     message_callback_function fn;   // who we should call on receive or timeout
 }* message_callback;
 
-// used to keep track of progress in the recursive formimage, diskscan function
+// used to keep track of progress in the recursive diskscan functions
 typedef struct scan_progress_struct {
     int32 directories;
     int32 regularfiles;
