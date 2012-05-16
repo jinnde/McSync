@@ -662,7 +662,7 @@ history gethistory(FILE *input) // allocates history, free when done
         temp->trackingnumber = get64(input);
         temp->devicetime = get32(input);
         temp->next = NULL;
-        if (head)
+        if (!head)
             head = tail = temp;
         else {
             tail->next = temp;

@@ -88,18 +88,20 @@ char *deserializestring(char **source) // may allocate string, free when done
 
 stringlist *deserializestringlist(char **source) // may allocate stringlist, free when done
 { // *source is manipulated by each deserialization function
-    stringlist *head, *temp;
+    stringlist *head, *tail, *temp;
     int32 count = deserializeint32(source);
 
-    head = NULL;
+    head = tail = NULL;
     while (count--) {
         temp = (stringlist*) malloc(sizeof(stringlist));
         temp->string = deserializestring(source);
-        if (head)
-            temp->next = head;
-        else
-            temp->next = NULL;
-        head = temp;
+        temp->next = NULL;
+        if (!head)
+            head = tail = temp;
+        else {
+            tail->next = temp;
+            tail = temp;
+        }
     }
     return head;
 } // deserializestringlist
