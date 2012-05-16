@@ -598,7 +598,7 @@ fileinfo *loadremoteimage(connection plug, char *localpath, char *remotepath)
     scan_progress progress;
 
     transferfile(plug, localpath, remotepath, transfer_type_download);
-    // read transffered file into memory
+    // read transferred file into memory
     progress = (scan_progress) malloc(sizeof(struct scan_progress_struct));
     resetscanprogress(&progress);
     progress->updateinterval = 1000; // report on every 1000 processed files
@@ -755,6 +755,9 @@ void hqmain(void)
 
               scan = loadremoteimage(plug, localscanpath, remotescanpath);
               history = loadremoteimage(plug, localhistorypath, remotehistorypath);
+
+              // identify(&virtualroot, history);
+              // identify(&virtualroot, scan);
 
               free(localdevicefolderpath);
               free(localscanpath);

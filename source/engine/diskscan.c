@@ -558,7 +558,21 @@ char* getstring(FILE* input, char delimiter) // returns new string; free when do
     return copy;
 } // getstring
 
-void writesubimage(FILE* output, fileinfo* subimage, scan_progress progress)
+void puthistory(FILE *output, history h)
+{ // prepends number of stored history objects
+    history temp;
+    int32 count = 0;
+
+    for (temp = h; temp != NULL; temp = temp->next)
+        count++;
+    put32(output, count);
+    for (temp = h; temp != NULL; temp = temp->next) {
+        put64(output, temp->trackingnumber);
+        put32(output, temp->devicetime);
+    }
+} // puthistory
+
+void writesubimage(FILE *output, fileinfo* subimage, scan_progress progress)
 {
     if (subimage == NULL)
         return;
@@ -595,6 +609,15 @@ void writesubimage(FILE* output, fileinfo* subimage, scan_progress progress)
     putstring(output, subimage->user);
     putstring(output, subimage->group);
     putstring(output, subimage->filename);
+    // from here down related to history
+    put32(output, subimage->existence);
+    puthistory(output, subimage->hist_modtime);
+    puthistory(output, subimage->hist_contents);
+    puthistory(output, subimage->hist_perms);
+    puthistory(output, subimage->hist_name);
+    puthistory(output, subimage->hist_loc);
+    put64(output, subimage->trackingnumber);
+    put32(output, subimage->devicetime);
 
     {
         fileinfo *child;
@@ -604,7 +627,7 @@ void writesubimage(FILE* output, fileinfo* subimage, scan_progress progress)
     }
 } // writesubimage
 
-void writeimage(fileinfo* image, char* filename, scan_progress progress)
+void writeimage(fileinfo *image, char *filename, scan_progress progress)
 {
     FILE *output;
 
@@ -628,9 +651,30 @@ void writeimage(fileinfo* image, char* filename, scan_progress progress)
     fclose(output);
  } // writeimage
 
-fileinfo* readsubimage(FILE* input, scan_progress progress)
+history gethistory(FILE *input) // allocates history, free when done
 {
-    fileinfo* subimage;
+    history head, tail, temp;
+    int32 count = get32(input);
+
+    head = tail = NULL;
+    while (count--) {
+        temp = (history) malloc (sizeof(struct history_struct));
+        temp->trackingnumber = get64(input);
+        temp->devicetime = get32(input);
+        temp->next = NULL;
+        if (head)
+            head = tail = temp;
+        else {
+            tail->next = temp;
+            tail = temp;
+        }
+    }
+    return head;
+} // gethistory
+
+fileinfo *readsubimage(FILE *input, scan_progress progress)
+{
+    fileinfo *subimage;
 
     subimage = (fileinfo*) malloc(sizeof(fileinfo));
     subimage->next = subimage->down = subimage->up = NULL;
@@ -653,6 +697,15 @@ fileinfo* readsubimage(FILE* input, scan_progress progress)
     subimage->user = getstring(input, 0);
     subimage->group = getstring(input, 0);
     subimage->filename = getstring(input, 0);
+    // from here down related to history
+    subimage->existence = get32(input);
+    subimage->hist_modtime = gethistory(input);
+    subimage->hist_contents = gethistory(input);
+    subimage->hist_perms = gethistory(input);
+    subimage->hist_name = gethistory(input);
+    subimage->hist_loc = gethistory(input);
+    subimage->trackingnumber = get64(input);
+    subimage->devicetime = get32(input);
 
     subimage->subtreesize = 1;
     subimage->subtreebytes = subimage->filelength;
@@ -684,7 +737,7 @@ fileinfo* readsubimage(FILE* input, scan_progress progress)
     return subimage;
 } // readsubimage
 
-fileinfo* readimage(char* filename, scan_progress progress)
+fileinfo *readimage(char *filename, scan_progress progress)
 {
     fileinfo *image;
     FILE *input;

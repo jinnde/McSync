@@ -477,7 +477,6 @@ void bytestreaminsertchar(bytestream b, char str);
 // queue - implemented using a doubly linked list
 queue initqueue(void); // allocates memory, free when done
 void freequeue(queue q); // does not free the data!!
-
 void queueinsertafter(queue q, queuenode qn, void *data);
 void queueinsertbefore(queue q, queuenode qn, void *data);
 void queueinserthead(queue q, void *data);
