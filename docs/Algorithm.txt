@@ -232,6 +232,7 @@ Histories do not keep track of alternate versions (which might after all not be 
 Example:
 	file tracking number 72: name:"file.txt",(m1:56,17,no),(m2:72,12,yes), owner:"cook",(m1:56,14,yes),(m2:72,12,yes)
 (say this is the scan on machine m2)
+
 Then we chown the file on m2.  On the next sync on m2, which has an m2-time of 15, the entry is modified: (highlighted here with <>)
 	file tracking number 72: name:"file.txt",(m1:56,17,no),(m2:72,12,yes), owner:"www",(m1:56,14,<no>),(m2:72,<15>,<yes>)
 This line can be interpreted as saying that the name has changed since m1's latest name-setting time (that we know about), which is t_m1=17.  And m2 picked up the current name on scan t_m2=12.  The latest owner-setting time for m1 was t_m1=14, but we have a newer owner than m1's version (if m1 downloaded the scan and synced the owner to our new value, we don't know about that yet).  We, m2, picked up the current owner at t_m2=15.  All times are device-specific.
@@ -1103,7 +1104,7 @@ a storage device can send:
 2. Scan:  Like scan I/O, but uses a reference scan and where a subtree is identical, just says so instead of sending it.
 3. Guidance: same as history
 4. Instructions: this is like history too, because it gives a (new) aspect value along with its history
-The data formats are all the same:  A history.  A scan just has no (m,f,t,i) quads, 
+The data formats are all the same:  A history.  A scan just has no (m,f,t,i) quads,
 
 -- UI API --
 
@@ -1459,7 +1460,7 @@ Upon automatic propagation, the written-over history is changed to obsolete on e
 If there is a conflict but the values are the same, we do a naive merge, updating each machine's record to the latest knowledge.
 
 But what if one version knows about various conflict resolutions (on unique machines) between versions that are all known to be obsolete?
-In this case, those conflict resolutions need to have not been marked as user-changes.  This is possible if those were conflicts where every machine voted "no opinion", 
+In this case, those conflict resolutions need to have not been marked as user-changes.  This is possible if those were conflicts where every machine voted "no opinion",
 
 Ok, what if there are more than two versions... ?
 
@@ -1683,9 +1684,9 @@ We know that the sourceless result had all sources user-selected against, i.e. i
 
 ---
 
-The problem with putting change points at naive merges is that then if we have unsynced identical copies on A,B,C,D we sync A-B, C-D, and then B-C, then 
+The problem with putting change points at naive merges is that then if we have unsynced identical copies on A,B,C,D we sync A-B, C-D, and then B-C, then
 
-If one version is preferable to another, but the values are the same, we still mark the unpreferred one as getting a change point (all values not issame) to represent it quickly passing through whatever sequence of events yielded the other version. 
+If one version is preferable to another, but the values are the same, we still mark the unpreferred one as getting a change point (all values not issame) to represent it quickly passing through whatever sequence of events yielded the other version.
 
 ---
 
@@ -1800,7 +1801,7 @@ it has been interesting to learn about xattrs and UTF-8, but all portability top
 
 projects (each section is internally ordered) (?* marks an exciting thing to make progress on, feel free to change)
 ------ (device id)
- ?	get devices to be able to figure out their device id -- specs has hash for each device id, compute hash and look for it
+ +	get devices to be able to figure out their device id -- specs has hash for each device id, compute hash and look for it
 		file has device id as filename, hash as contents.  if multiple files, compute hash and erase others if one matches
 		if nothing matches, or if there are no files, use device id as told by algo's message
 		common filename has just the actual device id + hash as contents, so syncing should lead to a conflict
@@ -1813,9 +1814,9 @@ projects (each section is internally ordered) (?* marks an exciting thing to mak
 ------ (net)
 +	think about "net location" vs. device (ip/none : computer : mount point ?)
 +	convert "machine" to "device" in source
- ?	remove mcsyncdir (and its support) from devicelocater
++	remove mcsyncdir (and its support) from devicelocater
  ?	add support for "networks" in specs and tui
- ?	fix device-groping logic -- start with just tui, have no topworker, prefs can indicate non-local algo
++	fix device-groping logic -- start with just tui, have no topworker, prefs can indicate non-local algo
 ------ (xattrs)
 +	fix fileinfo to understand hardlinks
 +	fix fileinfo to include xattrs
@@ -1825,8 +1826,8 @@ projects (each section is internally ordered) (?* marks an exciting thing to mak
  ?	fix file reading to include xattrs and history
 ------ (scans)
 +	go through definitions and verify that all file formats fit into generic history format
- ?*	get devices to do a scan
- ?	get devices to save scan according to who scanned it
++	get devices to do a scan
++	get devices to save scan according to who scanned it
  ?	get devices to send in scan delta (of new scan w.r.t. last known-received scan)
  ?	get devices to send scan hash
  ?	get algo to compute and compare scan hash and report to device
@@ -1843,8 +1844,8 @@ projects (each section is internally ordered) (?* marks an exciting thing to mak
 +	have connection be based on machine info
 +	achieve simultaneous live connections to multiple machines, with hung ones disconnected
 +	figure out what plugs are and how the threads communicate
- ?	understand the device name problem
- ?	move the channel creation from the worker to the router
++	understand the device name problem
++	move the channel creation from the worker to the router
  ?	figure out how to separate tui from algo
  ?	separate tui from algo, so they share data only via the messaging system
  ?	split TUI into separate program, to make it clearer how a GUI could replace it
@@ -1868,8 +1869,8 @@ projects (each section is internally ordered) (?* marks an exciting thing to mak
  ?	make functions to fold scans/histories/instructions/guidance/gossip into each other
  ?	make function to generate heuristic guidance
  ?	make functions to act on instructions
- ?	work out relationship of two-round algorithm to asynchronous interface	
- ?	get devices to use a lock file -- filename = pid, can check to see if still live, contents gives device id
+ ?	work out relationship of two-round algorithm to asynchronous interface
++	get devices to use a lock file -- filename = pid, can check to see if still live, contents gives device id
  ?	implement overall two-round McSync algorithm
 ------ (code)
  ?	fix stringlist, device, etc., to be pointer types
