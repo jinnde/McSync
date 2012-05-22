@@ -1,0 +1,157 @@
+
+##########################
+######  An Analogy  ######
+##########################
+
+
+We can best introduce the key ideas by way of an analogy.
+-- Chapter 1: Synchronization --
+
+You own a chain of museums, and you want to keep certain items, exhibits, or entire wings, synchronized.
+
+So if, while at one of your museums, you decide Rodin's Thinker should be rotated so that it is seen from the side as you enter the room, and you make it be like this, then the next time you sync the museums, all the other museums having the same room will also rotate the statue.
+
+To help with synchronizing, there is a holodeck, which shows you the various wings of the various museums superimposed on each other (in the way that they are supposed to be the same, so a wing in the superposition will for the most part look just like all the corresponding wings in the museums do).  This holodeck is organized at a high level in your favorite intuitive way, unconstrained by practical factors that individual museums have to deal with.  For example, the holodeck might have a "non-art" wing, housing the cafeteria on the left and administrative offices on the right, even though these are in different places in different museums, and in many museums the cafeteria is nowhere near the administrative offices, and one museum even has two cafeterias (both matching the standardized cafeteria layout).
+
+Walking around the holodeck, you can keep the real museums synchronized.  You can walk to the holodeck cafeteria, notice that some museum cafeterias have the donuts near the coffee while others have the donuts near the soup, and specify that the donuts should be near the coffee.  You can also just let changes propagate automatically, as in the Rodin Thinker example:  Items which previously matched, but have been adjusted somewhere, will be adjusted in the other places as well to match the adjusted one.
+-- Chapter 2: Inventories --
+
+McSync shows you the holodeck.  In each wing you see the parts of the museums that you have declared to correspond to this holodeck wing.  But for the holodeck to show you the current state of these things, it needs reports from the individual museums on their current state.  The individual museums compile inventory lists and give them to the holodeck, which shows all the museums together, pointing out where things have changed or don't match, especially if more than one museum rearranged the same room and you need to decide which of the rearrangements is better, or pick and choose among their changes.
+
+If you think about it, an inventory list is a snapshot of a museum which could be in some state of flux.  Although an inventory seems like a straightforward process, it in fact requires some intelligent oversight.  For one thing, it's not a perfectly synchronous snapshot, because a worker had to walk from room to room to do the inventory, so if a painting was being moved from one room to another during the inventory, the worker might conceivably see it in two places, or not see it at all.  Another complicating issue is that if a painting gets its data (e.g. oil on canvas, 1866, etc.) corrected (maybe moving to a different room), then it might not be clear, from mindlessly looking at the inventory list (which is the only information you have), that it is even the same painting.  There are any number of things that could happen:  If one of the museums starts retouching a da Vinci, you might decide that the museums should exhibit the untouched painting alongside the retouched one -- the inventories should treat them as distinct paintings from now on.  All of these issues point to the need for sentient oversight.  No automated system can always know the right thing to do in these situations.  As the holodeck guides you to places where things have changed, you can make executive decisions like "Yes, I see that the Rembrandt is gone, but I'm sure that's a mistake, please don't delete it from the other museums, but rather put it back where it was," or "This red coffee machine by the cash register is actually an upgrade of the old green one by the door, go ahead and propagate this to the other cafeterias," or "I think some things have changed in recent minutes in the Stockholm museum, please redo their inventory of this room."
+
+In the coffee machine example, what difference does it make to say the new coffee machine is an upgrade of the old one, rather than just saying the room lost an object and gained an object?  Well, suppose a different museum had the good idea to label all the drink machines in Braille.  If one museum upgrades the color and location of the coffee machine, while another museum updates the accessibility, these changes can be combined without any conflict.  (Whereas if one museum discards an object while another museum upgrades it, then there is certainly a conflict that you need to resolve.)  Also it is much cheaper for the museums following suit to move the coffee machine locally rather than throw it out and wait for a copy of the the new one from the museum that moved it.  (Which is what most other synchronization utilities would do.)-- Chapter 3: Stages of a Sync: Continuity, Preferring, Upgrades (C.P.U.) --
+
+The first thing to do with an inventory is to confirm what current items correspond to what previous items.  The museums keep records of their items, so when a new inventory comes in, we have to see which inventoried items are ones we have in the records, which ones are new, and which items from the records seem to have gone missing.  As discussed above, this needs sentient oversight.  Once this is sorted out (and only then), the museum can extend its records with the results of this inventory.  This step takes inventory lists and old museum records, and generates new museum records.
+
+The second thing to do is to specify, in holodeck places where the museums differ, which configurations are preferable over which others.  This often requires sentient oversight.  This step takes museum records and extends them with this preferability information (only needed for non-automatic preferences, it turns out).  At this point some museums know that they should upgrade to another museum's version.
+
+The third thing to do is to give the museums a chance to upgrade.  Send them the new version and its history.  If they succeed in upgrading to the new version (with its history), then this generates a bit more history which gets sent back around.
+
+Then the sync is complete.
+-- Chapter 4: Sync-based upgrades vs. user-made upgrades --
+
+A user change to an object is the same as syncing with a transient replica that comes from the user's head.  Since this replica has never been seen before and will never be seen again, we do not bother storing it in the history (although we could, for completeness), and the replica's history is of course only updated at the next scan, not at the exact time of the change.  The replica appears, is marked as preferable to the existing copy, both are informed of the preference, and the existing copy takes the transient replica's value.  Note that this preference was resolving a conflict, since the two histories were incomparable.  So all changes in the system can be viewed as syncs, consisting of a preference plus propagating an existing value.
+
+Or perhaps the transient replica inherits its value from the existing copy, gets changed within the user's head, and then a sync automatically propagates the new value back to the existing copy.  But this approach leaves the upgrade as a different phenomenon from a sync.
+
+What we haven't cleared up is what a preference is.  But that seems plain:  It must be an arrow pointing from the non-preferred version to the preferred version.  McSync replaces one version with another whenever there is a preference chain leading from one to the other but not vice-versa.  There is no difference between a sync-based upgrade and a user-made upgrade.
+
+Note that if there is a value propagation, then either a preference was marked, or the value had previously propagated between those items.  In other words, being at the same place in the holodeck will not make items sync for the first time -- a preference also needs to be expressed, naturally, to know which one should change to match the other.
+-- Chapter 5: Records --
+
+An inventory list is a list of items (rooms, paintings, etc.).  Each item has many property-value pairs:  material: oil on canvas, size: 36"x27", year: 1876, title: "L'Absinthe", room: Impressionist Hall 2, etc.  http://www.musee-orsay.fr/en/collections/index-of-works/notice.html?no_cache=1&nnumid=1147
+
+A record is kept for each property of the item.  The record shows the full space-time history of the property.  This includes not only the time course (when it appeared in the museum and every upgrade it got since then) of that property of that replica, but also the histories of that property of every *other* replica that has been synced with this replica!
+
+Why does an object's record include notes on objects it was synced with?  Because that is how we can know whether these objects are in principle the same or not.  If objects have been synced in the past, and are being synced again now, then we can check to see whether one museum has upgraded the property since a previous sync.  (If so, the upgrade should be propagated.  This is the basic job of a synchronizer.)  Without knowing about the past sync, we can't know whether the other museum's version actually corresponds to this museum's pre-upgrade version (a clear prerequisite for propagating the upgrade), or just happened to be similar (due to chance) but not because the objects had been viewed as holographically the same.
+
+If two objects are being synced, and one of them says it is made of clay while the other used to say it was made of clay but now it says it is made of porcelain, then should we upgrade the "clay" description to "porcelain"?  Maybe, or maybe not.  Perhaps the "clay" one was originally marked as "brick", then marked for a while as "porcelain", but now it has been changed to "clay".  If the objects had been synced while both were in the "porcelain" stage, then we would know the "porcelain" one should be upgraded to say "clay".  On the other hand, if they were synced while both were "clay", then the "clay" one should upgrade to "porcelain".  Looking at the times of the changes might help, but different museums are not guaranteed to have their clocks in sync.  In fact, even a single museum is not guaranteed to have an always-advancing clock.  If the objects were never synced, or synced so long ago that they have both changed since then, then we can't be sure what to do.
+
+We will see later that if two items were never synced before, then it can be dangerous even to assume that two items being synced, both labeled "clay", are indeed mirrors of each other!  If one of the "clay" labels is treated as an upgrade over the other, then everything is safe (although more conflicts might be reported in the future due to this "modification" of the "obsolete" label), because then there is a unique source for the label, but if one label can have multiple sources, then, surprisingly, upgrades can be lost!
+-- Chapter 6: Blathering on about records --
+
+Histories of other objects are only stored (by this object) up to the last time this object heard about the other object (perhaps via other objects).  This information spreads whenever a preference is indicated, since a preference indicates that the two objects are (virtually) the same object, and whenever an upgrade is made.  Being located at the same place in the holodeck is merely a tool the sentient overseer can use to help with choosing what to sync.  For all we know, all the preferences we haven't heard about (due to being preferences between objects that this object hasn't synced with in a long time) are intended to be about what is from now on a virtually distinct object.  Only if we are asked to sync with them would we assume again that they are the same.
+
+So we see that the museum record is the maximal amount of information that that museum could possibly know about that object.  If you go back in time, use a sync to cross to another museum record, and then go forwards in time, this is not part of the museum record, because we have no indication that the items are still considered the same.  The most recent time in museum A's record, regarding the status in museum B, is at the most recent sync that leads (possibly through other syncs, but only forwards in time) to A's current replica.  Anything since then in museum B might well be intended to be a forked version of the item.
+
+Failing to indicate a preference when there is a conflict is interpreted as "maybe these don't correspond anymore", as that will have the effect that neither version will get lost (upgraded), which is arguably the correct behavior if there is a conflict but no preference was indicated. (*) (conflict)
+
+So we have a history-mesh in space-time, labeled at various points with changes that were made (which can all be viewed as syncing changes, as described above).  This history mesh, going back in time, is what is recorded in the records.
+
+McSync happens to allow syncs only between items located at the same place in the holodeck (because otherwise things get very confusing), but the theory doesn't need this restriction.  What a sync is is a declaration that item properties of a specific set of objects (usually in different museums) are "the same thing" and should match (this is nearly always done for all properties of an item simultaneously, but again the theory doesn't require this).  The da Vinci example shows why we cannot just assume that two items should be the same -- a sync represents a confirmation that this assumption is correct for a specific set of replicas at a specific point in their timelines.
+-- Chapter 7: The dot & link view of histories --
+
+The mesh is a bunch of snapshot dots connected with equality links and preference (arrow) links.  Equality links are for when scans see the same thing again, or when a file is copied (by syncing) from one machine to another.  Preference links are for when scans see that something has changed, or when a preference is indicated via McSync.  Indicated preferences are committed as soon as the user presses go.  They cannot be undone, although later preferences can render them irrelevant.  When a new scan is done, a bunch of dots appear, and the identification step tells us where there should be links, and the scanned values indicate whether the links should be equality or arrow links.  New items derive (with an arrow) from the previous implicit value of "missing", and items that have gone missing get a new value of "missing".  
+
+One version is preferable to another if you can get from one to the other via arrows (going the right way) and equalities, but you can't get back from the other to the one.
+
+So when you resolve a conflict by marking a preference, it can't just add an arrow (because the reverse arrow might already be there, in which case the new arrow isn't clarifying things).  It adds a new dot (for the version in your head), and an arrow from every extant version (same or not) you are resolving to the new one.  This guarantees that the new version is preferable to the extant versions.
+
+This dot & link view is almost the same as the traditional view, whose time-like paths of individual versions have been reduced to dots (or sequences of dots connected by equalities), and whose upgrade times have been expanded into arrows.  Version propagations have become inter-replica equalities, and marked preferences have become inter-replica arrows.  What's nice here is that marked preferences no longer need special treatment.
+
+-- Chapter 8: When can an upgrade propagate automatically? --
+
+Now, all we need to figure out is, given two history meshes for two objects to be synced, when is one version is preferable to another?
+
+What makes new files propagate?  The virtual tree matches them up with locations in other replica directories.  Any time "all the contents of a directory" are synced (via some interface command), then all the implicit missing files are synced as well, and their implicit histories implicitly match.  This information would need to be stored somewhere, either in the notes for the directory (but that might never have been scanned) or in a multi-file record recording "missing" for all other filenames.  You might even just scan one device, find an interesting file, and ask to scan that virtual file on all devices.  If it comes back as "missing", that should presumably be stored in the history.
+
+The only time we can know that mirror B is preferable to mirror A is if A was upgraded (perhaps multiple times) to get B.  This is exactly the case when a synchronizer should definitely update A to be B.  All user changes are upgrades by definition, and the job of a synchronizer is that if a person upgraded a file on one machine, then the upgrade should be propagated to other replicas.  Any time the synchronizer does an automatic upgrade, that upgrade can be thought of as a compressed sequence of human upgrades, each element of the sequence being exactly the same upgrade between the same two versions as what the human did.
+
+This can easily be found by comparing the trees.
+
+Type 1 comparison:
+If version A originated at a point listed in B's history, but B has been updated since then, then B is preferable to A.
+Note that if A is equal to any point in B's history, then A shares its origin with this point, so the origin is in B's history.
+
+Type 2 comparison:
+If A's history indicates that some other version it knows about is preferable to A's version (this is rare, but maybe A hasn't been able to upgrade itself yet), and B's history says that B derives (perhaps with upgrades) from that preferable version, then B is preferable to A.
+
+If versions A and B originated at the same place (with neither updated since then), then a sync simply gets them to share their histories.  Or does this happen after identification, regardless of syncing? (*) (no conflict)
+
+When an upgrade can happen automatically, no preference needs to be declared before the sync.  The upgrade occurs because a replica sees a value/history combination whose history shows that that value is clearly preferable.  So declared preferences are only needed in order to override the default (in)action.
+
+-- Chapter 9: What information about the mesh do we actually need to store? --
+
+Every point in a mesh has its origin in the mesh.  But all origins in a mesh might lead to things outside the mesh.
+
+For the type 1 comparison, we need to be able to know whether A's version originated in B's mesh, and whether A and B have the same origin.  So we need to store the origin of a version.  If the origin of A was on C, then we need to know whether this is inside B's mesh or after it, so we need to store some time anywhere from the last origin on C to the point C leaves the mesh.
+
+For the type 2 comparison, we need to be able to know whether B's (non-green) mesh touches the green (futuristic) part of A's mesh.  In other words, we need to be able to know whether any origin of a green part of A's mesh is an origin in B's non-green mesh.  So for every green part of A (even multiple parts on one replica), we need to know its origin?  (Then do a type 1 test for each.)  It seems so.  Any green origin could be the only one in B's mesh.  How do green parts get added to A's mesh?  By preferences getting indicated, or by hearing gossip about how green parts have evolved.  Well, we only need the earliest green origin for each replica.
+
+So, store own origin, and for each replica, let's store last non-green origin (if any), and first green origin (if any).
+
+Should we store preferences between other replicas?  Something is green relative to an ancestor of ours?
+
+Does the lack of a preference declaration before an automatic upgrade interfere with the utility of knowing you're obsolete?
+
+For a naive merge, what history do we give it?
+
+When a preference is declared, what do we do with the histories?
+
+Any time we resolve a conflict or indicate a preference other than the default one, we are creating a "new" version, in the sense that it is preferable to all the versions it is replacing.  Thus, it cannot have the history of any versions it might match, because none of those versions had a good enough history to be the default preference.  It is like a "touched" version of whatever it matches, but touched to be ahead even of the things it doesn't match.  It can come from a fleeting device in the user's head, but this device happens to derive from all the replicas being compared, as if the user's head copies a replica from each device, and upgrades all those replicas to be a copy of its extra fleeting replica.
+
+-- Chapter 10: Complicated examples --
+
+How could it be useful for an obsolete version to know that it is obsolete?
+We create (t1) some data V1 on A, mirror it (t2) to B, change it (t3) to V2 on A, and mirror it (t4) to C, meanwhile also changing it (t5) to V3 on B.  Now (t6) we semi-sync A and B, resolving the V2-V3 conflict by specifying that A's version (V2) is preferable to B's (V3), but failing to update B.  But B records this info, that (A,t3) and (C,t4) are preferable to (B,t5).  Now (t7) if we sync B and C, then C has (A,t3,=)&(B,t2,≠)&(C,t4,=) while B has (A,t3,!)&(B,t5,=)&(C,t4,!), yielding A:"choose C", B:"dunno", C:"choose C", so we resolve in favor of C as we should.  Obviously if B did not store any memory of the preference for A at t6, then we would instead have a conflict at t7 (the same one we already resolved at t6).
+
+When users resolve conflicts or otherwise choose values that are not strictly preferable from the history, the resolved value actually gets a new history, so it *is* strictly preferable.
+
+How can we see that declared preferences will override comparison problems?  (Conflicts, reverse auto-pref, messed up hists?)
+
+Are we sure about this new time for the conflict resolution superceding the chosen alternative?  I mean, it solves some problems, but maybe it is too strong-handed of a solution and it doesn't really have full justification.  Can't it lead to a conflict somehow that wouldn't otherwise be a conflict?
+Sure. A copies to C.  A and C change independently. A copies to B.  B makes a change.  Now if A and B sync, B's change quietly propagates to A.  But if A and C sync, there is a conflict.  Supposed it is resolved in favor of A.  Now if we sync A and B, we have another conflict.  So syncing A-B then A-C presents you with one conflict, but syncing A-C then A-B presents you with two, the second of which is the same comparison that was resolved quietly in the first case.  Is the second conflict necessary?
+???
+I write most of a book and give it to my friend.  We each finish it.  I send my version to my editor, who makes some changes.  I then see them (friend and editor) both at a cafe.  If I talk to the editor first, the edits will get incorporated into my version.  Then when I talk to my friend there is a conflict: we debate our endings.  If I talk to my friend first then we debate our endings, and we choose mine.  Even after this, it seems, the editor's comments should simply be incorporated, rather than treated as a conflict.  Hmmph.
+...
+Let's add the problematic case into that example, and see if we can't push the conflict to the point where the problem occurs.
+
+Learning about a new museum displaying items seems separate from standard identification guidance, and could be transmitted at any time.
+???
+
+How does second round help?
+???
+
+Give 6-machine example where naive merge leads to upgrade loss.
+Point out workaround based on file update times: If a merge would take you to a version that pre-dates any of your naive merge sources, then it is marked as a conflict.  Well, it has pros and cons.
+
+As a simple example of what is meant by "optimal", consider syncing machines A and B (which are not connected to each other) via a USB stick U.  You edit the same file on both A and B without realizing it, and then you sync U with A, so U updates to A's new version.  Later, you sync U with B, and there is a conflict between the two new versions, which you investigate and resolve by saying that actually B's version is better (so U updates to B's version).  Later you sync U with A again.  Most synchronization utilities would report a conflict at this point as well, since again we have the same two new versions to choose between.  But McSync won't bother you with this conflict that you already resolved.  There are many more complicated examples, but the main idea is that McSync can remember what you told it, and it will bother you with conflicts as rarely as possible.
+
+-- Chapter 11: Terminology --
+
+Having come to the end, we introduce some terminology.  Better late than never.
+
+We need a name for an item in the inventory list (which is a single point in space-time), separate from an item in the museum records (which is a time-like path in space-time), separate from the holographically merged item visible in the holodeck (which is some collection of time-like paths in space-time, which are simply shown in the same place in the holodeck).
+
+Item in inventory list:  Snapshot
+Item in museum records:  Replica
+Item shown on holodeck:  Valuable
+
+History, Mesh: Pedigree
+Instructions: Value+Pedigree pair
+Version, Aspect, Value, ...
+
+Some valuables we like to keep in a state of inconsistent superposition of replicas.  Other valuables we like to keep synced.  Syncing is an operation we can apply to some or all of the replicas in a valuable, if we want.  Creating a valuable out of some replicas does not in itself mean that those replicas should be synced.  That's what being "sync-flexible" is all about!
+
+The intuitive notion of syncing can be used to motivate the notion of a valuable, and the notion of replicas.  Considering how file systems and other utilities work forces one to break things down to snapshots.

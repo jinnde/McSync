@@ -71,5 +71,3 @@ For more detail, see "Algorithm.txt".
 
 ---------------------------------------------------------------------------
 
-Leslie Lamport. Time, clocks and the ordering of events in a distributed system. Communications of
-the ACM, 21(7):558Ð565, July 1978.

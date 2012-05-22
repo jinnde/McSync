@@ -2,58 +2,28 @@
 McSync is a utility for keeping files on different machines synchronized with each other.
 
 McSync is a file synchronizer that is:
-* optimistic (propagates changes asynchronously, and is thus prepared for conflicts)
 * peer-to-peer (no centralized network or server needs to be accessed)
-* multi-way (can sync any number of machines at a time)
-* non-immediate (only syncs when you want, allows manipulating files while off-line)
+* user-level (no special user priveleges needed; doesn't need to be built into your OS)
 * OS-compatible (you can freely manipulate files with ordinary OS-provided commands like mv, cp, scp, or any other tools)
+* simple (no databases or other specially-installed software needed; can be used from the command line)
+* scalable (can work with millions of files)
+* open-source (gnu gpl)
+* multi-way (can sync any number of machines at a time)
 * machine-flexible (different machines can store different subsets of the data)
 * sync-flexible (any subset of the data can be synced on any given occasion)
+* non-immediate (only syncs when you want; allows manipulating files while off-line)
 * file-following (renaming is understood as a type of change to a file)
 * directory-following (rearranging of files and directories is understood as such)
 * extendable (new machines can be added at any time)
 * migratable (can sync data previously synced in another way)
 * network-adaptable (storage devices can be attached to different machines at different times)
-* scalable (can work with millions of files)
-* optimal (reports as few conflicts as theoretically possible)
-* open-source
+* optimistic (propagates changes asynchronously, and is thus prepared for conflicts or sync failures)
+* optimal (reports as few conflicts as theoretically possible, fewer than any other synchronizer)
 
-As a simple example of what is meant by "optimal", consider syncing machines A and B (which are not connected to each other) via a USB stick U.  You edit the same file on both A and B without realizing it, and then you sync U with A, so U updates to A's new version.  Later, you sync U with B, and there is a conflict between the two new versions, which you investigate and resolve by saying that actually B's version is better (so U updates to B's version).  Later you sync U with A again.  Most synchronization utilities would report a conflict at this point as well, since again we have the same two new versions to choose between.  But McSync won't bother you with this conflict that you already resolved.  There are many more complicated examples, but the main idea is that McSync can remember what you told it, and it will bother you with conflicts as rarely as possible.
 
 McSync has two fundamental innovations:
 1. Its "virtual tree" interface lets you easily organize what should be synced with what on various machines.
 2. Under the hood, its optimal syncing algorithms are enabled by its "file aspect history" record-keeping.
-
-
-
-##########################
-######  An Analogy  ######
-##########################
-
-
-We can best introduce the key ideas by way of an analogy.
-
-You own a chain of museums, and you want to keep certain items, exhibits, or entire wings, synchronized.
-Rather than having central directives, you let the museum directors make any improvements they like.
-Then, the purpose of the synchronizing process is simply to propagate improvements between museums.
-    This part is lightly overseen by a central director.
-
-Every museum tries to keep its items tagged.  The tag has two parts.
-	Description:
-		The tag describes every aspect of the item (oil on canvas, 1866, etc.), including its place in the room.
-	History:
-		It also says, for each aspect, which other museums/exhibits have synced with it, and when.
-			And whether it is still in the same state as it was at that sync.
-
-Doing a scan is like taking an inventory:  You walk around and see what items you actually have in the museum.
-	Then you match up the items with your stack of tags, to see what goes with what.
-
-The virtual tree is virtual, not stored anywhere.
-	It is like a holographic merging of various actual museum parts.
-	Museums don't do this; just the central director does.
-	It represents the director's abstract vision of the museum parts.
-	This is what the director manipulates.
-	This allows different places to be compared and synced.
 
 
 
@@ -66,7 +36,7 @@ The virtual tree is virtual, not stored anywhere.
 
 Machines are not very important.  They only have three uses:
 1. They are instruction-followers (CPUs) which can run McSync.
-2. They can access data on storage devices.
+2. They can access data (including the McSync executable) on storage devices.
 3. They can communicate with other machines at other locations.
 
 Everything McSync knows is stored on the devices.  Nothing is stored on a machine -- storage requires storage devices.
@@ -273,7 +243,7 @@ In this case, A is preferable to B, and A can add (B:file1, 9, y) to its history
 	mirror B: file1: contents: q (B:file1, 9, y)(C:file1, 4, n)
 In this case, if we have no other information, then neither file is preferable (there is a conflict), and no histories change.
 	mirror B: file1: contents: q (B:file1, 9, y)(C:file1, 5, y)
-This is impossible under normal operation if p‚â†q, since p and q both claim to equal C:file1@t=5.
+This is impossible under normal operation if p≠q, since p and q both claim to equal C:file1@t=5.
 	mirror B: file1: contents: p (B:file1, 9, y)(C:file1, 5, y)
 In this case (note p=p), B is the same as A, and A can add (B:file1, 9, y) and B can add (A:file1, 3, y).
 
@@ -664,7 +634,10 @@ unison
 bayou -- partial datasets not ok
 panasync -- version stamps
 practi -- needs to be built into the os, but provides greater flexibility in only exposing consistent sets of files
-who's the guy with the generalized asynchronous clock? (like the history struct) maybe jefferson82 "Fast Concurrent Simulation Using the Time Warp Mechanism, Part I: Local Control" (maybe lamport?)
+
+jefferson82 "Fast Concurrent Simulation Using the Time Warp Mechanism, Part I: Local Control"
+
+Leslie Lamport. Time, clocks and the ordering of events in a distributed system. Communications of the ACM, 21(7):558–565, July 1978.
 
 Tra: "File Synchronization with Vector Time Pairs"
 Has an extra version vector that records syncs (as opposed to changes).  This is the light cone surface.  Syncs are one-way events.
@@ -672,10 +645,12 @@ Has an extra version vector that records syncs (as opposed to changes).  This is
 3.5.1: What does monotically increasing have to do with anything else?  Assumes a sync of a large file system is an atomic operation.  Par. 2 presents a convoluted way of saying that there is typically a very high redundancy in the list of sync times and so it can be greatly compressed.  Par. 3: The lack of deletion notice sounds risky.  For example, if only part of the directory was synced, then the relationship between the directory and its contents is unclear.
 3.5.2: {A5} is less powerful than {A5,B3} because it is harder to compare with {C1,B2}.  Just because anybody having A5 will also have B3, doesn't mean that systems without A5 have no use for seeing the B info.  Par. 3: Directories have no info of their own?
 
+tra, even if sync is done in both directions, seems to miss second round
+
 csync2 -- uses file aspects (stored in sqlite db!), "dirty" bit
 
 chronosync
-Qdea‚Äôs Synchronize Pro
+Qdea's Synchronize Pro
 http://www.decimus.net/  synk
 http://www.syncsort.com
 
@@ -763,9 +738,9 @@ What we want is that if we say a bunch of files should be moved to a place mirro
 Say A=B=C=D.
 	A: a1=, b1=, c1=, d1=   B: a1=, b1=, c1=, d1=   C: a1=, b1=, c1=, d1=   D: a1=, b1=, c1=, d1=
 Then we modify A and C and sync A=B and C=D.
-	A: a2=, b2=, c1‚â†, d1‚â†   B: a2=, b2=, c1‚â†, d1‚â†   C: a1‚â†, b1‚â†, c2=, d2=   D: a1‚â†, b1‚â†, c2=, d2=
+	A: a2=, b2=, c1≠, d1≠   B: a2=, b2=, c1≠, d1≠   C: a1≠, b1≠, c2=, d2=   D: a1≠, b1≠, c2=, d2=
 Now we sync A and C, saying we prefer A.  And we sync B and D, saying we prefer D.
-	A: a2=, b2=, c3= d2‚â†   B: a2‚â†, b3=, c2=, d2=   C: a2=, b2=, c3=, d2‚â†   D: a2‚â†, b3=, c2=, d2=
+	A: a2=, b2=, c3= d2≠   B: a2≠, b3=, c2=, d2=   C: a2=, b2=, c3=, d2≠   D: a2≠, b3=, c2=, d2=
 Now we sync A and B.  How is the conflict noticed?
 Well, B thinks it's more recent than A, according to machines A and B.  But A thinks it's more recent than B, according to machines C and D.  So there is a conflict.
 
@@ -1221,7 +1196,7 @@ http://www.cl.cam.ac.uk/~mgk25/unicode.html
               "Check LANG, LC_CTYPE, LC_ALL.\n");
       return 1;
     }
-    printf("%ls\n", L"Sch√∂ne Gr√º√üe");
+    printf("%ls\n", L"Schöne Grüße");
     return 0;
   }
 
@@ -1442,16 +1417,16 @@ One history A is preferable to another B if, for every machine, one of the follo
     - A has issame=NO and B has issame=YES and t_A < t_B.   This was ok before, but not for the new user-change approach.
         Old: This just means that B, while obsolete, has more recent information about that machine than the newer A does.
         New: This means there was a user change on that machine that A hasn't heard about.
-	- A has issame=NO and B has issame=YES and t_A ‚â• t_B.
+	- A has issame=NO and B has issame=YES and t_A ≥ t_B.
 	- A has issame=YES and B has issame=YES for t_A > t_B.
 and for some machine, the second or third holds.
 Machine by machine, compare the histories of the two versions V and W.  Each machine casts a vote.
 For machine A:
         t_V < t_W   t_V = t_W   t_V > t_W    // third column computable from first, third row computable from second, 7 cases
 V= W=      V<W         V=W         V>W       // non-starred ones are decisive.  the starred ones used to be no opinion.
-V= W‚â†      V<W         V<W         V>W *     // there is always a non-* (decisive) vote, and now the *s must match it.
-V‚â† W=      V<W *       V>W         V>W
-V‚â† W‚â†      V<W *   no opinion      V>W *
+V= W≠      V<W         V<W         V>W *     // there is always a non-* (decisive) vote, and now the *s must match it.
+V≠ W=      V<W *       V>W         V>W
+V≠ W≠      V<W *   no opinion      V>W *
 Then the votes are tallied.  Any machine voting "no opinion" is ignored.  The remaining votes must all match, or else there is an error (kind of like a conflict, but shouldn't even happen).  If there are no remaining votes, that is a conflict.  Otherwise, the unanimous decision holds, and inequality leads to automatic propagation.
 
 Upon automatic propagation, the written-over history is changed to obsolete on every machine, the machines being written to are changed to the current time with equality, and the max of the histories is taken and used on every machine being written to.
@@ -1647,22 +1622,22 @@ Going back, can we resolve these in a symbolic way?  Suppose for issame values w
 When histories are extended with snapshots, change points are marked as "source" points if they seem to have been changed by the user, not by McSync.
 
 Then our final states are:
-        y: ¬ß7 ¬ß2 ‚â†6 ‚â†4 =3       n: ¬ß5 =10 =6 ‚â†4 ‚â†3              a clear win for A: A wants A, B wants ?
+        y: §7 §2 ≠6 ≠4 =3       n: §5 =10 =6 ≠4 ≠3              a clear win for A: A wants A, B wants ?
 and if at t=10 the user had changed B, then after the B-C sync at t=11 we would have:
-        y: ¬ß7 ¬ß2 ‚â†6 ‚â†4 =3       n: ¬ß5 ¬ß10 =6 ‚â†4 ‚â†3              a clear conflict: A wants A, B wants B
+        y: §7 §2 ≠6 ≠4 =3       n: §5 §10 =6 ≠4 ≠3              a clear conflict: A wants A, B wants B
 while if at t=2 the user set F to n, and then at step 9.5 merged B with F, we would have:
-        y: ¬ß7 ¬ß2 ‚â†6 ‚â†4 =3 ‚â†1    n: ¬ß5 =10 =6 ‚â†4 ‚â†3 ¬ß2           a clear conflict: A wants A, F wants B
+        y: §7 §2 ≠6 ≠4 =3 ≠1    n: §5 =10 =6 ≠4 ≠3 §2           a clear conflict: A wants A, F wants B
 
 The idea is that (not only can the McSync interface tell the user where changes originated but) a file must have a source.  Consider the potential results of the two directions of propagation for the first of the cases above, the "clear win for A".
-  A->B        y: ¬ß7 =11 ‚â†6 ‚â†4 ‚â†3        y: ¬ß7 =11 ‚â†6 ‚â†4 ‚â†3
+  A->B        y: §7 =11 ≠6 ≠4 ≠3        y: §7 =11 ≠6 ≠4 ≠3
 or
-  A<-B        n: =11 =10 ‚â†6 ‚â†4 ‚â†3        n: =11 =10 ‚â†6 ‚â†4 ‚â†3
+  A<-B        n: =11 =10 ≠6 ≠4 ≠3        n: =11 =10 ≠6 ≠4 ≠3
 Of these two, the first is clearly much better.  If both results have sources, then there is a conflict (if the values are the same, then both results are the same).  If neither result has a source, that is probably impossible, because probably we can prove something like the latest source can't disappear.  Yes, that would make for a nice theorem.
 
 Thm:
 The latest source can't disappear.
 Pf:
-A source can only disappear if something is preferable to it.  To appear inferior, it would have to meet an item (somewhere) which is ‚â• its times for the issame machines (and strictly > if it is issame in the other history too).  The source is an issame machine.  For it, strictly > is not going to be present in the other item unless the source machine itself already lost itself as a source, which it didn't by induction.  So what about ‚â• with the same time?  This could happen if it meets a preferable item with a different value.  Again killed by induction: The ‚â• can only arise by meeting something which is preferable and therefore already has ‚â•.
+A source can only disappear if something is preferable to it.  To appear inferior, it would have to meet an item (somewhere) which is ≥ its times for the issame machines (and strictly > if it is issame in the other history too).  The source is an issame machine.  For it, strictly > is not going to be present in the other item unless the source machine itself already lost itself as a source, which it didn't by induction.  So what about ≥ with the same time?  This could happen if it meets a preferable item with a different value.  Again killed by induction: The ≥ can only arise by meeting something which is preferable and therefore already has ≥.
 But wait!  A source can naively merge with something else, which is elsewhere hopelessly obsolete, and then the source is in danger.
 
 
