@@ -1,11 +1,18 @@
 #include "definitions.h"
 
-connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct access
+connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct access
+
+int32 slavemode = 0; // whether McSync is at a possilby remote location in slave mode
+
+// The new_plug function needs to stop the main routing in order to add new
+// connection to the list
+pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 const char* msgtypelist[] = { "error (msgtype==0)",
-    "newplugplease", "NPP1","NPP2", "info", "workerisup",
-    "connected", "disconnect", "identifydevice", "deviceid",
-    "scan", "listvirtualdir", "virtualdir", "touch" };
+    "connectdevice","disconnectdevice", "newplugplease", "removeplugplease", "recruitworker",
+    "failedrecruit", "info", "workerisup", "connected", "disconnect",
+    "identifydevice", "deviceid", "listvirtualdir", "virtualdir", "touch",
+    "scanvirtualdir", "scan", "scandone", "exit", "goodbye" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -35,7 +42,7 @@ const char* msgtypelist[] = { "error (msgtype==0)",
 #endif
 
 #ifndef BIG_ENDIAN_MACHINE // provided by compile.sh
-#define stream_to_host_32(x) (x) // stream data is little endian
+#define stream_to_host_32(x) (x) // stream data is always little endian
 #define stream_to_host_64(x) (x)
 #define host_to_stream_32(x) (x)
 #define host_to_stream_64(x) (x)
@@ -79,6 +86,26 @@ char *deserializestring(char **source) // may allocate string, free when done
     return str;
 } // deserializestring
 
+stringlist *deserializestringlist(char **source) // may allocate stringlist, free when done
+{ // *source is manipulated by each deserialization function
+    stringlist *head, *tail, *temp;
+    int32 count = deserializeint32(source);
+
+    head = tail = NULL;
+    while (count--) {
+        temp = (stringlist*) malloc(sizeof(stringlist));
+        temp->string = deserializestring(source);
+        temp->next = NULL;
+        if (!head)
+            head = tail = temp;
+        else {
+            tail->next = temp;
+            tail = temp;
+        }
+    }
+    return head;
+} // deserializestringlist
+
 virtualnode *deserializevirtualnode(char **source) // returns allocated virtual node, free when done
 {// *source is manipulated by each deserialization function
     virtualnode *node = (virtualnode*) malloc(sizeof(virtualnode));
@@ -116,32 +143,45 @@ void serializeint64(bytestream b, int64 n)
     bytestreaminsert(b, (void*) &n, size_of_int64);
 } // serializeint32
 
-void serializestring(bytestream b, char *str)
+void serializestring(bytestream b, char *str)  // prepends the size of the string, the empty string has size 1, NULL size 0
 {
     int32 len = str ? strlen(str) + 1 : 0;
-    serializeint32(b, len); // prepend the size of the string, the empty string has size 1, NULL size 0
+    serializeint32(b, len);
     if (len)
         bytestreaminsert(b, (void*) str, len);
 } // serializestring
 
-bytestream serializehistory(history h)
+void serializestringlist(bytestream b, stringlist *list) // prepends the number of strings that have been serialized, list == NULL => sends count == 0
 {
-    return NULL;
+    int32 count = 0;
+    stringlist *listitem;
+    // prepend count
+    for (listitem = list; listitem != NULL; listitem = listitem->next)
+        count++;
+    serializeint32(b, count);
+
+    for (listitem = list; listitem != NULL; listitem = listitem->next)
+        serializestring(b, listitem->string);
+} // serializestringlist
+
+void serializehistory(bytestream b, history h)
+{
+        // TODO: Implement serialization for structure
 } // serializehistory
 
-bytestream serializefileinfo(fileinfo* info)
+void serializefileinfo(bytestream b, fileinfo* info)
 {
-    return NULL;
+    // TODO: Implement serialization for structure
 } // serializefileinfo
 
-bytestream serializegraft(graft* graft)
+void serializegraft(bytestream b, graft* graft)
 {
-    return NULL;
+        // TODO: Implement serialization for structure
 } // serializegraft
 
-bytestream serializegraftee(graftee gee)
+void serializegraftee(bytestream b, graftee gee)
 {
-    return NULL;
+        // TODO: Implement serialization for structure
 } // serializegraftee
 
 void serializevirtualnode(bytestream b, virtualnode *node) // returns allocated stream, free when done
@@ -168,6 +208,84 @@ void serializevirtualnode(bytestream b, virtualnode *node) // returns allocated 
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of serialization ////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////////
+/////////////////////// start of agent helper functions //////////////////////////
+//////////////////////////////////////////////////////////////////////////////////
+
+// sometimes an agent can't properly finish a task without having some message from
+// another agent. This is for example the case for the exit message which gives
+// the other agent some time to react to it before it is disconnected. We can't
+// really block, because then we would not be able to receive the message and
+// jump back to the blocking function. The solution to the problem are callback
+// functions. Every time the agent looks for a message, it will also remove some
+// waiting time from the these callback requests. If the message arrives on time
+// the callback function will be called with the success bit on. If it times out
+// before the message arrives, this bit will be off. The following functions allow
+// an agent to implement this callback functionality if needed.
+
+// adds a callback request to the queue, the call back function has to be of type
+// void (*fn) (int32 msg_type, int32 msg_src, char* msg_data, int32 success);
+void waitformessage(queue callbackqueue, int32 msg_type, int32 msg_src, int32 timeout, message_callback_function fn)
+{
+    message_callback callback = (message_callback) malloc(sizeof(struct message_callback_struct));
+    callback->msg_type = msg_type;
+    callback->msg_src = msg_src;
+    callback->timeout = timeout;
+    callback->fn = fn;
+    queueinserttail(callbackqueue, (void*) callback);
+
+} // waitformessage
+
+// is called in the message receiving loop of the agent, ticks the waiting time.
+// If a request times out, the callback function is invoked with the success bit
+// off.
+void callbacktick(queue callbackqueue, int32 microseconds)
+{
+    queuenode node, tmp;
+    node = callbackqueue->head;
+
+    message_callback callback;
+
+    while (node != NULL) {
+        callback = (message_callback) node->data;
+        callback->timeout -= microseconds;
+        if (callback->timeout <= 0) {
+            tmp = node->next;
+            queueremove(callbackqueue, node);
+            callback->fn(callback->msg_type, callback->msg_src, NULL, 0); // unsuccessful
+            free(callback);
+            node = tmp;
+            continue;
+        }
+        node = node->next;
+    }
+} // callbacktick
+
+// is called every time a message has arrived and checks if it is one of the messages
+// the agent has been waiting for. In this case it calls the function provided with
+// the success bit on.
+int32 messagearrived(queue callbackqueue, int32 msg_type, int32 msg_src, char *msg_data)
+{
+    queuenode node = callbackqueue->head;
+    message_callback callback;
+
+    while (node != NULL) {
+        callback = (message_callback) node->data;
+        if (callback->msg_type == msg_type && callback->msg_src == msg_src) {
+            queueremove(callbackqueue, node);
+            callback->fn(callback->msg_type, callback->msg_src, msg_data, 1);
+            free(callback);
+            return 1;
+        }
+        node = node->next;
+    }
+    return 0;
+}   // messagearrived
+
+//////////////////////////////////////////////////////////////////////////////////
+/////////////////////// end of agent helper functions ////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
 unsigned char unhex(unsigned char a, unsigned char b)
@@ -327,8 +445,7 @@ int64 get64safe(FILE* input)
 char* threadname(void)
 {
     pthread_t us = pthread_self();
-    return (worker_plug && us == worker_plug->listener) ? "worker" :
-            (hq_plug && us == hq_plug->listener) ? "HQ" :
+    return  (hq_plug && us == hq_plug->listener) ? "HQ" :
             (cmd_plug && us == cmd_plug->listener) ? "CMD" :
             (parent_plug && us == parent_plug->listener) ? "parent" :
             "other thread";
@@ -368,7 +485,6 @@ void waitforsequence(FILE* input, char* sequence, int len, int echo)
         shortestperiod[subend + 1] = period; // 123124: sp[5]=3, sp[6]=6
     }
     if (debug_out) {
-        //fprintf(debug_out, "%p %p\n", input, stdin);
         int i;
         fprintf(debug_out, "%c[0;31;47m[%s looking for \"", 27, threadname());
         for (i = 0; i < len; i++)
@@ -407,7 +523,6 @@ void waitforsequence(FILE* input, char* sequence, int len, int echo)
         fflush(stderr);
     }
     if (debug_out) {
-        //fprintf(debug_out, "%p %p\n", input, stdin);
         int i;
         fprintf(debug_out, "%c[0;31;47m[%s got \"", 27, threadname());
         for (i = 0; i < len; i++)
@@ -419,7 +534,6 @@ void waitforsequence(FILE* input, char* sequence, int len, int echo)
 
 void waitforstring(FILE* input, char* string)
 {
-    // fprintf(ourerr, "<waiting for \"%s\">\n", string);
     waitforsequence(input, string, strlen(string), 0);
 } // waitforstring
 
@@ -441,8 +555,6 @@ void putstring(FILE* output, char* s)
     }
     putc(0, output);
 } // putstring
-
-
 
 void freeintlist(intlist skunk)
 {
@@ -597,6 +709,16 @@ void freemessage(message skunk)
     free(skunk);
 } // freemessage
 
+void freemessagequeue(message skunk)
+{
+    message tmp;
+    while (skunk != NULL) {
+        tmp = skunk;
+        skunk = skunk->next;
+        freemessage(tmp);
+    }
+} // freemessagequeue
+
 void nsendmessage(connection plug, int recipient, int type, char* what, int len)
 {
     message msg;
@@ -611,6 +733,7 @@ void nsendmessage(connection plug, int recipient, int type, char* what, int len)
     memcpy(msg->data, what, len);
     msg->data[len] = 0; // extra unsent 0 makes it safer for diagnostic printing
     msg->nextisready = 0;
+    msg->next = NULL;
     plug->messages_fromkid_tail->next = msg;
     plug->messages_fromkid_tail->nextisready = 1;
     plug->messages_fromkid_tail = msg;
@@ -627,6 +750,24 @@ void sendmessage2(connection plug, int recipient, int type, char* what)
     nsendmessage(plug, recipient, type, what,
                     first + 1 + strlen(what + first + 1)); // don't send second 0
 } // sendmessage2
+
+void sendvirtualnoderquest(virtualnode *root, virtualnode *node)
+{ // helps by assembling the path to a node before sending the request to HQ from CMD
+    bytestream b = initbytestream(128);
+    getvirtualnodepath(b, root, node);
+    bytestreaminsertchar(b, '\0');
+    nsendmessage(cmd_plug, hq_int, msgtype_listvirtualdir, b->data, b->len);
+    freebytestream(b);
+} // sendvirtualnoderquest
+
+void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node)
+{
+    bytestream b = initbytestream(128);
+    getvirtualnodepath(b, root, node);
+    bytestreaminsertchar(b, '\0');
+    nsendmessage(cmd_plug, hq_int, msgtype_scanvirtualdir, b->data, b->len);
+    freebytestream(b);
+} // sendvirtualnodescanrequest
 
 void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir)
 {
@@ -647,14 +788,56 @@ void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir
     freebytestream(serialized);
 } // sendvirtualdir
 
-void sendvirtualnoderquest(virtualnode *root, virtualnode *node)
-{ // helps by assembling the path to a node before sending the request
-    bytestream b = initbytestream(128);
-    getvirtualnodepath(b, root, node);
-    bytestreaminsertchar(b, '\0');
-    nsendmessage(cmd_plug, hq_int, msgtype_listvirtualdir, b->data, b->len);
-    freebytestream(b);
-} // sendvirtualnoderquest
+void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints)
+{
+    bytestream serialized = initbytestream(128);
+
+    serializestring(serialized, scanroot);
+    serializestringlist(serialized, prunepoints);
+    nsendmessage(plug, recipient, msgtype_scan, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendscancommand
+
+void sendrecruitcommand(connection plug, int32 plugnumber, char *address)
+{
+    bytestream serialized = initbytestream(64);
+
+    serializeint32(serialized, plugnumber);
+    serializestring(serialized, address);
+    nsendmessage(plug, recruiter_int, msgtype_recruitworker, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendrecruitcommand
+
+void sendplugnumber(connection plug, int32 recipient, int32 type, int32 plugnumber)
+{
+    bytestream serialized = initbytestream(4);
+
+    serializeint32(serialized, plugnumber);
+    nsendmessage(plug, recipient, type, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendplugnumber
+
+void sendscandonemessage(connection plug, char *scanfilepath, char *historyfilepath)
+{
+    bytestream serialized = initbytestream(256);
+
+    serializestring(serialized, scanfilepath);
+    serializestring(serialized, historyfilepath);
+    nsendmessage(plug, hq_int, msgtype_scandone, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendscandonemessage
+
+//// only used by recruiter
+
+void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnumber)
+{
+    bytestream serialized = initbytestream(20);
+
+    serializestring(serialized, theirreference);
+    serializeint32(serialized, plugnumber);
+    nsendmessage(recruiter_plug, recipient, msgtype_newplugplease, serialized->data, serialized->len);
+    freebytestream(serialized);
+} // sendnewplugresponse
 
 char* secondstring(char* string)
 {
@@ -685,9 +868,8 @@ int receivemessage(connection plug, listint* src, int64* type, char** data)
     return 1;
 } // receivemessage
 
-void receivevirtualdir(char *msg_data, char **path, queue receivednodes)
+void receivevirtualdir(char *source, char **path, queue receivednodes)
 {
-    char *source = msg_data; // pointer manipulated by deserialization
     *path = deserializestring(&source);
     int32 count = deserializeint32(&source);
     virtualnode *node;
@@ -701,6 +883,35 @@ void receivevirtualdir(char *msg_data, char **path, queue receivednodes)
     }
 } // receivevirtualdir
 
+void receivescancommand(char *source, char **scanroot, stringlist **prunepoints)
+{
+    *scanroot = deserializestring(&source);
+    *prunepoints = deserializestringlist(&source);
+} // receivescancommand
+
+void receiverecruitcommand(char *source, int32 *plugnumber, char **address)
+{
+    *plugnumber = deserializeint32(&source);
+    *address = deserializestring(&source);
+} // receiverecruitcommand
+
+void receivenewplugresponse(char *source, char **reference, int32 *plugnumber)
+{
+    *reference = deserializestring(&source);
+    *plugnumber = deserializeint32(&source);
+} // receivenewplugresponse
+
+void receiveplugnumber(char *source, int32 *plugnumber)
+{
+    *plugnumber = deserializeint32(&source);
+} // receiveplugnumber
+
+void receivescandonemessage(char *source, char **scanfilepath, char **historyfilepath)
+{
+    *scanfilepath = deserializestring(&source);
+    *historyfilepath = deserializestring(&source);
+} // receivescandonemessage
+
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of router /////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -711,10 +922,32 @@ void receivevirtualdir(char *msg_data, char **path, queue receivednodes)
 // The router shuffles the messages around based on their destination.
 // Remote processes use local threads to convert between messages and stream I/O.
 
+void abort_thread_execution(int sig, siginfo_t *info, void *ucontext)
+{
+    pthread_exit(NULL);
+}   // abort_thread_execution
+
+void addabortsignallistener(void)
+{
+    struct sigaction sa;
+    sa.sa_handler = NULL;
+    sa.sa_sigaction = &abort_thread_execution;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGUSR1, &sa, NULL) < 0) {
+             printerr("Error: Thread could not set the signal handler used for "
+                      "aborting its execution. It will not be executed.\n");
+             return;
+     }
+} // addabortsignallistener
+
 void* forward_raw_errors(void* voidplug)
 {
-    FILE*           stream_in;
-    connection      plug = voidplug; // so compiler knows type
+    FILE* stream_in;
+    connection plug = voidplug; // so compiler knows type
+
+    addabortsignallistener();
 
     stream_in = plug->errfromkid;
     while (1) {
@@ -722,45 +955,50 @@ void* forward_raw_errors(void* voidplug)
         c = getc(stream_in);
         if (c != EOF) {
             if (c == '\n')
-                printerr(" (from %d)", plug->thisway->values[0]);
+                printerr(" (from %d)", plug->plugnumber);
             printerr("%c", (char)c);
             // fflush(ourerr); probably slow and not necessary
         }
     }
 } // forward_raw_errors
 
-void stream_receiving(connection plug)
+void* stream_receiving(void* voidplug)
 {
     FILE* stream_in;
+    connection plug = voidplug; // so compiler knows type
+
+    addabortsignallistener();
 
     stream_in = plug->fromkid;
     while (1) {
         int64 len, pos;
-        message msg;
-        msg = (message) malloc(sizeof(struct message_struct));
+        message *msg = &plug->unprocessed_message;
+        (*msg) = (message) malloc(sizeof(struct message_struct));
         // read message from stream
         flockfile(stream_in);
         // we start each message with a cookie because then if things get mixed
         // up for any reason, they are more likely to get sorted out, and we are
         // less likely to try to malloc petabytes of memory for nothing
         waitforcookiesafe(stream_in);
-        msg->source = get32safe(stream_in);
-        msg->destinations = getintlistsafe(stream_in);
-        msg->type = get64safe(stream_in);
-        msg->len = len = get64safe(stream_in);
-        msg->data = (char*) malloc(len+1); // users can ignore the extra byte
+        (*msg)->source = get32safe(stream_in);
+        (*msg)->destinations = getintlistsafe(stream_in);
+        (*msg)->type = get64safe(stream_in);
+        (*msg)->len = len = get64safe(stream_in);
+        (*msg)->data = (char*) malloc(len+1); // users can ignore the extra byte
         for (pos = 0; pos < len; pos++) {
-            msg->data[pos] = getc_unlockedsafe(stream_in);
+            (*msg)->data[pos] = getc_unlockedsafe(stream_in);
         }
-        msg->data[pos] = 0; // we make sure a 0 follows the chars, so if you
+        (*msg)->data[pos] = 0; // we make sure a 0 follows the chars, so if you
             // know it is a short char sequence, you can treat it as a string
-        msg->nextisready = 0;
+        (*msg)->nextisready = 0;
         funlockfile(stream_in);
         // now it is ready to be added to the queue
-        plug->messages_fromkid_tail->next = msg;
+        (*msg)->next = NULL;
+        plug->messages_fromkid_tail->next = (*msg);
         plug->messages_fromkid_tail->nextisready = 1;
         // we have now added this message
-        plug->messages_fromkid_tail = msg;
+        plug->messages_fromkid_tail = (*msg);
+        plug->unprocessed_message = NULL;
     }
 } // stream_receiving
 
@@ -770,6 +1008,8 @@ void* stream_shipping(void* voidplug)
     FILE* stream_out;
     message msg; // head is an already-processed message, we process the next one
     stream_out = plug->tokid;
+
+    addabortsignallistener();
 
     while (1) {
         if (plug->messages_tokid_head->nextisready == 1) { // is next one ready?
@@ -798,57 +1038,15 @@ void* stream_shipping(void* voidplug)
     }
 } // stream_shipping
 
-void* thread_main(void* voidplug) // all new plug threads start here
-{
-    connection      plug = voidplug; // so compiler knows type
-
-    // CMD, HQ, and worker each handle both input and output messages
-    if (plug == cmd_plug) { // from routermain init
-        cmd_thread_start_function(); // returns when user exits,
-                                     // set by main.c to user choice (e.g. TUImain or climain)
-        cleanexit(0); // kill all other threads and really exit
-        return NULL;
-    }
-    if (plug == hq_plug) { // from routermain init
-        algomain(); // never returns
-        return NULL;
-    }
-    if (plug == worker_plug) { // from routermain init
-        workermain(); // never returns
-        return NULL;
-    }
-    // we need to process a parent plug or remote plug (2 sides of the same thing)
-    // we use three threads (this + 2 others) to handle the three I/O streams
-    if (plug == parent_plug) { // from routermain init
-        plug->tokid = stdout; // "kid" is the remote thing -- here it's the parent
-        plug->fromkid = stdin; // and stdout_packager will read from stdin, etc.
-        // parent plug doesn't actually need a stderr handler
-    } else { // a remote connection, from workermain
-        if (plug->target_device == NULL) {
-            printerr("Error: no target machine\n");
-            return NULL;
-        }
-        if (reachforremote(plug)) { // fills plug with streams to remote mcsync
-            // nonzero return means it failed
-            return NULL;
-        }
-        // remote connection needs stderr forwarder
-        pthread_create(&plug->stderr_forwarder, pthread_attr_default,
-                        &forward_raw_errors, (void *)plug);
-    }
-    // put two threads (this + 1 other) on the I/O stream/message conversions
-    pthread_create(&plug->stdout_packager, pthread_attr_default,
-                    &stream_shipping, (void *)plug);
-    stream_receiving(plug); // never returns
-    return NULL; // keep compiler happy
-} // thread_main
-
 message trivial_message_queue(void)
 {
     message tr = (message)malloc(sizeof(struct message_struct));
     tr->destinations = NULL; // so we know not to try to free it
     tr->data = NULL;         // so we know not to try to free it
+    tr->next = NULL;
     tr->nextisready = 0;
+    tr->source = 0;
+    tr->type = 0;
     return tr;
 } // trivial_message_queue
 
@@ -862,77 +1060,209 @@ connection new_connection(void)
     return plug;
 } // new_connection
 
+void freesshsession(ssh_session *skunk)
+{
+    if (skunk->uname)
+        free(skunk->uname);
+
+    if (skunk->mname)
+        free(skunk->mname);
+
+    if (skunk->path) {
+        remove(skunk->path);
+        free(skunk->path);
+    }
+} // freesshsession
+
+void freeconnection(connection skunk) {
+
+    freeintlist(skunk->thisway);
+    if (skunk->address)
+        free(skunk->address);
+
+    // clear the message queues
+    freemessagequeue(skunk->messages_fromkid_head);
+    freemessagequeue(skunk->messages_tokid_head);
+
+    if (skunk->unprocessed_message != NULL)
+        free(skunk->unprocessed_message);
+
+    freesshsession(&skunk->session);
+
+    free(skunk);
+} // freeconnection
+
+void channel_launch(connection plug, channel_initializer initializer)
+{
+    pthread_create(&plug->listener, &pthread_attributes,
+                    initializer, (void *)plug);
+} // channel_launch
+
+void* localworker_initializer(void *voidplug)
+{
+    connection plug = (connection) voidplug; // so compiler knows type
+    workermain(plug);
+    return NULL;
+} // localworker_initializer
+
+void* parent_initializer(void *voidplug)
+{
+    connection plug = (connection) voidplug; // so compiler knows type
+    // we use three threads (this + 2 others) to handle the three I/O streams
+    plug->tokid = stdout; // "kid" is the remote thing -- here it's the parent
+    plug->fromkid = stdin; // and stream_shipper will read from stdin, etc.
+    pthread_create(&plug->stream_shipper, pthread_attr_default,
+                    &stream_shipping, (void *)plug);
+    stream_receiving(plug); // never returns
+    return NULL; // keep compiler happy
+} // parent_initializer
+
+void* recruiter_initializer(void *argument)
+{
+    reqruitermain(); // never returns
+    return NULL;
+} // recruiter_initializer
+
+void* headquarters_initializer(void *argument)
+{
+    hqmain(); // never returns
+    return NULL;
+} // headquarters_initializer
+
+void *cmd_initializer(void *argument)
+{
+    cmd_thread_start_function(); // returns when user exits,
+                                 // set by main.c to user choice
+                                 // (e.g. TUImain or climain)
+    cleanexit(0); // kill all other threads and really exit
+    return NULL;
+} // cmd_initializer
+
 connection connection_list = NULL;
 
-void channel_launch(connection* store_plug_here, char* deviceid, int plugnumber)
-// plugnumber is 0 if called to start parent
-// deviceid is NULL if called by routermain's initialization of plugs
-// and non-NULL if called by a worker trying to reach another device
+connection findconnectionbyplugnumber(int32 plugnumber)
 {
-    // channel_launch is called either by the router thread at the beginning
-    // of routermain (setting up the fundamental plugs, providing plugnumber),
-    // or later by workermain (setting up a plug to a remote device, providing
-    // deviceid).  So there is no thread conflict.
+    connection plug;
+
+    pthread_mutex_lock(&connections_mutex);
+    for (plug = connection_list; plug != NULL; plug = plug->next)
+        if (plug->plugnumber == plugnumber)
+            break;
+    pthread_mutex_unlock(&connections_mutex);
+    return plug;
+} // findconnectionbyplugnumber
+
+// adds a connection to connection_lists. Waits until routermain stops being busy
+// and then blocks access to the list it until the new connection is added
+void add_connection(connection *store_plug_here, int32 plugnumber)
+{
     connection plug = new_connection();
 
-    if (store_plug_here != NULL) { // if caller wants the plug, we give it to them
-        *store_plug_here = plug;
-    }
+    plug->listener = NULL;
+    plug->stream_shipper = NULL;
+    plug->stream_receiver = NULL;
+    plug->stderr_forwarder = NULL;
+    plug->tokid = NULL;
+    plug->fromkid = NULL;
+    plug->errfromkid = NULL;
+    plug->unprocessed_message = NULL;
+    plug->disconnecting = 0;
+    plug->session.uname = NULL;
+    plug->session.mname = NULL;
+    plug->session.path = NULL;
 
     if (plugnumber) { // normal case (any plug but the parent plug)
         plug->thisway = singletonintlist(plugnumber);
-        // look to see if we are the plug for a device
-        if (deviceid != NULL) {
-            device* m;
-            for (m = devicelist; m != NULL; m = m->next) {
-                if (!strcmp(m->deviceid, deviceid)) {
-                    plug->target_device = m; // recover device from address
-                    m->reachplan.routeraddr = plugnumber; // might already be that
-                    // it only isn't if we are on a different device from algo
-                    break;
-                }
-            }
-            if (m == NULL) {
-                printerr("Error: Didn't find machine (id = \"%s\")\n", deviceid);
-                free(plug);
-                return;
-            }
-        }
+        plug->plugnumber = plugnumber;
         // add to front of list
+        pthread_mutex_lock(&connections_mutex);
         plug->next = connection_list;
         connection_list = plug;
+        pthread_mutex_unlock(&connections_mutex);
     } else {
         // it is parent (compiler might mis-optimize parent_plug)
         plug->thisway = emptyintlist(); // parent doesn't list destinations
+        plug->plugnumber = 0;
         // add parent to end of list (it will always stay at end)
+        pthread_mutex_lock(&connections_mutex);
         connection* final = &connection_list;
         while ((*final) != NULL)
             final = &((*final)->next);
         plug->next = NULL;
         *final = plug;
+        pthread_mutex_unlock(&connections_mutex);
     }
+    if (store_plug_here)
+        *store_plug_here = plug;
+} // add_connection
 
-    pthread_create(&plug->listener, pthread_attr_default,
-                    &thread_main, (void *)plug);
-} // channel_launch
 
-void routermain(int master, int plug_id)
-// master:  0 => slave mode, 1 => master mode, 2 => batch mode, 3 => wait mode
+// removes a connection from connection_lists. Waits until routermain tops being busy
+// and blocks accces to the list until the given connection was removed
+connection remove_connection(int32 plugnumber)
+{
+    connection plug;
+    connection previous = NULL;
+
+    pthread_mutex_lock(&connections_mutex);
+
+    plug = connection_list;
+    while (plug != NULL) {
+        if (plug->plugnumber == plugnumber)
+            break;
+        previous = plug;
+        plug = plug->next;
+    }
+    if (!plug) {
+        printerr("Error: Post office got connection remove request with unused "
+                 "plug number [%d]", plugnumber);
+
+        pthread_mutex_unlock(&connections_mutex);
+        return NULL;
+    }
+    if (!previous)
+        connection_list = plug->next;
+    else
+        previous->next = plug->next;
+
+    pthread_mutex_unlock(&connections_mutex);
+
+    return plug;
+} // remove_connection
+
+void routermain(int32 master, int32 plug_id, char *plug_address)
+// master:  0 => slave mode, 1 => master mode
 // plug_id:  only used for slave mode
+// plug_address: only used for slave mode
 {
     // stdin/stdout are used by (master ? TUI : parent)
+
     intlist cream = emptyintlist(); // cream is (almost) always empty!
 
-    readspecsfile("config/specs"); // even slaves need the list of devices
+    readspecsfile(specs_file_path); // even slaves need the list of devices
+
+    pthread_attr_init(&pthread_attributes);
+    pthread_attr_setdetachstate(&pthread_attributes, PTHREAD_CREATE_DETACHED);
 
     // set up the basic set of channels
     if (master) {
-        channel_launch(&hq_plug, NULL, hq_int);
-        channel_launch(&cmd_plug, NULL, cmd_int);
-        channel_launch(&worker_plug, NULL, topworker_int);
+        add_connection(&hq_plug, hq_int);
+        add_connection(&cmd_plug, cmd_int);
+        add_connection(&recruiter_plug, recruiter_int);
+
+        channel_launch(hq_plug, &headquarters_initializer);
+        channel_launch(cmd_plug, &cmd_initializer);
+        channel_launch(recruiter_plug, &recruiter_initializer);
     } else {
-        channel_launch(&parent_plug, NULL, 0); // "NULL, 0" == "parent"
-        channel_launch(&worker_plug, NULL, plug_id);
+        slavemode = 1;
+        connection slaveworkerplug;
+        add_connection(&parent_plug, 0);
+        add_connection(&slaveworkerplug, plug_id);
+
+        slaveworkerplug->address = plug_address;
+
+        channel_launch(parent_plug, &parent_initializer );
+        channel_launch(slaveworkerplug, &localworker_initializer);
     }
 
     // now start routing
@@ -940,6 +1270,8 @@ void routermain(int master, int plug_id)
         int found_message_waiting = 0;
         connection source_plug, dest_plug;
         message head, msg;
+
+        pthread_mutex_lock(&connections_mutex);
         for (source_plug = connection_list; source_plug != NULL;
                                             source_plug = source_plug->next) {
             // see if any messages are ready (process just one from each queue)
@@ -953,10 +1285,10 @@ void routermain(int master, int plug_id)
                     int i;
                     printerr("Message going from %d (%s) to",
                                     msg->source,
-                                    msg->source == hq_int ? "HQ" :
-                                    msg->source == cmd_int ? "CMD" :
-                                    msg->source == topworker_int ? "topworker" :
-                                    "remote worker");
+                                    msg->source == hq_int ? "Headquarters" :
+                                    msg->source == cmd_int ? "Command" :
+                                    msg->source == recruiter_int ? "Recruiter" :
+                                    "Worker");
                     for (i = 0; i < msg->destinations->count; i++) {
                         printerr("%s %d",
                                         i ? "," : "",
@@ -964,18 +1296,16 @@ void routermain(int master, int plug_id)
                     }
                     if (msg->destinations->count == 1)
                         printerr(" (%s)",
-                            msg->destinations->values[0] == hq_int ? "HQ" :
-                            msg->destinations->values[0] == cmd_int ? "CMD" :
-                            msg->destinations->values[0] == topworker_int ?
-                                "topworker" : "remote worker");
+                            msg->destinations->values[0] == hq_int ? "Headquarters" :
+                            msg->destinations->values[0] == cmd_int ? "Command" :
+                            msg->destinations->values[0] == recruiter_int ? "Recruiter" :
+                                                            "Worker");
                     printerr(".\n");
                     printerr("(type = %lld (%s), contents = \"%s\")\n",
                                     msg->type, msgtypelist[msg->type],
                                     msg->len > 100 ? "long message" : msg->data);
-                    if (!master)
-                        printerr("source_plug = %p (parent = %p, worker = %p)\n",
-                                (void*)source_plug, (void*)parent_plug, (void*)worker_plug);
                 }
+
                 // spy on message: if workerisup then add to thisway
                 if (msg->type == msgtype_workerisup) {
                     // if we are final hopping point or worker device,
@@ -983,9 +1313,11 @@ void routermain(int master, int plug_id)
                     if (! intlistcontains(source_plug->thisway, msg->source))
                         addtointlist(source_plug->thisway, msg->source);
                 }
+
                 // msg is what we want to route -- look for destinations
                 for (dest_plug = connection_list; dest_plug != NULL;
                                                   dest_plug = dest_plug->next) {
+
                     // parent at end of loop if we have one (in slave mode)
                     if (dest_plug == parent_plug) {
                         intlist temp = cream; // move all remaining dests to cream
@@ -996,7 +1328,8 @@ void routermain(int master, int plug_id)
                                         dest_plug->thisway, cream);
                     }
                     // right now, cream might not be empty -- we'll fix this soon
-                    if (cream->count != 0) {
+                    if (cream->count != 0 && dest_plug->disconnecting != 1) {
+
                         // should be sent to this plug
                         message newmsg;
                         newmsg = (message) malloc(sizeof(struct message_struct));
@@ -1014,13 +1347,21 @@ void routermain(int master, int plug_id)
                             memcpy(newmsg->data, msg->data, newmsg->len + 1);
                         }
                         newmsg->nextisready = 0;
+                        newmsg->next = NULL;
                         dest_plug->messages_tokid_tail->next = newmsg;
                         dest_plug->messages_tokid_tail->nextisready = 1;
                         dest_plug->messages_tokid_tail = newmsg;
+
+                        // the exit message is the last message to be delivered
+                        // to a plug
+                        if (msg->type == msgtype_exit) {
+                            dest_plug->disconnecting = 1;
+                        }
                     }
                 }
                 if (msg->destinations->count != 0) { // undeliverable addresses
-                    // this should never happen
+                    // this should only happen when a message has been sent to a
+                    // disconnecting device
                     int i;
                     printerr("Error! Message from %d couldn't find",
                                     msg->source);
@@ -1036,8 +1377,10 @@ void routermain(int master, int plug_id)
                 }
             }
         }
+        pthread_mutex_unlock(&connections_mutex);
+
         if (! found_message_waiting) { // nothing to do
-            usleep(1000);
+            usleep(pollingrate);
         }
     }
 } // routermain

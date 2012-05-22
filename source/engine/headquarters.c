@@ -1,7 +1,7 @@
 #include "definitions.h"
 
 virtualnode virtualroot; // has no siblings and no name
-                            // only to be used by the hq thread
+                         // only to be used by the HQ thread
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -22,7 +22,7 @@ virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir stri
     char *pos;
     if (dir[0] != '/') // in general true only for "" (otherwise dir was bad)
         return root;
-    pos = rindex(dir, '/');
+    pos = strrchr(dir, '/');
     *pos = 0; // truncate string
     parent = conjuredirectory(root, dir);
     *pos = '/';
@@ -278,109 +278,42 @@ void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node)
     bytestreaminsert(b, node->name, strlen(node->name));
 } // getvirtualnodepath
 
-void setstatus(int32 who, status_t newstatus)
+void setstatus(device **target, status_t newstatus)
 {
-    device* mach;
+    device *d = *target;
     status_t oldstatus;
     char buf[90];
 
-    // find device for "who"
-    for (mach = devicelist; mach != NULL; mach = mach->next) {
-        if (mach->reachplan.routeraddr == who)
-            break;
-    }
-    if (mach == NULL) {
-        printerr("Error: Machine %d not in machine list.\n", who);
-        return;
-    }
     // set the new status
-    oldstatus = mach->status;
-    mach->status = newstatus;
+    oldstatus = d->status;
+    d->status = newstatus;
     // take any status-change-based actions
     switch (newstatus) {
         case status_inactive:
-                sendmessage(hq_plug, cmd_int, msgtype_disconnect,
-                            mach->deviceid);
+                sendmessage(hq_plug, cmd_int, msgtype_disconnected, d->deviceid);
             break;
         case status_reaching:
             break;
         case status_connected:
-                snprintf(buf, 90, "%s", mach->deviceid); // unnecessary to use buf
+                snprintf(buf, 90, "%s", d->deviceid); // unnecessary to use buf
                 sendmessage(hq_plug, cmd_int, msgtype_connected, buf);
             break;
     }
-    printerr("Changed status of %d (%s) from %d (%s) to %d (%s).\n",
-                who, mach->nickname,
+    printerr("Changed status of %s from %d (%s) to %d (%s).\n",
+                d->nickname,
                 oldstatus, statusword[oldstatus],
                 newstatus, statusword[newstatus]);
 } // setstatus
 
-static int NextFreeAddress = firstfree_int;
-
-void algo_reachfor(char* deviceid, char* reachfrom_deviceid) // RFID can be NULL
+void hq_reachfor(device *d)
 {
-    device* target_m = NULL;
-    device* m;
-    int reachfrom_addr = -1;
-    char buf[90];
-
-    for (m = devicelist; m != NULL; m = m->next) {
-        if (!strcmp(m->deviceid, deviceid))
-            target_m = m;
-        if (reachfrom_deviceid
-            && !strcmp(m->deviceid, reachfrom_deviceid)) {
-            if (m->status == status_connected) {
-                reachfrom_addr = m->reachplan.routeraddr;
-            } else {
-                printerr("Error: Hop-from machine (id \"%s\") not connected.\n",
-                        reachfrom_deviceid);
-                return;
-            }
-        }
-    }
-    if (target_m == NULL) { // can this happen?
-        printerr("Error: Target machine id \"%s\" not found.\n", deviceid);
+    if (!d->reachplan.whichtouse) {
+        printerr("Error: \"which to use\" address not set on device! %s", d->deviceid);
         return;
     }
-    if (reachfrom_addr == -1) {
-        if (reachfrom_deviceid == NULL) { // didn't find it cause we didn't look
-            reachfrom_addr = topworker_int;
-        } else {
-            printerr("Error: Hop-from machine id \"%s\" not found.\n",
-                    reachfrom_deviceid);
-            return;
-        }
-    }
-
-    // start a remote mcsync for this device
-    target_m->reachplan.routeraddr = NextFreeAddress; // awaiting status_connected
-    setstatus(NextFreeAddress, status_reaching);
-    snprintf(buf, 90, "%s%c%d", deviceid, 0, NextFreeAddress);
-    sendmessage2(hq_plug, reachfrom_addr, msgtype_newplugplease, buf);
-    // Notice we don't send the device target_m!
-    // It will be recovered from the deviceid by topworker in channel_launch.
-    // This lets us use a worker besides topworker (multi-hop case), because
-    // the deviceid for a device is the same everywhere.
-    NextFreeAddress++;
-} // algo_reachfor
-
-int waitmode = 0; // changed to 1 on startup if "-wait" flag is provided
-
-void algo_init(void) // called as soon as local worker is ready to do work
-{
-    if (waitmode)
-        return;
-    // here we do whatever the configuration file tells us to do on startup
-
-} // algo_init
-
-void algo_scan(void)
-{
-
-    // Input: Virtual file path
-    // Result: Messages to corresponding workers determined by graft analysis.
-
-} // algo_scan
+    sendrecruitcommand(hq_plug, d->reachplan.routeraddr, d->reachplan.whichtouse);
+    setstatus(&d, status_reaching);
+} // hq_reachfor
 
 virtualnode *findnode(virtualnode *root, char *path) // threads '/' as delimiter,
 // e.g. "home/tmp" is equal to "[/]*home[/]+tmp[/]*)" use "validfullpath" for validation.
@@ -447,34 +380,239 @@ int validfullpath(char *path) // returns 1 if path is a valid full virtual path
     return 1;
 } // validfullpath
 
-void sendvirtualnodelisting(char* path, int destination) // sends back all children of node at path
+void hq_scan(char *scanrootpath)
+{
+    graft *g;
+    char *scanpathcharacter, *graftpathcharacter;
+
+    if (!validfullpath(scanrootpath)) {
+        printerr("Error: Headquarters got invalid scan root path: %s\n", scanrootpath);
+        return;
+    }
+
+    for (g = graftlist; g != NULL; g = g->next) {
+        if (!(g->host->status == status_connected))
+            continue;
+
+        // if the requested path to scan and the virtualpath of the graft
+        // are the same for the length of the virtual path of the graft,
+        // we need to include said graft.
+
+        // Consider the scan request for "/Home/test" and a graft with virtual
+        // path "/Home". The first 5 charachters are the same and because this
+        // is the length of the virtual path of the graft, it means the requested
+        // scan path is a child of the graft virtual root.
+        scanpathcharacter = scanrootpath;
+        graftpathcharacter = g->virtualpath;
+
+        while (*graftpathcharacter && *graftpathcharacter == *scanpathcharacter) {
+            graftpathcharacter++;
+            scanpathcharacter++;
+        }
+
+        if (*graftpathcharacter == '\0') { // we reached the end of the graft virtual path
+            char *physicalpath = strdupcat(g->hostpath, scanpathcharacter, NULL);
+
+            // get rid of the virtual graft path in the prunes list..
+            stringlist *graftprunes, *deviceprunes, *tmp;
+            int32 virtualpathlen = strlen(g->virtualpath);
+
+            deviceprunes = tmp = NULL;
+            graftprunes = g->prunepoints;
+            while (graftprunes != NULL) {
+                tmp = deviceprunes;
+                deviceprunes = (stringlist*) malloc(sizeof(struct stringlist_struct));
+                deviceprunes->next = tmp;
+                if (! strncmp(g->virtualpath, graftprunes->string, virtualpathlen))
+                    deviceprunes->string = strdupcat(g->hostpath, graftprunes->string + virtualpathlen, NULL);
+                else
+                    deviceprunes->string = strdup(graftprunes->string);
+                graftprunes = graftprunes->next;
+            }
+
+            // send scan command to workers using only host paths
+            sendscancommand(hq_plug, g->host->reachplan.routeraddr, physicalpath, deviceprunes);
+            freestringlist(deviceprunes);
+            free(physicalpath);
+        }
+    }
+
+} // hq_scan
+
+void sendvirtualnodelisting(char* path) // sends back all children of node at path
 {
     virtualnode *dir;
 
     if (!validfullpath(path)) {
-        printerr("Error: HQ got invalid path: %s\n", path);
+        printerr("Error: Headquarters got invalid path to list: %s\n", path);
         return;
     }
 
     dir = findnode(&virtualroot, path);
 
-    if (dir->filetype > 1) {
-        printerr("Error: HQ got ls for node which is not a directory: %s\n", path);
+    if (!dir) {
+        printerr("Error: Headquarters could not find node with path: %s\n", path);
         return;
     }
 
-    if (dir)
-        sendvirtualdir(hq_plug, cmd_int, path, dir);
-    else
-        printerr("Error: HQ could not find node with path: %s\n", path);
+    if (dir->filetype > 1) {
+        printerr("Error: Headquarters got list request for node which is not a directory: %s\n", path);
+        return;
+    }
+
+    sendvirtualdir(hq_plug, cmd_int, path, dir);
 } // sendvirtualnodelisting
 
-void algomain(void)
+char *getdevicefolderpathonhq(char *deviceid) // allocates string, free when done
+{ // creates device folder if is does not exist, returns the device folder path
+  // can't be used from workers, because they might be local and not representing
+  // the device hq is running on (they parse their address to find their correct path)
+    char *devicefolderpath = strdupcat(".", device_folders_path, "/", deviceid, NULL);
+    (void)mkdir(devicefolderpath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    return devicefolderpath;
+} // getdevicefolderpathonhq
+
+void transferfile(connection plug, char *localpath, char *remotepath, int32 direction)
+{ // direction: 0 -> download (remote to local), 1 -> upload (local to remote)
+    char *source, *destination, buf[512];
+
+    source = (direction == 0) ? remotepath : localpath;
+    destination = (direction == 0) ? localpath : remotepath;
+
+    if (plug->session.path == NULL) { // a local connection, no ssh session
+        sprintf(buf, "/bin/cp %s %s 2> /dev/null", source, destination);
+    } else {
+        remotepath = strdupcat(plug->session.uname, "@", plug->session.mname, ":", remotepath, NULL);
+        sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath %s' %s %s 2>/dev/null",
+                plug->session.path,
+                source,
+                destination);
+        free(remotepath);
+    }
+    system(buf);
+} // transferfile
+
+device* addunknowndevice(char *deviceid, char *address, int32 routeraddr)
+{
+    device **d;
+    int i = 0;
+    for (d = &devicelist; *d != NULL; d = &((*d)->next))
+        i++;
+    *d = (device*) malloc(sizeof(device));
+    (*d)->next = NULL;
+    (*d)->nickname = strdup("Unknown Device");
+    (*d)->deviceid = strdup(deviceid);
+    (*d)->status = status_connected;
+    (*d)->linked = 1;
+    (*d)->reachplan.ipaddrs = (stringlist*) malloc(sizeof(stringlist));
+    (*d)->reachplan.ipaddrs->next = NULL;
+    (*d)->reachplan.ipaddrs->string = strdup(address);
+    (*d)->reachplan.routeraddr = routeraddr;
+    return *d;
+} // addunknowndevice
+
+device* getdevicebyid(char *deviceid) {
+    device *d;
+
+    for (d = devicelist; d != NULL; d = d->next)
+        if (!strcmp(d->deviceid, deviceid))
+            break;
+    return d;
+} // getdevice
+
+device* getdevicebyplugnum(int32 plugnumber) {
+    device *d;
+
+    for (d = devicelist; d != NULL; d = d->next)
+        if (d->reachplan.routeraddr == plugnumber)
+            break;
+    return d;
+} // getdevice
+
+void identifydevice(char *localid, char *remoteid)
+{
+
+    device *targetdevice;
+    device *reacheddevice; // those two may refer to the same device
+
+    targetdevice = getdevicebyid(localid);
+    reacheddevice = getdevicebyid(remoteid);
+
+    if (!targetdevice) { // we should always be able to find it, because it was
+                         // used to connect to reached device
+        printerr("Error: Can't find device with id [%s]\n", localid);
+        return;
+    }
+
+    if (reacheddevice != NULL && reacheddevice->linked) {
+        // we reached some known device ...
+        if (reacheddevice->status == status_connected) {
+            // ... which is already connected
+            printerr("Error: Device with id [%s] was connected to twice!\n", remoteid);
+            // connected through another device?
+            if (targetdevice != reacheddevice) {
+                sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease,
+                               targetdevice->reachplan.routeraddr);
+                setstatus(&targetdevice, status_reaching);
+            } // else here would mean we reached a connected device using the same device.
+              // this should have been caught by headquarters or command. we can't do
+              // anything about it here, because it means that the old plug was already
+              // memory leaked during the connection set up
+        } else {
+            // ... which we will set to be connected now -> transfer the plug if needed
+            if (targetdevice != reacheddevice) {
+                printerr("Warning: Transferring plug from [%s] to [%s]\n", localid, remoteid);
+                reacheddevice->reachplan.routeraddr = targetdevice->reachplan.routeraddr;
+                targetdevice->reachplan.routeraddr = -1;
+                setstatus(&targetdevice, status_inactive);
+            }
+            setstatus(&reacheddevice, status_connected);
+        }
+    } else {
+        // we reached unknown device -> add it and set its status to connected
+        if (targetdevice->linked) {
+            reacheddevice = addunknowndevice(remoteid, targetdevice->reachplan.whichtouse,
+                                                       targetdevice->reachplan.routeraddr);
+            // leave it up to the user if he/she wants to save the unknown device to specs
+            targetdevice->reachplan.routeraddr = -1;
+            setstatus(&targetdevice, status_inactive);
+            setstatus(&reacheddevice, status_connected);
+
+        } else {
+            // we had a temporary, unverified id -> believe workers id and quickly add to specs!
+            if (strcmp(localid, remoteid) != 0) {
+                free(targetdevice->deviceid);
+                targetdevice->deviceid = strdup(remoteid);
+            }
+            targetdevice->linked = 1;
+            if (specstatevalid())
+                writespecsfile(specs_file_path);
+            setstatus(&targetdevice, status_connected);
+        }
+    }
+} // identifydevice
+
+fileinfo *loadremoteimage(connection plug, char *localpath, char *remotepath)
+{
+    fileinfo *result;
+    scan_progress progress;
+
+    transferfile(plug, localpath, remotepath, transfer_type_download);
+    // read transferred file into memory
+    progress = (scan_progress) malloc(sizeof(struct scan_progress_struct));
+    resetscanprogress(&progress);
+    progress->updateinterval = 1000; // report on every 1000 processed files
+    result = readimage(localpath, progress);
+    free(progress);
+    return result;
+} // loadremoteimage
+
+void hqmain(void)
 {
     int32 msg_src;
     int64 msg_type;
     char* msg_data;
-    device* m;
+    device* d;
 
     virtualtreeinit();
 
@@ -485,73 +623,160 @@ void algomain(void)
         // we got a message
         switch (msg_type) {
             case msgtype_info:
-                    printerr("algo got info message: \"%s\" from %d\n",
+                    printerr("Headquarters got info message: \"%s\" from %d\n",
                                     msg_data, msg_src);
                     break;
             case msgtype_workerisup:
-                    // we need to find out (topworker) or verify who we are
-                    sendmessage(hq_plug, msg_src, msgtype_identifydevice, "");
-                    // we won't say we're connected till we know to whom!
+                    if (! (d = getdevicebyplugnum(msg_src))) {
+                        printerr("Error: Received plug number which does not belong "
+                                 "to any device (%d)\n", msg_src);
+                        break;
+                    }
+                    // send a device id suggestion to worker
+                    sendmessage(hq_plug, msg_src, msgtype_identifydevice, d->deviceid);
                     break;
             case msgtype_deviceid:
-                    // need to find the device with the id in msg_data
-                    // (we already know it if we asked for connection,
-                    // but not for top worker -- topworker tells us who we are)
-                    printerr("Heard that plug %d is for device %s.\n",
-                            msg_src, msg_data);
-                    for (m = devicelist; m != NULL; m = m->next) {
-                        if (! strcmp(m->deviceid, msg_data)) {
-                            // m is the device with the deviceid
-                            if (m->reachplan.routeraddr == msg_src) {
-                                // already set to what we would expect
-                            } else {
-                                if (m->reachplan.routeraddr == -1
-                                        && msg_src == topworker_int) {
-                                    // it is from the topworker
-                                    m->reachplan.routeraddr = topworker_int;
-                                } else {
-                                    printerr("Error: Plug confusion!");
-                                    printerr(" (%d reported name \"%s\", already"
-                                            " owned by %d)\n", msg_src, msg_data,
-                                            m->reachplan.routeraddr);
-                                }
-                            }
-                            break;
-                        }
+            {
+                    char *localid = msg_data;
+                    char *remoteid = secondstring(msg_data);
+
+                    printerr("Heard that device we call [%s] it calls itself [%s]\n",
+                             localid, remoteid);
+
+                    identifydevice(localid, remoteid);
+                    break;
+            }
+            case msgtype_connectdevice: // msg_data is device id
+                   if (! (d = getdevicebyid(msg_data))) {
+                        printerr("Error: Received unknown device id [%s]\n", msg_data);
+                        break;
                     }
-                    if (m == NULL) {
-                        printerr("Error: Reported device id not known: %s\n",
-                                    msg_data);
+                    if (d->status == status_connected) {
+                        printerr("Error: Got connect request for already connected "
+                                 "device [%s]\n", msg_data);
+                        break;
                     }
-                    setstatus(msg_src, status_connected);
-                    if (msg_src == topworker_int)
-                        algo_init();
+                    if (d->reachplan.routeraddr == -1) {
+                        sendmessage(hq_plug, recruiter_int, msgtype_newplugplease, msg_data); // as reference for us
+                        break;
+                    }
+                    hq_reachfor(d);
                     break;
-            case msgtype_newplugplease1:
-                    algo_reachfor(msg_data, NULL); // msg_data is m->deviceid
+            case msgtype_disconnectdevice: // msg_data is device id
+                if (! (d = getdevicebyid(msg_data))) {
+                     printerr("Error: Received unknown device id [%s]\n", msg_data);
+                     break;
+                 }
+
+                if (d->status != status_connected) {
+                    printerr("Error: Got connect request for already connected "
+                             "device [%s]\n", msg_data);
                     break;
-            case msgtype_newplugplease2:
-                    // msg_data is destid, sourceid
-                    algo_reachfor(msg_data, secondstring(msg_data));
+                }
+
+                sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease,
+                                                        d->reachplan.routeraddr);
+
+                setstatus(&d, status_reaching);
+                break;
+            case msgtype_newplugplease: // answer from recruit to our newplugplease message,
+            {
+                char *deviceid; // we sent the device id as our reference to recruiter
+                int32 plugnumber;
+                receivenewplugresponse(msg_data, &deviceid, &plugnumber);
+                if (! (d = getdevicebyid(deviceid))) {
+                    printerr("Error: Received unknown device id [%s]\n", msg_data);
+                    free(deviceid);
                     break;
-            case msgtype_disconnect:
-                    setstatus(atoi(msg_data), status_inactive);
+                }
+                free(deviceid);
+                d->reachplan.routeraddr = plugnumber;
+                hq_reachfor(d);
+                break;
+            }
+            case msgtype_removeplugplease: // answer from recruiter to our removeplugplease message,
+                                           // msgdata is plugnumber of the removed device
+            {
+                int32 plugnumber;
+                receiveplugnumber(msg_data, &plugnumber);
+
+                if (! (d = getdevicebyplugnum(plugnumber))) {
+                    printerr("Error: Received plug number which does not belong "
+                             "to any device (%d)\n", plugnumber);
                     break;
+                }
+                d->reachplan.routeraddr = -1;
+                setstatus(&d, status_inactive);
+                break;
+            }
+            case msgtype_failedrecruit: // possible answer to our recruitworker message sent to the recruiter
+                                        // if the recruit was successful, we will hear form worker directly (workerisup message)
+            {                           // msg_data is plugnumber
+                    int32 plugnumber;
+                    receiveplugnumber(msg_data, &plugnumber);
+
+                    if (! (d = getdevicebyplugnum(plugnumber))) {
+                        printerr("Error: Received plug number which does not belong "
+                                 "to any device (%d)\n", plugnumber);
+                        break;
+                    }
+                    sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease, plugnumber);
+                    d->reachplan.routeraddr = -1;
+                    setstatus(&d, status_inactive); // msg_data is deviceid
+                    break;
+            }
             case msgtype_listvirtualdir:
-                    sendvirtualnodelisting(msg_data, msg_src);
+                    // msg_data is the virtual path of the virtual directory to list
+                    sendvirtualnodelisting(msg_data);
                     break;
-            case msgtype_scan:
-                    // TODO: Handle scan request from CMD
-                    algo_scan();
+            case msgtype_scanvirtualdir:
+                    // msg_data is the virtual path of the node to scan
+                    hq_scan(msg_data);
+                    break;
+            case msgtype_scandone: // msg_data is the path of the remote scan file
+            {
+              char *localdevicefolderpath, *localscanpath, *localhistorypath;
+              char *remotehistorypath, *remotescanpath;
+              fileinfo *scan, *history;
+
+              connection plug = findconnectionbyplugnumber(msg_src);
+
+              if (! (d = getdevicebyplugnum(msg_src))) {
+                  printerr("Error: Received plug number which does not belong "
+                           "to any device (%d)\n", msg_src);
+                  break;
+              }
+
+              receivescandonemessage(msg_data, &remotescanpath, &remotehistorypath);
+
+              localdevicefolderpath = getdevicefolderpathonhq(d->deviceid);
+              localscanpath = strdupcat(localdevicefolderpath, strrchr(remotescanpath, '/'), NULL);
+              localhistorypath = strdupcat(localdevicefolderpath, "/", history_file_name, NULL);
+
+              scan = loadremoteimage(plug, localscanpath, remotescanpath);
+              history = loadremoteimage(plug, localhistorypath, remotehistorypath);
+
+              // identify(&virtualroot, history);
+              // identify(&virtualroot, scan);
+
+              free(localdevicefolderpath);
+              free(localscanpath);
+              free(localhistorypath);
+
+              break;
+            }
+            case msgtype_exit:
+                    cleanexit(__LINE__);
                     break;
             default:
-                    printerr("algo got unexpected message"
+                    printerr("Headquarters got unexpected message"
                                     " of type %lld from %d: \"%s\"\n",
                                     msg_type, msg_src, msg_data);
         } // switch on message type
+
         free(msg_data);
     } // loop on messages
-} // algomain
+} // hqmain
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of algo main ////////////////////////////////////

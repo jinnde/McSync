@@ -45,17 +45,45 @@ typedef unsigned int uint32;
 typedef long long int int64;
 typedef unsigned long long int uint64;
 
-#define programversionnumber    ((int32) 1)
-#define logfileversionnumber    ((int32) 1)
-#define specsfileversionnumber  ((int32) 1)
-#define magiccookie             ((int32) 1331925123)
+#define programversionnumber ((int32) 1)
+#define logfileversionnumber ((int32) 1)
+#define specsfileversionnumber ((int32) 1)
+#define deviceidfileversionnumber ((int32) 1)
+#define devicetimefileversionnumber ((int32) 1)
+#define magiccookie ((int32) 1331925123)
 // cookie is from letters m=13, c=3, s=19, y=25, n=12, c=3.
 // four bytes are: (high byte first) 79 99 144 131 (-112 -125) (hex: 4f 63 90 83)
 // first four letters of file are OceE (e has a circumflex, E is acute)
 
+#define device_id_file_path "/data/id"
+#define device_time_file_path "/data/time"
+#define device_folders_path "/data"
+// ^ these are partial paths which will be completed by the worker using its address,
+// because they should always be relative to the device. Be aware that McSync expects
+// all directories to exists and will not try to create them for you.
+
+// the following relate to files stored in the device folder
+#define scan_files_prefix "scan"
+// ^ naming of the scan files, the scan number will be appended
+#define history_file_name "history"
+// ^ the history file is stored in the device folder
+
+#define specs_file_path "./config/specs"
+
+#define device_id_size 16
+
 // limit depth and file name length in virtual tree
 #define virtual_path_depth_max 1024
 #define virtual_file_name_max 256
+
+#define pollingrate 10000
+// ^  micro seconds the agents sleep between checking for new messages
+
+#define transfer_type_download 0
+#define transfer_type_upload 1
+
+pthread_attr_t pthread_attributes;
+// ^ used to initialize the agent threads (including forwarder, shipper, receiver)
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of data types /////////////////////////////////
@@ -74,6 +102,32 @@ typedef struct stringlist_struct {
     struct stringlist_struct *next;
     char *string;
 } stringlist;
+
+typedef struct bytestream_struct {
+    char *data;       // not necessarily usable as regular string! (allowed to contain '\0')
+    char *head;       // the current writing position
+    uint32 len;       // bytes written into stream
+    uint32 streamlen; // total allocated memory of bytestream
+}* bytestream;
+
+typedef struct queuenode_struct {
+    struct queuenode_struct *next;
+    struct queuenode_struct *prev;
+    void *data;
+}* queuenode;
+
+typedef struct queue_struct {
+    queuenode head;
+    queuenode tail;
+    uint32 size;
+}* queue;
+
+typedef struct hashtable_struct {
+    struct fileinfo_struct **table;
+    int32 size;
+    int32 mask;
+    int32 entries;
+}* hashtable;
 
 // mcsync's notion of an aspect's "history" is captured in the history struct
 
@@ -141,7 +195,6 @@ typedef struct devicelocater_struct { // all you need for locating the device
     // before we're connected, we need the net address and file system address
     stringlist *ipaddrs;    // ways to reach that device
     char *whichtouse;       // which of the ipaddrs is the one
-    char *mcsyncdir;        // obsolete
     // after we're connected, we need the router address
     int routeraddr;     // the current plug identifier for message routing (or -1)
 } devicelocater;
@@ -150,6 +203,8 @@ typedef struct device_struct { // all you need to know about an arbitrary device
     struct device_struct *next;
     char *nickname;     // a user-friendly name
     char *deviceid;     // a long random unique id string, never changes on device
+    int32 linked;       // boolean, whether this device had sucessfully agreed
+                        // upon an id with a local or remote worker.
     status_t status;    // whether it is currently connected, what it's doing
     stringlist *networks;       // networks this device can usefully reach
     char *preferred_hq;         // if started on this device, use this hq (if set)
@@ -220,8 +275,8 @@ typedef struct virtualnode_struct {
 
 // messages are sent between agents -- every agent has a postal address (an integer)
 // there are 4 types of agents
-// 1. tui = CMD = 2
-// 2. algo = HQ = 1
+// 1. tui = command = CMD = 2
+// 2. headquarters = HQ = 1
 // 3. worker = WKR = 3
 // 4. parent = 0
 // at a given post office, there is a connection_list of plugs, each listing the agents
@@ -237,49 +292,104 @@ typedef struct message_struct { // threads communicate by sending these
     struct message_struct *next;
 } *message;
 
+typedef struct ssh_session_struct {
+    char *uname;        // the user name
+    char *mname;        // the machine name
+    char *path;         // where the session is stored on disk (using SSH -M -S)
+} ssh_session;
+
 typedef struct connection_struct { // all a router needs to provide plug  huh? XXX
-    intlist         thisway; // what sites lie in this direction
+    int32           plugnumber;     // the plugnumber associated with this connection
+    intlist         thisway; // what sites lie in this direction, including itself
     message         messages_tokid_tail, messages_fromkid_head; // for router
     message         messages_tokid_head, messages_fromkid_tail; // for kid r/w:h/t
     pthread_t       listener; // on local connections this also writes the output
-    pthread_t       stdout_packager, stderr_forwarder;  // for remote & parent
+    pthread_t       stream_shipper, stream_receiver, stderr_forwarder;  // for remote & parent
     FILE            *tokid, *fromkid, *errfromkid;      // for remote & parent
+    ssh_session     session; // used for multiplexing the ssh connection
     struct connection_struct *next;
     // from here on down is only used during creation of the connection
-    device*         target_device; // information about remote device
-    pthread_t*      local_thread; // ptr to global thread var, NULL = spawn remote
+    char            *address;       // the address we try to connect to
     int             kidinpipe[2], kidoutpipe[2], kiderrpipe[2]; // filedescriptors
                     // r/w:  write to [WRITE_END=1], read from [READ_END=0]
     int             processpid; // the id of the process we spawn to reach remote
+    // from here on down is used for disconnecting the plug
+    int32           disconnecting; // is set by routermain when it sees an exit
+                                   // message sent to a plug in order to avoid
+                                   // lost messages
+    message         unprocessed_message; // stream_receiving allocates the messages
+                                         // is has not fully received into this to
+                                         // avoid leaking memory on thread exits
+                                         // (only used for remote plugs)
 } *connection; // also known as a plug
 
-extern connection cmd_plug, hq_plug, worker_plug, parent_plug; // for direct access
+extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct access
+
+// the following data types are used in helper functions which allow agents to
+// wait for a message and take actions depending on whether the message was
+// received or not during a time window.
+typedef void (*message_callback_function) (int32 msg_type, int32 msg_src, char* msg_data, int32 success);
+
+typedef struct message_callback_struct {
+    int32 msg_type; // the type of the message we are waiting for
+    int32 msg_src; // its source (plugnumber)
+    int32 timeout; // how long in ms receive waiting time (the time the agent waits for messages)
+                   // should we wait before calling fn with success = 0, data = NULL
+    message_callback_function fn;   // who we should call on receive or timeout
+}* message_callback;
+
+// used to keep track of progress in the recursive diskscan functions
+typedef struct scan_progress_struct {
+    int32 directories;
+    int32 regularfiles;
+    int32 links;
+    int32 other;
+    int32 total; // for easy access
+    int32 updateinterval;
+}* scan_progress;
 
 #define hq_int          1
 #define cmd_int         2
-#define topworker_int   3
+#define recruiter_int   3
 #define firstfree_int   4
 
-void (*cmd_thread_start_function)(); // this is the function called by the cmd thread.
-                                     // depending on user choice this is either TUImain or climain
+#define msgtype_connectdevice       1
+#define msgtype_disconnectdevice    2
+#define msgtype_newplugplease       3
+#define msgtype_removeplugplease    4
+#define msgtype_recruitworker       5
+#define msgtype_failedrecruit       6
+#define msgtype_info                7
+#define msgtype_workerisup          8
+#define msgtype_connected           9
+#define msgtype_disconnected        10
+#define msgtype_identifydevice      11
+#define msgtype_deviceid            12
+#define msgtype_listvirtualdir      13
+#define msgtype_virtualdir          14
+#define msgtype_touch               15
+// ^ mark virtual node as touched (changed) on cmd
+#define msgtype_scanvirtualdir      16
+// ^ the message contains a virtual path (usually a request from cmd to hq)
+#define msgtype_scan                17
+// ^ the message contains a host path and prune points (usually a request from hq to workers)
+#define msgtype_scandone            18
+#define msgtype_exit                19
+// ^ tells the receiver to stop running
+#define msgtype_goodbye             20
+// ^ is sent back from a worker who has received a msgtype_exit
 
-#define msgtype_newplugplease   1
-#define msgtype_newplugplease1  2
-#define msgtype_newplugplease2  3
-#define msgtype_info            4
-#define msgtype_workerisup      5
-#define msgtype_connected       6
-#define msgtype_disconnect      7
-#define msgtype_identifydevice  8
-#define msgtype_deviceid        9
-#define msgtype_scan            10
-#define msgtype_listvirtualdir  11
-#define msgtype_virtualdir      12
-#define msgtype_touch           13 // mark virtual node as touched (changed) on CMD
-// if you change these, change msgtypelist in communication.c
+// if you change these^, change msgtypelist in communication.c
 
 #define slave_start_string "this is mcsync"
 #define hi_slave_string "you are "
+
+void (*cmd_thread_start_function)(); // this is the function called by the cmd thread.
+                                     // depending on user choice this is currently either TUImain or climain
+
+typedef void* (*channel_initializer) (void* arguments); // is the function provided to channel_launch
+                                                        // which will turn a newly created thread into
+                                                        // the corresponding agent
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of data types ///////////////////////////////////
@@ -287,58 +397,17 @@ void (*cmd_thread_start_function)(); // this is the function called by the cmd t
 
 //////// some utility functions
 
-void ourperror(char* whatdidnotwork); // writes to ourerr, not stderr
-
-void cleanexit(int code); // kills children and exits
-
 char* hostname(void); // caches answer -- do not alter or free!
+char* homedirectory(void); // caches answer -- do not alter or free!
 
-intlist emptyintlist(void);
-void addtointlist(intlist il, listint n); // keeps list sorted, works for multisets
-void removefromintlist(intlist il, listint n);
-
-typedef struct bytestream_struct {
-    char *data;       // not necessarily usable as regular string! (allowed to contain '\0')
-    char *head;       // the current writing position
-    uint32 len;       // bytes written into stream
-    uint32 streamlen; // total allocated memory of bytestream
-}* bytestream;
-
-bytestream initbytestream(uint32 len); // allocates new bytestream, free when done
-void freebytestream(bytestream b);
-void bytestreaminsert(bytestream b, void *data, int32 len);
-void bytestreaminsertchar(bytestream b, char str);
-
-typedef struct queuenode_struct {
-    struct queuenode_struct *next;
-    struct queuenode_struct *prev;
-    void *data;
-} *queuenode;
-
-typedef struct queue_struct {
-    queuenode head;
-    queuenode tail;
-    uint32 size;
-} *queue;
-
-queue initqueue(); // allocates memory, free when done
-void freequeue(queue q); // does not free the data!!
-
-void queueinsertafter(queue q, queuenode qn, void *data);
-void queueinsertbefore(queue q, queuenode qn, void *data);
-void queueinserthead(queue q, void *data);
-void queueinserttail(queue q, void *data);
-void *queueremove(queue q, queuenode qn); // returns pointer to data, because it will not be freed!!
-
-char* strdupcat(char* a, char* b, ...); // allocates new string, last arg must be NULL
-
+char* strdupcat(const char* first, ...); // allocates new string, last arg must be NULL
 char *commanumber(int64 n); // returns human-readable integer in reused buffer
 
-extern int didtick, amticking;
-extern int progress1, progress2, progress3, progress4;
-void startticking(void);
-void stopticking(void);
+// error handling
+void ourperror(char* whatdidnotwork); // writes to ourerr, not stderr
+void cleanexit(int code); // kills children and exits
 
+// file io
 void put32(FILE* output, int32 data);
 void put32safe(FILE* output, int32 data);
 void put64(FILE* output, int64 data);
@@ -347,35 +416,117 @@ int32 get32(FILE* input);
 int32 get32safe(FILE* input);
 int64 get64(FILE* input);
 char* getstring(FILE* input, char delimiter); // returns new string; free when done
+void tohex(unsigned char c, char* a, char* b);
 
+// file locking
+int32 getlockfile(char *path, int32 maxtime);
+int32 releaselockfile(char *path); //returns 1 if sucessful, 0 otherwise
+
+// communication control
+void waitforstring(FILE* input, char* string);
 void waitforsequence(FILE* input, char* sequence, int len, int echo);
 
+// general message system
 void sendmessage(connection plug, int recipient, int type, char* what);
 void sendmessage2(connection plug, int recipient, int type, char* what);
 void nsendmessage(connection plug, int recipient, int type, char* what, int len);
 
-void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
-
-void sendvirtualnoderquest(virtualnode *root, virtualnode *node);
-
 int receivemessage(connection plug, listint* src, int64* type, char** data);
-void receivevirtualdir(char *msg_data, char **path, queue receivednodes);
+char* secondstring(char* string); // read the second string from a sendmessage2 type message (contains two strings)
 
-char* secondstring(char* string);
+// virtual node comnunication between cmd and hq
+void sendvirtualnoderquest(virtualnode *root, virtualnode *node); // sends a list virtual node request, only to be used from cmd
+void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
+void receivevirtualdir(char *source, char **path, queue receivednodes);
 
+// scan communication
+void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node); // to hq
+void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints); // to workers
+void receivescancommand(char *source, char **scanroot, stringlist **prunepoints);
+void sendscandonemessage(connection plug, char *scanfilepath, char *historyfilepath); // to hq
+void receivescandonemessage(char *source, char **scanfilepath, char **historyfilepath);
+
+// recruiter communication
+void sendrecruitcommand(connection plug, int32 plugnumber, char *address); // always sent to recruiter
+void receiverecruitcommand(char *source, int32 *plugnumber, char **address); // used by recruiter
+
+void sendplugnumber(connection plug, int32 recipient, int32 type, int32 plugnumber);
+void receiveplugnumber(char *source, int32 *plugnumber);
+
+void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnumber); // used by recruiter
+void receivenewplugresponse(char *source, char **reference, int32 *plugnumber);
+
+////////  general purpose data structures
+
+// intlist
+intlist emptyintlist(void);
+void freeintlist(intlist skunk);
+void addtointlist(intlist il, listint n); // keeps list sorted, works for multisets
+void removefromintlist(intlist il, listint n);
+
+// stringlist
+void freestringlist(stringlist *skunk);
+stringlist* stringlistcontains(stringlist *s, char *str);
+
+// bytestream - dynamically re-allocated string (doubling allocated memory when full)
+bytestream initbytestream(uint32 len); // allocates new bytestream, free when done
+void freebytestream(bytestream b);
+void bytestreaminsert(bytestream b, void *data, int32 len);
+void bytestreaminsertchar(bytestream b, char str);
+
+// queue - implemented using a doubly linked list
+queue initqueue(void); // allocates memory, free when done
+void freequeue(queue q); // does not free the data!!
+void queueinsertafter(queue q, queuenode qn, void *data);
+void queueinsertbefore(queue q, queuenode qn, void *data);
+void queueinserthead(queue q, void *data);
+void queueinserttail(queue q, void *data);
+void *queueremove(queue q, queuenode qn); // returns pointer to data, because it will not be freed!!
+
+// hashtable - for fileinfos
+hashtable inithashtable(void);
+void freehashtable(hashtable h);
+
+fileinfo* storehash(hashtable h, fileinfo* file); // returns file with same inode or stores new
 
 //////// actual interaction between program parts
 
+// agent system
 void TUImain(void);
 void climain(void);
-void algomain(void);
-void workermain(void);
-void readspecsfile(char *specsfile); // sets up devicelist and graftlist
+void hqmain(void);
+void workermain(connection workerplug);
+void reqruitermain(void);
 
-void raw_io(void);
+void routermain(int32 master, int32 plug_id, char *plug_address);
 
-void waitforstring(FILE* input, char* string);
+// callback helper functions for agents
+void waitformessage(queue callbackqueue, int32 msg_type, int32 msg_src, int32 timeout, message_callback_function fn);
+void callbacktick(queue callbackqueue, int32 milliseconds);
+int32 messagearrived(queue callbackqueue, int32 msg_type, int32 msg_src, char *msg_data);
 
+// post office (routermain) and recruiter interaction
+void add_connection(connection *storeplughere, int plugnumber);
+connection remove_connection(int32 plugnumber);
+void freeconnection(connection skunk);
+
+connection findconnectionbyplugnumber(int32 plugnumber);
+void channel_launch(connection plug, channel_initializer initializer);
+
+void* localworker_initializer(void *voidplug); // only used by routermain and recruiter
+void* forward_raw_errors(void* voidplug);
+void* stream_receiving(void* voidplug);
+void* stream_shipping(void* voidplug);
+void addabortsignallistener(void);
+
+void freemessage(message skunk);
+
+// specs (configuration) file handling
+int32 readspecsfile(char *specsfile); // sets up devicelist and graftlist
+int32 specstatevalid(void); // returns 1 if there exists a device with a reachplan and a graft;
+int32 writespecsfile(char *specsfile); // writes devicelist and graftlist
+
+// virtual tree
 void initvirtualroot(virtualnode *root); // used by HQ and CMD (e.g. tui.c)
 virtualnode *conjuredirectory(virtualnode* root, char *dir); // chars in dir string must be writable
 virtualnode *findnode(virtualnode *root, char *path); // returns NULL if not found, path must be writable
@@ -386,19 +537,21 @@ void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // 
 void freevirtualnode(virtualnode *node);
 
 
-int reachforremote(connection plug); // try to get mcsync started on remote site
-void channel_launch(connection* store_plug_here, char* deviceid, int plugnumber);
-void routermain(int master, int plug_id);
+// disk scan related
+fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
+                    hashtable h, scan_progress progress); // get inode info for filename (which includes path) and for any subdirectories
+void writeimage(fileinfo* image, char* filename, scan_progress progress);
+fileinfo* readimage(char* filename, scan_progress progress);
+void freefileinfo(fileinfo* skunk);
+void resetscanprogress(scan_progress *progress); //does not alter progress->updateinteval
+
+// tui specific
+void raw_io(void);
 
 extern int doUI; // can be turned off by -batch option
 extern int password_pause; // signals when input should be allowed to go to ssh
 extern int waitmode; // changed to 1 on startup if "-wait" flag is provided
+extern int slavemode; // whether we are in slave mode, thus only a remote worker and a parent
 
 void TUIstart2D(void); // enter 2D mode
 void TUIstop2D(void); // leave 2D mode, go back to scrolling terminal
-
-int specstatevalid(); // returns 1 if there exists a device with a reachplan and a graft;
-void writespecsfile(char *specsfile); // writes devicelist and graftlist
-
-void serializevirtualnode(bytestream b, virtualnode *node); // serializes a virtual node for sending in messages
-

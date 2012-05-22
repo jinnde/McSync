@@ -24,7 +24,7 @@ void clireceivemessage()
     char* msg_data;
 
     while (! receivemessage(cmd_plug, &msg_src, &msg_type, &msg_data)) {
-        usleep(1000);
+        usleep(pollingrate);
     }
 
     switch (msg_type) {

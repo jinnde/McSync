@@ -4,6 +4,38 @@
 virtualnode cmd_virtualroot; // has no siblings and no name
                              // only to be used by the tui thread
 
+char *generatedeviceid() // unique device id generation using /dev/random
+{                        // allocs string, free when done!
+    char randombuf[device_id_size];
+    char *deviceid;
+    FILE *devrandom;
+    int32 idstringsize = device_id_size * 2 + 1;
+    int32 i, j;
+
+    devrandom = fopen("/dev/random", "rb");
+    if (!devrandom) {
+        printerr("Error: Can't open /dev/random for unique device id creation (%s)\n",
+                 strerror(errno));
+        return NULL;
+    }
+
+    if (fread(randombuf, 1, device_id_size, devrandom) != device_id_size) {
+        printerr("Error: Can't read from /dev/random for unique device id creation (%s)\n",
+                 strerror(errno));
+        fclose(devrandom);
+        return NULL;
+    }
+    fclose(devrandom);
+
+    // store the device id in hex for human readability
+    deviceid = (char*) malloc(idstringsize);
+    for (i = 0, j = 0; i < device_id_size; i++, j = i * 2) {
+        tohex(randombuf[i], &deviceid[j], &deviceid[j + 1]);
+    }
+    *(deviceid + idstringsize) = '\0';
+    return deviceid;
+} // generatedeviceid
+
 char buffer[90], *bufpos; // use is private to next two functions, 90 digit max...
 
 void commanumberrec(int64 n, int dig) // helper func for commanumber
@@ -29,46 +61,6 @@ char *commanumber(int64 n) // returns human-readable integer in reused buffer
     else
         return buffer + 1;
 } // commanumber
-
-
-// to show progress on a task, do:
-// startticking();
-// loop(... if (didtick) {didtick = 0; show progress;} ...);
-// stopticking();
-
-int didtick = 0;
-int amticking = 0;
-int progress1, progress2, progress3, progress4;
-
-void sigalarmhandler(int x)
-{
-    signal(SIGALRM, &sigalarmhandler);
-    didtick = 1;
-} // sigalarmhandler
-
-struct itimerval timerparameters;
-
-void startticking(void)
-{
-    signal(SIGALRM, &sigalarmhandler);
-    timerparameters.it_interval.tv_sec = timerparameters.it_value.tv_sec = 0;
-    timerparameters.it_interval.tv_usec =
-        timerparameters.it_value.tv_usec = 200000; // optimal for human viewers
-    setitimer(ITIMER_REAL, & timerparameters, NULL);
-    didtick = 0;
-    amticking = 1;
-} // startticking
-
-void stopticking(void)
-{
-    signal(SIGALRM, SIG_DFL); // stop listening to sig_alarm
-    timerparameters.it_interval.tv_sec = timerparameters.it_value.tv_sec = 0;
-    timerparameters.it_interval.tv_usec = timerparameters.it_value.tv_usec = 0;
-    setitimer(ITIMER_REAL, &timerparameters, NULL); // interval timer off
-    didtick = 0;
-    amticking = 0;
-} // stopticking
-
 
 int SelectedMachineColor[3];
 int UnselectedMachineColor[3];
@@ -255,9 +247,6 @@ void refreshdevices(void)
         starteditableitems(); // 2nd arg is type: 1=nn, ud, ipa, gp, vgp, pp=6
         printw("\n\n> name: ");
         editableitem(&(selm->nickname), 1);
-
-        printw("\n> mcsync's directory: ");
-        editableitem(&(selm->reachplan.mcsyncdir), 2);
 
         for (st = selm->reachplan.ipaddrs; st != NULL; st = st->next) {
             printw("\n> address: ");
@@ -459,6 +448,8 @@ struct keycommand_struct keycommand_array[] = {
 char *devicehelparray[][2] = {
     {"Ret", "Edit Entry"},
     {"C", "Connect"},
+    {"X", "Disconnect"},
+    {"U", "Unlink"},
     {"M", "Add Machine"},
     {"DM", "Delete Machine"},
     {"A", "Add Address"},
@@ -482,7 +473,7 @@ char *browserhelparray[][2] = {
     {"+", "More Columns"},
     {"-", "Fewer Columns"},
     {"Space", "Toggle Detail View"},
-    {"V", "View Machines"},
+    {"V", "View Devices"},
     {"S", "Start Scans"},
     {"VQ", "Quit"},
     {NULL, NULL}};
@@ -561,7 +552,12 @@ void refreshhelp(void)
             // if evaluates to true, don't print help command
                (!strcmp((*arr)[i][0], "Ret") && type <= 0)
             || (!strcmp((*arr)[i][0], "C") && (type == -1
-                                        || gi_device->status != status_inactive))
+                                        || gi_device->status != status_inactive
+                                        || !specstatevalid()))
+            || (!strcmp((*arr)[i][0], "X") && (type == -1
+                                        || gi_device->status != status_connected))
+            || (!strcmp((*arr)[i][0], "U") && (type == -1
+                                        || !gi_device->linked))
             || (!strcmp((*arr)[i][0], "DM") && type == -1)
             || (!strcmp((*arr)[i][0], "A") && type == -1)
             || (!strcmp((*arr)[i][0], "DA") && type != 3)
@@ -780,8 +776,35 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             case 'c': // connect
                     if (gi_device != NULL
                                 && gi_device->status == status_inactive) {
-                        sendmessage(cmd_plug, hq_int, msgtype_newplugplease1,
+                        // TODO: Allow the user to specify which address he/she
+                        // would like to use
+                        if (!specstatevalid())
+                            break;
+
+                        if (gi_device->reachplan.ipaddrs)
+                            gi_device->reachplan.whichtouse = gi_device->reachplan.ipaddrs->string;
+                        sendmessage(cmd_plug, hq_int, msgtype_connectdevice,
                                     gi_device->deviceid);
+                    } else {
+                        beep();
+                    }
+                    break;
+            case 'x': // disconnect
+                    if (gi_device != NULL
+                                && gi_device->status == status_connected) {
+                        sendmessage(cmd_plug, hq_int, msgtype_disconnectdevice,
+                                    gi_device->deviceid);
+                    } else {
+                        beep();
+                    }
+            break;
+            case 'u': // unlink a device
+                    if (gi_device != NULL && gi_device->linked) {
+                        gi_device->linked = 0;
+                        free(gi_device->deviceid);
+                        gi_device->deviceid = generatedeviceid();
+                        gi_dirtyspecs = 1;
+                        refreshscreen();
                     } else {
                         beep();
                     }
@@ -794,10 +817,12 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                             i++;
                         *m = (device*) malloc(sizeof(device));
                         (*m)->next = NULL;
-                        (*m)->nickname = strdup("newmachine");
+                        (*m)->nickname = strdup("newdevice");
+                        (*m)->deviceid = generatedeviceid();
+                        (*m)->linked = 0;
                         (*m)->status = status_inactive;
-                        (*m)->reachplan.mcsyncdir = strdup("~/.mcsync");
                         (*m)->reachplan.ipaddrs = NULL;
+                        (*m)->reachplan.routeraddr = -1;
                         gi_selecteddevice = i + 1;
                         gi_editselection = 1;
                         refreshscreen(); // just to set gi_editobject, etc.
@@ -809,7 +834,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             case 'a': // add address
                     if (gi_device != NULL) {
                         stringlist **st;
-                        int i = 3;
+                        int i = 2;
                         st = &(gi_device->reachplan.ipaddrs);
                         while (*st != NULL) {
                             st = &((*st)->next);
@@ -817,7 +842,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         }
                         *st = (stringlist*) malloc(sizeof(stringlist));
                         (*st)->next = NULL;
-                        (*st)->string = strdup("abc.com");
+                        (*st)->string = strdup("local:~/.mcsync");
                         gi_editselection = i;
                         refreshscreen(); // just to set gi_editobject, etc.
                         startediting();
@@ -870,13 +895,17 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     refreshscreen(); // get the deleting help on the screen
                     gi_mode = 1; // 1 means mousing devices
                     loop:
+                        timeout(1000000);
                         ch = getch();
                         if (ch == KEY_MOUSE || ch == KEY_RESIZE) {
                             handlemouseevents(ch);
                             goto loop;
                         }
+                        timeout(-1);
                     switch (ch) {
                         case 'm': // delete device
+                            if (gi_device->status != status_inactive)
+                                break;
                             if (gi_selecteddevice != 0) {
                                 graft **g;
                                 device **m;
@@ -917,13 +946,16 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                             free(skunk);
                                         }
                                         free(sk->nickname);
-                                        free(sk->reachplan.mcsyncdir);
+                                        free(sk->deviceid);
                                         *m = sk->next;
                                         free(sk);
                                     } else {
                                         m = &((*m)->next);
                                     }
                                 }
+                                if (gi_selecteddevice > 0)
+                                    gi_selecteddevice--;
+
                                 gi_dirtyspecs = 1;
                             } else {
                                 beep();
@@ -1022,7 +1054,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     break;
             case 's': // save specs file
                     if(specstatevalid()) {
-                        writespecsfile("config/specs");
+                        writespecsfile(specs_file_path);
                         gi_dirtyspecs = 0;
                     }
                     refreshscreen();
@@ -1032,7 +1064,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     gi_mode = 2; // 2 means mousing files
                     refreshscreen();
                     break;
-            case 'q':
+            case 'q': // TODO: Disconnect all devices...
                     return 1;
             case ' ':
             case '\t':
@@ -1142,6 +1174,9 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     }
                     break;
             case 's': // start scans
+                    if (browsingdirectory->selection != NULL) {
+                        sendscanvirtualdirrequest(&cmd_virtualroot, browsingdirectory->selection);
+                    }
                     break;
             case 'v': // switch to mousing devices
                     // we leave the selection untouched while in other mode
@@ -1265,7 +1300,7 @@ void TUIstop2D(void)
     // <enter> reset <enter> to get back to the normal scrolling terminal mode
 } // TUIshutdown
 
-int doUI = 1; // can be turned off by -batch option
+int doUI = 1; // TODO: Can we remove this?
 int password_pause = 0; // signals when input should be allowed to go to ssh
 
 void TUImain(void)
@@ -1301,14 +1336,31 @@ void TUImain(void)
         if (got_msg) {
             switch (msg_type) {
                 case msgtype_connected:
-                        // device name's color will change with new status
-                        printerr("TUI heard that \"%s\" is connected.\n",
-                                        msg_data);
-                        free(msg_data);
-                        if (doUI)
-                            refreshscreen();
-                    break;
-                case msgtype_disconnect:
+                {
+                    device *d;
+                    int devicenum = 1;
+
+                    // device name's color will change with new status
+                    printerr("TUI heard that \"%s\" is connected.\n",
+                              msg_data);
+
+                    for (d = devicelist; d != NULL; d = d->next) {
+                        if (!strcmp(d->deviceid, msg_data)) {
+                            break;
+                        }
+                        devicenum++;
+                    }
+
+                    if (d != NULL)
+                        gi_selecteddevice = devicenum;
+
+                    free(msg_data);
+
+                    if (doUI)
+                        refreshscreen();
+                }
+                break;
+                case msgtype_disconnected:
                         // device name's color will change with new status
                         printerr("TUI heard that \"%s\" is disconnected.\n",
                                         msg_data);
@@ -1377,7 +1429,7 @@ void TUImain(void)
                     free_and_return:
                         free(path);
                         free(msg_data);
-                        // freequeue does not free data, make sure we do not leak it if we jumped here because of a problem
+                        // freequeue does not free the payload data, make sure we do not leak it if we jumped here because of a problem
                         while(receivedlist->size > 0) {
                             receivedchild = (virtualnode*) queueremove(receivedlist, receivedlist->head);
                             freevirtualnode(receivedchild);
@@ -1406,7 +1458,7 @@ void TUImain(void)
         }
 
         if (!got_char && !got_msg)
-            usleep(1000);
+            usleep(pollingrate);
     }
 
     if (doUI)

@@ -6,8 +6,12 @@
 # It builds McSync and then copies its complete root folder to a sibling
 # folder, which than has a "2" added to its name.
 
-# We need the most recent build
-./compile
+# Build McSync, abort if not successful
+./compile -b development -s
+
+if [ $? -ne 0 ]; then
+    exit 1
+fi
 
 # Find the McSync directory and make sure to follow symbolic links
 MC_SYNC_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -15,12 +19,19 @@ MC_SYNC_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $MC_SYNC_DIR
 cd ..
 
+MC_SYNC_CLONE="${MC_SYNC_DIR}2"
+
 # Look for the clone McSync, create or clean it
-if [ ! -d "${MC_SYNC_DIR}2" ]; then
-    mkdir "${MC_SYNC_DIR}2"
+if [ ! -d $MC_SYNC_CLONE ]; then
+    mkdir $MC_SYNC_CLONE
 else
-    rm -r "${MC_SYNC_DIR}2"/*
+    rm -r $MC_SYNC_CLONE/*
 fi
 
 # Copy all the contents
-cp -r $MC_SYNC_DIR/* "${MC_SYNC_DIR}2"
+cp -r $MC_SYNC_DIR/* $MC_SYNC_CLONE
+
+echo "Cloned McSync into ${MC_SYNC_CLONE}"
+
+# Make it easier to call clone.sh from other scripts
+cd $MC_SYNC_DIR
