@@ -420,7 +420,7 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     connection plug = remove_connection(plugnumber);
 
     if (!success)
-        printerr("Warning: Disconnecting unresponsive device on plug %d", plugnumber);
+        printerr("Warning: Disconnecting unresponsive device on plug %d\n", plugnumber);
 
     // it it nearly impossible to make threads involved with blocking I/O exit in some sane
     // way. We use a signal that will make them exit on the spot with no way for

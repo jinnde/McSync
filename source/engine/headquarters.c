@@ -607,6 +607,85 @@ fileinfo *loadremoteimage(connection plug, char *localpath, char *remotepath)
     return result;
 } // loadremoteimage
 
+int32 fileinfoequal(fileinfo *A, fileinfo *B)
+{ // returns 1 if A and B describe states of the same file and 0 otherwise
+    int32 result;
+
+    result = (strcmp(strrchr(A->filename, '/'), strrchr(B->filename, '/')));
+    if (!result)
+        return 1;
+    // not the same name -> may be the same inode?
+    return (A->inode == B->inode);
+} // iscontinuation
+
+void foldscan(fileinfo *history, fileinfo *scan)
+{
+    // fileinfo *h, *s, *t;
+
+    // hashset historyindex, scanindex;
+
+    // for (h = history; h != NULL; h = h->next) {
+    //     hashsetinsert(historyindex, h, &fileinfoequal);
+    // }
+
+    // for (s = scan; s != NULL; s = s->next) {
+    //     if (t = hashsetcontains(historyindex, s, &fileinfoequal))
+    //         // we have a continuation candidate
+    //     else
+    //         // we have a new file
+    //     hashsetinsert(scanindex, s, &fileinfoequal);
+    // }
+
+    // for (h = history; h != NULL; h = h->next) {
+    //     if (!hashsetcontains(scanindex, h, &fileinfoequal)) {
+    //         // we have a deleted file
+    //     }
+    // }
+
+
+    // // the lists are sorted, yay, so we can work quickly
+    // // first look for files in history that aren't in scan
+    // for (h = history, s = scan; h != NULL; h = h->next) {
+    //     int32 q = 0;
+    //     while (s != NULL && !(q = fileinfoequal(h, s)))
+    //         s = s->next;
+    //     if (s != NULL && q == 1) // we found a match
+    //         continue;
+    //     // this file got deleted
+    // }
+    // // now look for new files, which are in scan and not in history
+    // for (s = scan, h = history; s != NULL; s = s->next) {
+    //     int32 q = 0;
+    //     while (h != NULL && !(q = fileinfoequal(h, s)))
+    //         h = h->next;
+    //     if (h != NULL && q == 1)
+    //         continue;
+    //     // this file was added
+    // }
+    // // now compare the common files
+    // for (h = history, s = scan; h != NULL && s != NULL; ) {
+    //     int32 q = strcmp(rindex(h->filename, '/'), rindex(s->filename, '/'));
+    //     if (q < 0)
+    //         h = h->next;
+    //     else if (q > 0)
+    //         s = s->next;
+    //     else {
+    //         // hey, they match!
+    //         contrastfiles(h, s);
+    //         if (h->down != NULL || s->down != NULL) {
+    //             foldscan(h->down, s->down);
+    //         }
+    //         h = h->next;
+    //         s = s->next;
+    //     }
+    // }
+} // foldscan
+
+void foldhistory(virtualnode *root, fileinfo *history)
+{
+
+} // foldhistory
+
 void hqmain(void)
 {
     int32 msg_src;
@@ -756,8 +835,8 @@ void hqmain(void)
               scan = loadremoteimage(plug, localscanpath, remotescanpath);
               history = loadremoteimage(plug, localhistorypath, remotehistorypath);
 
-              // identify(&virtualroot, history);
-              // identify(&virtualroot, scan);
+              foldscan(history, scan);
+              foldhistory(&virtualroot, history);
 
               free(localdevicefolderpath);
               free(localscanpath);

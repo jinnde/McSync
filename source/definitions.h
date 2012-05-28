@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -122,12 +123,21 @@ typedef struct queue_struct {
     uint32 size;
 }* queue;
 
+typedef struct entry_struct {
+    void *k, *v;
+    uint32 h;
+    struct entry_struct *next;
+} entry;
+
 typedef struct hashtable_struct {
-    struct fileinfo_struct **table;
-    int32 size;
-    int32 mask;
-    int32 entries;
-}* hashtable;
+    uint32 tablelength;
+    struct entry_struct **table;
+    uint32 entrycount;
+    uint32 loadlimit;
+    uint32 primeindex;
+    uint32 (*hashfn) (void *k);
+    int32 (*eqfn) (void *k1, void *k2);
+} hashtable;
 
 // mcsync's notion of an aspect's "history" is captured in the history struct
 
@@ -483,11 +493,17 @@ void queueinserthead(queue q, void *data);
 void queueinserttail(queue q, void *data);
 void *queueremove(queue q, queuenode qn); // returns pointer to data, because it will not be freed!!
 
-// hashtable - for fileinfos
-hashtable inithashtable(void);
-void freehashtable(hashtable h);
+// hashtable - due to Christopher Clark, 2002
+hashtable *inithashtable(uint32 minsize, uint32 (*hashfunction) (void*),
+                         int32 (*key_eq_fn) (void*, void*));
+void freehashtable(hashtable *h, int32 free_values, int32 free_keys);
 
-fileinfo* storehash(hashtable h, fileinfo* file); // returns file with same inode or stores new
+int32 hashtableinsert(hashtable *h, void *k, void *v); // non-zero on success
+void *hashtablesearch(hashtable *h, void *k);
+void *hashtableremove(hashtable *h, void *k);
+uint32 hashtablecount(hashtable *h);
+uint32 hash_int32(void *k);
+int32 int32_equals(void *key1, void *key2);
 
 //////// actual interaction between program parts
 
@@ -536,14 +552,13 @@ void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode); // free
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // writes the path of node into b
 void freevirtualnode(virtualnode *node);
 
-
 // disk scan related
 fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
-                    hashtable h, scan_progress progress); // get inode info for filename (which includes path) and for any subdirectories
+                    hashtable *h, scan_progress progress); // get inode info for filename (which includes path) and for any subdirectories
 void writeimage(fileinfo* image, char* filename, scan_progress progress);
 fileinfo* readimage(char* filename, scan_progress progress);
 void freefileinfo(fileinfo* skunk);
-void resetscanprogress(scan_progress *progress); //does not alter progress->updateinteval
+void resetscanprogress(scan_progress *progress); // does not alter progress->updateinteval
 
 // tui specific
 void raw_io(void);
