@@ -618,67 +618,39 @@ int32 fileinfoequal(fileinfo *A, fileinfo *B)
     return (A->inode == B->inode);
 } // iscontinuation
 
-void foldscan(fileinfo *history, fileinfo *scan)
+void foldscan(fileinfo *history, fileinfo *scan, hashtable *historyindex, hashtable *scanindex)
 {
-    // fileinfo *h, *s, *t;
+    fileinfo *h, *s, *t;
 
-    // hashset historyindex, scanindex;
+    if (scan == NULL && history == NULL)
+        return;
 
-    // for (h = history; h != NULL; h = h->next) {
-    //     hashsetinsert(historyindex, h, &fileinfoequal);
-    // }
+    if (historyindex == NULL || scanindex == NULL) {
+        printerr("Error: No valid hashtable given to foldscan to be used as index\n");
+        return;
+    }
 
-    // for (s = scan; s != NULL; s = s->next) {
-    //     if (t = hashsetcontains(historyindex, s, &fileinfoequal))
-    //         // we have a continuation candidate
-    //     else
-    //         // we have a new file
-    //     hashsetinsert(scanindex, s, &fileinfoequal);
-    // }
+    for (h = history; h != NULL; h = h->next) {
+        hashtableinsert(historyindex, h, h);
+    }
 
-    // for (h = history; h != NULL; h = h->next) {
-    //     if (!hashsetcontains(scanindex, h, &fileinfoequal)) {
-    //         // we have a deleted file
-    //     }
-    // }
+    for (s = scan; s != NULL; s = s->next) {
+        t = hashtablesearch(historyindex, s);
+        if (t != NULL) {// we have a continuation candidate
+            printerr("Found continuation candidate: %s\n", s->filename);
+         } else // we have a new file
+            printerr("Found new File: %s\n", s->filename);
+            // we need to add it to the history tree at the correct position....
+        hashtableinsert(scanindex, s, s);
+    }
 
+    for (h = history; h != NULL; h = h->next) {
+        if (!hashtablesearch(scanindex, h)) { // we have a deleted file
+            printerr("Found deleted file: %s\n", h->filename);
+            // we can set h to delted here
+        }
+    }
 
-    // // the lists are sorted, yay, so we can work quickly
-    // // first look for files in history that aren't in scan
-    // for (h = history, s = scan; h != NULL; h = h->next) {
-    //     int32 q = 0;
-    //     while (s != NULL && !(q = fileinfoequal(h, s)))
-    //         s = s->next;
-    //     if (s != NULL && q == 1) // we found a match
-    //         continue;
-    //     // this file got deleted
-    // }
-    // // now look for new files, which are in scan and not in history
-    // for (s = scan, h = history; s != NULL; s = s->next) {
-    //     int32 q = 0;
-    //     while (h != NULL && !(q = fileinfoequal(h, s)))
-    //         h = h->next;
-    //     if (h != NULL && q == 1)
-    //         continue;
-    //     // this file was added
-    // }
-    // // now compare the common files
-    // for (h = history, s = scan; h != NULL && s != NULL; ) {
-    //     int32 q = strcmp(rindex(h->filename, '/'), rindex(s->filename, '/'));
-    //     if (q < 0)
-    //         h = h->next;
-    //     else if (q > 0)
-    //         s = s->next;
-    //     else {
-    //         // hey, they match!
-    //         contrastfiles(h, s);
-    //         if (h->down != NULL || s->down != NULL) {
-    //             foldscan(h->down, s->down);
-    //         }
-    //         h = h->next;
-    //         s = s->next;
-    //     }
-    // }
 } // foldscan
 
 void foldhistory(virtualnode *root, fileinfo *history)
@@ -817,6 +789,7 @@ void hqmain(void)
               char *localdevicefolderpath, *localscanpath, *localhistorypath;
               char *remotehistorypath, *remotescanpath;
               fileinfo *scan, *history;
+              hashtable *scanindex, *historyindex;
 
               connection plug = findconnectionbyplugnumber(msg_src);
 
@@ -835,7 +808,10 @@ void hqmain(void)
               scan = loadremoteimage(plug, localscanpath, remotescanpath);
               history = loadremoteimage(plug, localhistorypath, remotehistorypath);
 
-              foldscan(history, scan);
+              historyindex = inithashtable(1024, &hash_fileinfo, &fileinfo_equals);
+              scanindex = inithashtable(1024, &hash_fileinfo, &fileinfo_equals);
+
+              foldscan(history, scan, historyindex, scanindex);
               foldhistory(&virtualroot, history);
 
               free(localdevicefolderpath);

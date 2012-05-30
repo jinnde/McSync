@@ -148,6 +148,10 @@ typedef struct history_struct { // for every tracked file aspect, latest source
 } *history;
 
 // the fileinfo struct is our platform independent representation of a unix file
+typedef struct continuation_struct {
+    struct continuation_struct *next;
+    struct fileinfo *candidate;
+} *continuation;
 
 typedef struct extendedattributes_struct { // a helper struct for fileinfo
     struct  extendedattributes_struct *next; // we keep them sorted by name
@@ -191,6 +195,8 @@ typedef struct fileinfo_struct { // everything to know about a file on disk
     history hist_loc; // parent directory
     int64   trackingnumber; // together with devicetime,
     int32   devicetime; // this allows all the aspect histories to skip this entry
+    // the following is used for matching of scans an histories
+    continuation continuation_candidates;
 } fileinfo;
 
 // devices
@@ -239,6 +245,7 @@ typedef struct graftee_struct { // describes any real file that maps onto the tr
     struct graftee_struct *next;
     graft *source;
     fileinfo *realfile;
+
 } *graftee;
 
 typedef struct virtualnode_struct {
@@ -504,7 +511,8 @@ void *hashtableremove(hashtable *h, void *k);
 uint32 hashtablecount(hashtable *h);
 uint32 hash_int32(void *k);
 int32 int32_equals(void *key1, void *key2);
-
+uint32 hash_fileinfo(void *k);
+int32 fileinfo_equals(void *key1, void *key2);
 //////// actual interaction between program parts
 
 // agent system

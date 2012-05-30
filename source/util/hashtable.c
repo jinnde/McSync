@@ -45,6 +45,35 @@ int32 int32_equals(void *key1, void *key2)
     return *a == *b;
 } // int_equals
 
+uint32 hash_string(void *k) // source: http://www.cse.yorku.ca/~oz/hash.html
+{
+    uint64 hash = 5381;
+    char c;
+    char *str = (char*)k;
+
+    while((c = *str++) != '\0')
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    return hash;
+} // hash_string
+
+uint32 hash_fileinfo(void *k)
+{
+    uint32 hash = 1;
+    fileinfo *fi = (fileinfo*)k;
+
+    hash = hash * 17 + hash_string(fi->filename);
+    hash = hash * 31 + hash_int32(&fi->inode);
+    return hash;
+} // hash_fileinfo
+
+int32 fileinfo_equals(void *key1, void *key2)
+{
+    fileinfo *a = (fileinfo*) key1;
+    fileinfo *b = (fileinfo*) key2;
+
+    return (a->inode == b->inode) && (strcmp(a->filename, b->filename) == 0);
+} // fileinfo_equals
+
 hashtable *inithashtable(uint32 minsize, uint32 (*hashf) (void*),
                  int32 (*eqf) (void*, void*))
 {

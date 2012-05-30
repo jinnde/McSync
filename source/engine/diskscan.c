@@ -251,6 +251,8 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
     image->hist_perms = NULL;
     image->hist_loc = NULL;
 
+    image->continuation_candidates = NULL;
+
     // if it is a directory, dig out the filenames and recurse
     if (image->filetype == 1) {
         DIR* thisdir;
