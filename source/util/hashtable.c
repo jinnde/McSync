@@ -26,6 +26,25 @@ static inline uint32 indexfor(unsigned int tablelength, unsigned int hashvalue) 
     return (hashvalue % tablelength);
 }
 
+uint32 hash_int64(void *k) // Function due to Thomas Wang, 2007
+{
+    uint64 key = *((uint64*) k);
+    key = (~key) + (key << 18); // key = (key << 18) - key - 1;
+    key = key ^ (key >> 31);
+    key = key * 21; // key = (key + (key << 2)) + (key << 4);
+    key = key ^ (key >> 11);
+    key = key + (key << 6);
+    key = key ^ (key >> 22);
+    return (uint32) key;
+} // hash_int64
+
+int32 int64_equals(void *key1, void *key2)
+{
+   int64 *a = (int64*) key1;
+   int64 *b = (int64*) key2;
+   return *a == *b;
+} // int64_equals
+
 uint32 hash_int32(void *k) // Function due to Thomas Wang, 2007
 {
     uint32 key = *((uint32*) k);
@@ -56,23 +75,50 @@ uint32 hash_string(void *k) // source: http://www.cse.yorku.ca/~oz/hash.html
     return hash;
 } // hash_string
 
-uint32 hash_fileinfo(void *k)
+int32 string_equals(void *key1, void *key2)
+{
+    char *a = (char*) key1;
+    char *b = (char*) key2;
+
+    return (strcmp(a, b) == 0);
+} // string_equals
+
+uint32 hash_virtualfilekey(void *k)
 {
     uint32 hash = 1;
-    fileinfo *fi = (fileinfo*)k;
+    virtualfilekey *key = (virtualfilekey*)k;
 
-    hash = hash * 17 + hash_string(fi->filename);
-    hash = hash * 31 + hash_int32(&fi->inode);
+    hash = hash * 17 + hash_int64(&key->parent);
+    hash = hash * 31 + hash_string(key->name);
     return hash;
-} // hash_fileinfo
+} // hash_virtualfilekey
 
-int32 fileinfo_equals(void *key1, void *key2)
+int32 virtualfilekey_equals(void *key1, void *key2)
 {
-    fileinfo *a = (fileinfo*) key1;
-    fileinfo *b = (fileinfo*) key2;
+    virtualfilekey *a = (virtualfilekey*) key1;
+    virtualfilekey *b = (virtualfilekey*) key2;
 
-    return (a->inode == b->inode) && (strcmp(a->filename, b->filename) == 0);
-} // fileinfo_equals
+    return ((a->parent == b->parent) && (strcmp(a->name, b->name) == 0));
+
+} // virtualfilekey_equals
+
+uint32 hash_fileinfokey(void *k)
+{
+    uint32 hash = 1;
+    fileinfokey *key = (fileinfokey*)k;
+
+    hash = hash * 17 + hash_int32(&key->inode);
+    hash = hash * 31 + hash_string(key->deviceid);
+    return hash;
+} // hash_fileinfokey
+
+int32 fileinfokey_equals(void *key1, void *key2)
+{
+    fileinfokey *a = (fileinfokey*) key1;
+    fileinfokey *b = (fileinfokey*) key1;
+
+    return ((a->inode == b->inode) && (strcmp(a->deviceid, b->deviceid) == 0));
+} // fileinfokey_equals
 
 hashtable *inithashtable(uint32 minsize, uint32 (*hashf) (void*),
                  int32 (*eqf) (void*, void*))

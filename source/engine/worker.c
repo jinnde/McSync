@@ -241,7 +241,8 @@ int32 incrementdevicetime(char *path) // returns -1 on error
 } // incrementdevicetime
 
 void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
-                stringlist *prunepoints, connection worker_plug)
+                char *deviceid, stringlist *prunepoints, char *virtualroot,
+                connection worker_plug)
 {
     fileinfo *scan;
     int32 devicetime;
@@ -263,13 +264,14 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
     resetscanprogress(&progress);
     progress->updateinterval = 1000; // report on every 1000 processed files
     // recursively scan scanroot
-    scan = formimage(scanroot, prunepoints, worker_plug, NULL, progress);
+    scan = formimage(scanroot, prunepoints, worker_plug, NULL,
+                     progress, devicetime, deviceid);
     // write fresh scans to disk
     resetscanprogress(&progress);
     writeimage(scan, scanfilepath, progress);
     // tell hq we're done and send location of the new scan file and history file
     historyfilepath = strdupcat(devicefolder, "/", history_file_name, NULL);
-    sendscandonemessage(worker_plug, scanfilepath, historyfilepath);
+    sendscandonemessage(worker_plug, virtualroot, scanfilepath, historyfilepath);
     freefileinfo(scan);
     free(scanfilepath);
     free(historyfilepath);
@@ -500,7 +502,7 @@ void workermain(connection worker_plug)
             break;
             case msgtype_scan: // msg_data is a scan root dir and prune points
                     {
-                        char *scanroot, *currentid;
+                        char *scanroot, *virtualroot, *currentid;
                         stringlist *prunepoints;
 
                         // make sure the device has not changed
@@ -518,14 +520,15 @@ void workermain(connection worker_plug)
                             dowork = 0;
                             break;
                         }
-                        receivescancommand(msg_data, &scanroot, &prunepoints);
+                        receivescancommand(msg_data, &scanroot, &virtualroot, &prunepoints);
 
                         if (devicefolder == NULL)
                             devicefolder = strdupcat(deviceroot, device_folders_path, "/", deviceid, NULL);
 
-                        workerscan(scanroot, devicetimefilepath, devicefolder, prunepoints, worker_plug);
+                        workerscan(scanroot, devicetimefilepath, devicefolder, deviceid, prunepoints, virtualroot, worker_plug);
                         free(scanroot);
                         free(currentid);
+                        free(virtualroot);
                         freestringlist(prunepoints);
                     }
             break;

@@ -3,6 +3,8 @@
 virtualnode virtualroot; // has no siblings and no name
                          // only to be used by the HQ thread
 
+hashtable *virtualtreeindex;
+hashtable *fileinfoindex;
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of algo main //////////////////////////////////
@@ -14,11 +16,37 @@ char* statusword[] = {
     "connected",
 };
 
+void initvirtualfile(virtualnode *vnode)
+{
+    vnode->next = NULL;
+    vnode->up = NULL;
+    vnode->prev = NULL;
+    vnode->down = NULL;
+    vnode->grafteelist = NULL;
+    vnode->bootedlist = NULL;
+    vnode->graftroots = NULL;
+    vnode->graftends = NULL;
+    vnode->name = "";
+    vnode->filetype = 0; // 0=stub
+    // that was the structural stuff, now some adorning interface info
+    vnode->redyellow = 0;
+    vnode->redgreen = 0;
+    vnode->numchildren = 0;
+    vnode->subtreesize = 1;
+    vnode->subtreebytes = 0;
+    vnode->cols = 6;
+    vnode->firstvisiblenum = -1; // -1 mevnode needs recompute
+    vnode->firstvisible = NULL;
+    vnode->selectionnum = -1; // -1 mevnode needs recompute
+    vnode->selection = NULL;
+} // initvirtualfile
+
 virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir string must be writable
 // dir must not end with / or contain //
 // this routine creates all virtual files except for the root (in initvirtualroot)
 {
     virtualnode *parent, *ans;
+    virtualfilekey *key;
     char *pos;
     if (dir[0] != '/') // in general true only for "" (otherwise dir was bad)
         return root;
@@ -31,30 +59,13 @@ virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir stri
             return ans;
     // it doesn't exist
     ans = (virtualnode*) malloc(sizeof(virtualnode));
+    initvirtualfile(ans);
     ans->next = parent->down;
+    ans->up = parent;
     parent->down = ans;
     if (ans->next != NULL)
         ans->next->prev = ans;
-    ans->prev = NULL;
-    ans->down = NULL;
-    ans->up = parent;
-    ans->grafteelist = NULL;
-    ans->bootedlist = NULL;
-    ans->graftroots = NULL;
-    ans->graftends = NULL;
     ans->name = strdup(pos + 1);
-    ans->filetype = 0; // 0=stub
-    // that was the structural stuff, now some adorning interface info
-    ans->redyellow = 0;
-    ans->redgreen = 0;
-    ans->numchildren = 0;
-    ans->subtreesize = 1;
-    ans->subtreebytes = 0;
-    ans->cols = 6;
-    ans->firstvisiblenum = -1; // -1 means needs recompute
-    ans->firstvisible = NULL;
-    ans->selectionnum = -1; // -1 means needs recompute
-    ans->selection = NULL;
     parent->numchildren++;
     parent->firstvisiblenum = -1;
     parent->selectionnum = -1;
@@ -62,12 +73,19 @@ virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir stri
         parent->subtreesize++;
         parent = parent->up;
     }
+    // add the virtual file to the index
+    key = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
+    key->parent = ans;
+    key->name = ans->name;
+    (void)hashtableinsert(virtualtreeindex, key, ans);
     return ans;
 } // conjuredirectory
 
 void removedirectory(virtualnode *skunk) // skunk should be empty
 {
     virtualnode *parent = skunk->up;
+    virtualfilekey *key;
+
     if (skunk->prev != NULL)
         skunk->prev->next = skunk->next;
     else
@@ -83,6 +101,12 @@ void removedirectory(virtualnode *skunk) // skunk should be empty
         parent->subtreesize--;
         parent = parent->up;
     }
+    // remove virtual file from index
+    key = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
+    key->parent = skunk;
+    key->name = skunk->name;
+    (void)hashtableremove(virtualtreeindex, key);
+    free(key);
 } // removedirectory
 
 void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
@@ -152,27 +176,8 @@ void conjuregraftpoints(void) // make graft roots and prune points exist in v. d
 void initvirtualroot(virtualnode *root)
 {
     // set up root directory
-    root->next = NULL;
-    root->prev = NULL;
-    root->up = NULL;
-    root->down = NULL; // will change when children are added
-    root->grafteelist = NULL;
-    root->bootedlist = NULL;
-    root->graftroots = NULL;
-    root->graftends = NULL;
-    root->name = "";
+    initvirtualfile(root);
     root->filetype = 1; // 1 = directory
-    // now for the interface stuff
-    root->redyellow = 0;
-    root->redgreen = 0;
-    root->numchildren = 0;
-    root->subtreesize = 1;
-    root->subtreebytes = 0;
-    root->cols = 6;
-    root->firstvisiblenum = -1;
-    root->firstvisible = NULL;
-    root->selectionnum = -1;
-    root->selection = NULL;
     root->touched = 1;
 } // initvirtualroot
 
@@ -394,24 +399,17 @@ void hq_scan(char *scanrootpath)
         if (!(g->host->status == status_connected))
             continue;
 
-        // if the requested path to scan and the virtualpath of the graft
-        // are the same for the length of the virtual path of the graft,
-        // we need to include said graft.
-
-        // Consider the scan request for "/Home/test" and a graft with virtual
-        // path "/Home". The first 5 charachters are the same and because this
-        // is the length of the virtual path of the graft, it means the requested
-        // scan path is a child of the graft virtual root.
         scanpathcharacter = scanrootpath;
         graftpathcharacter = g->virtualpath;
 
-        while (*graftpathcharacter && *graftpathcharacter == *scanpathcharacter) {
+        while (*graftpathcharacter && *scanpathcharacter && *graftpathcharacter == *scanpathcharacter) {
             graftpathcharacter++;
             scanpathcharacter++;
         }
 
-        if (*graftpathcharacter == '\0') { // we reached the end of the graft virtual path
+        if (*graftpathcharacter == '\0' || *scanpathcharacter == '\0') {
             char *physicalpath = strdupcat(g->hostpath, scanpathcharacter, NULL);
+            char *virtualpath = strdupcat(g->virtualpath, scanpathcharacter, NULL);
 
             // get rid of the virtual graft path in the prunes list..
             stringlist *graftprunes, *deviceprunes, *tmp;
@@ -431,9 +429,10 @@ void hq_scan(char *scanrootpath)
             }
 
             // send scan command to workers using only host paths
-            sendscancommand(hq_plug, g->host->reachplan.routeraddr, physicalpath, deviceprunes);
+            sendscancommand(hq_plug, g->host->reachplan.routeraddr, physicalpath, virtualpath, deviceprunes);
             freestringlist(deviceprunes);
             free(physicalpath);
+            free(virtualpath);
         }
     }
 
@@ -607,56 +606,67 @@ fileinfo *loadremoteimage(connection plug, char *localpath, char *remotepath)
     return result;
 } // loadremoteimage
 
-int32 fileinfoequal(fileinfo *A, fileinfo *B)
-{ // returns 1 if A and B describe states of the same file and 0 otherwise
-    int32 result;
-
-    result = (strcmp(strrchr(A->filename, '/'), strrchr(B->filename, '/')));
-    if (!result)
-        return 1;
-    // not the same name -> may be the same inode?
-    return (A->inode == B->inode);
-} // iscontinuation
-
-void foldscan(fileinfo *history, fileinfo *scan, hashtable *historyindex, hashtable *scanindex)
+void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
 {
-    fileinfo *h, *s, *t;
+    graft *g;
+    graftee gee;
+    virtualnode *v;
+    fileinfo *child, *cc; // cc stands for continuation candidate
+    virtualfilekey *vkey, *newvkey;
+    fileinfokey *fkey;
+    continuation c;
 
-    if (scan == NULL && history == NULL)
+    if (!files || !virtualscanroot)
         return;
 
-    if (historyindex == NULL || scanindex == NULL) {
-        printerr("Error: No valid hashtable given to foldscan to be used as index\n");
-        return;
-    }
+    // look up each scan or history child in virtualtree index
+    // vkey can be resused as long as it is not used with hashtableinsert
+    vkey = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
+    vkey->parent = virtualscanroot;
 
-    for (h = history; h != NULL; h = h->next) {
-        hashtableinsert(historyindex, h, h);
-    }
-
-    for (s = scan; s != NULL; s = s->next) {
-        t = hashtablesearch(historyindex, s);
-        if (t != NULL) {// we have a continuation candidate
-            printerr("Found continuation candidate: %s\n", s->filename);
-         } else // we have a new file
-            printerr("Found new File: %s\n", s->filename);
-            // we need to add it to the history tree at the correct position....
-        hashtableinsert(scanindex, s, s);
-    }
-
-    for (h = history; h != NULL; h = h->next) {
-        if (!hashtablesearch(scanindex, h)) { // we have a deleted file
-            printerr("Found deleted file: %s\n", h->filename);
-            // we can set h to delted here
+    for (child = files->down; child != NULL; child = child->next) {
+        vkey->name = strrchr(child->filename, '/') + 1;
+        v = hashtablesearch(virtualtreeindex, vkey);
+        if (!v) {
+            printerr("Could not find %s, adding to virtual tree\n", child->filename);
+            // add new virtual file
+            v = (virtualnode*) malloc(sizeof(virtualnode));
+            initvirtualfile(v);
+            if (virtualscanroot->down) {
+                v->next = virtualscanroot->down;
+                virtualscanroot->down->prev = v;
+            }
+            v->up = virtualscanroot;
+            virtualscanroot->down = v;
+            // copy the key and store in virtual tree index
+            newvkey = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
+            newvkey->parent = vkey->parent;
+            newvkey->name = vkey->name;
+            hashtableinsert(virtualtreeindex, newvkey, v);
         }
+        // add the child to the virtual file graftee list
+        gee = (graftee) malloc(sizeof(struct graftee_struct));
+        gee->source = g;
+        gee->realfile = child;
+        gee->next = v->grafteelist;
+        v->grafteelist = gee;
+        // look for continuation candidates and keep the fileinfo index up to date
+        fkey = (fileinfokey*) malloc(sizeof(struct fileinfokey_struct));
+        fkey->inode = child->inode;
+        fkey->deviceid = child->deviceid;
+        cc = hashtablesearch(fileinfoindex, fkey);
+        if (cc != NULL) {
+            printerr("Found continuation candidate for %s\n", child->filename);
+            c = (continuation) malloc(sizeof(struct continuation_struct));
+            c->candidate = cc;
+            c->next = child->continuation_candidates;
+            child->continuation_candidates = c;
+        }
+        hashtableinsert(fileinfoindex, fkey, child);
+        virtualtreeinsert(child, v);
     }
-
-} // foldscan
-
-void foldhistory(virtualnode *root, fileinfo *history)
-{
-
-} // foldhistory
+    free(vkey);
+} // virtualtree_insert
 
 void hqmain(void)
 {
@@ -664,6 +674,9 @@ void hqmain(void)
     int64 msg_type;
     char* msg_data;
     device* d;
+
+    virtualtreeindex = inithashtable(65536, &hash_virtualfilekey, &virtualfilekey_equals);
+    fileinfoindex = inithashtable(65536, &hash_fileinfokey, &fileinfokey_equals);
 
     virtualtreeinit();
 
@@ -788,8 +801,9 @@ void hqmain(void)
             {
               char *localdevicefolderpath, *localscanpath, *localhistorypath;
               char *remotehistorypath, *remotescanpath;
+              char *virtualscanrootpath;
               fileinfo *scan, *history;
-              hashtable *scanindex, *historyindex;
+              virtualnode *virtualscanrootnode;
 
               connection plug = findconnectionbyplugnumber(msg_src);
 
@@ -799,7 +813,7 @@ void hqmain(void)
                   break;
               }
 
-              receivescandonemessage(msg_data, &remotescanpath, &remotehistorypath);
+              receivescandonemessage(msg_data, &virtualscanrootpath, &remotescanpath, &remotehistorypath);
 
               localdevicefolderpath = getdevicefolderpathonhq(d->deviceid);
               localscanpath = strdupcat(localdevicefolderpath, strrchr(remotescanpath, '/'), NULL);
@@ -808,16 +822,21 @@ void hqmain(void)
               scan = loadremoteimage(plug, localscanpath, remotescanpath);
               history = loadremoteimage(plug, localhistorypath, remotehistorypath);
 
-              historyindex = inithashtable(1024, &hash_fileinfo, &fileinfo_equals);
-              scanindex = inithashtable(1024, &hash_fileinfo, &fileinfo_equals);
+              virtualscanrootnode = findnode(&virtualroot, virtualscanrootpath);
 
-              foldscan(history, scan, historyindex, scanindex);
-              foldhistory(&virtualroot, history);
+              if (!virtualscanrootnode) {
+                  printerr("Error: Received scans or histories (%s) "
+                            "for an unknown virtual node\n", virtualscanrootpath);
+                            return;
+              }
+
+              virtualtreeinsert(history, virtualscanrootnode);
+              virtualtreeinsert(scan, virtualscanrootnode);
 
               free(localdevicefolderpath);
               free(localscanpath);
               free(localhistorypath);
-
+              free(virtualscanrootpath);
               break;
             }
             case msgtype_exit:

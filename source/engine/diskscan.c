@@ -108,12 +108,16 @@ void freefileinfo(fileinfo* skunk)
     if (skunk->filename)
         free(skunk->filename);
 
+    if (skunk->deviceid)
+        free(skunk->deviceid);
+
     freehistory(skunk->hist_modtime);
     freehistory(skunk->hist_contents);
     freehistory(skunk->hist_perms);
     freehistory(skunk->hist_name);
     freehistory(skunk->hist_loc);
 
+    // TODO: FREE CANDIDATES
     free(skunk);
 
 } // freefileinfo
@@ -174,7 +178,7 @@ int sys_setxattr(const char *path, const char *name, const void *value,
 
 // get inode info for filename (which includes path) and for any subdirectories
 fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
-                    hashtable *h, scan_progress progress)
+                    hashtable *h, scan_progress progress, int32 devicetime, char *deviceid)
 {  // IMPORTANT: h has to be NULL on top level call!
     fileinfo *image, *twin;
     struct stat status;
@@ -244,6 +248,9 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
     image->user = strdup(getpwuid(status.st_uid)->pw_name);
     image->group = strdup(getgrgid(status.st_gid)->gr_name);
     image->filename = strdup(filename);
+    image->trackingnumber = -1;
+    image->devicetime = devicetime;
+    image->deviceid = strdup(deviceid);
 
     image->hist_modtime = NULL;
     image->hist_contents = NULL;
@@ -288,7 +295,8 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
             }
             childname = strdupcat(filename, "/", entry->d_name, NULL);
 
-            child = formimage(childname, prunepoints, worker_plug, h, progress);
+            child = formimage(childname, prunepoints, worker_plug, h, progress,
+                              devicetime, deviceid);
             if (child == NULL) {
                 // this is not abnormal, it can mean the entry should be ignored
                 // for example, . and .. will result in NULL
@@ -463,6 +471,7 @@ void writesubimage(FILE *output, fileinfo* subimage, scan_progress progress)
     puthistory(output, subimage->hist_loc);
     put64(output, subimage->trackingnumber);
     put32(output, subimage->devicetime);
+    putstring(output, subimage->deviceid);
 
     {
         fileinfo *child;
@@ -551,6 +560,7 @@ fileinfo *readsubimage(FILE *input, scan_progress progress)
     subimage->hist_loc = gethistory(input);
     subimage->trackingnumber = get64(input);
     subimage->devicetime = get32(input);
+    subimage->deviceid = getstring(input, 0);
 
     subimage->subtreesize = 1;
     subimage->subtreebytes = subimage->filelength;

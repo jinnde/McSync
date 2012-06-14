@@ -788,11 +788,12 @@ void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir
     freebytestream(serialized);
 } // sendvirtualdir
 
-void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints)
+void sendscancommand(connection plug, int recipient, char *scanroot, char *virtualscanroot, stringlist *prunepoints)
 {
     bytestream serialized = initbytestream(128);
 
     serializestring(serialized, scanroot);
+    serializestring(serialized, virtualscanroot);
     serializestringlist(serialized, prunepoints);
     nsendmessage(plug, recipient, msgtype_scan, serialized->data, serialized->len);
     freebytestream(serialized);
@@ -817,10 +818,11 @@ void sendplugnumber(connection plug, int32 recipient, int32 type, int32 plugnumb
     freebytestream(serialized);
 } // sendplugnumber
 
-void sendscandonemessage(connection plug, char *scanfilepath, char *historyfilepath)
+void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath, char *historyfilepath)
 {
     bytestream serialized = initbytestream(256);
 
+    serializestring(serialized, virtualscanroot);
     serializestring(serialized, scanfilepath);
     serializestring(serialized, historyfilepath);
     nsendmessage(plug, hq_int, msgtype_scandone, serialized->data, serialized->len);
@@ -883,9 +885,10 @@ void receivevirtualdir(char *source, char **path, queue receivednodes)
     }
 } // receivevirtualdir
 
-void receivescancommand(char *source, char **scanroot, stringlist **prunepoints)
+void receivescancommand(char *source, char **scanroot, char **virtualscanroot, stringlist **prunepoints)
 {
     *scanroot = deserializestring(&source);
+    *virtualscanroot = deserializestring(&source);
     *prunepoints = deserializestringlist(&source);
 } // receivescancommand
 
@@ -906,8 +909,9 @@ void receiveplugnumber(char *source, int32 *plugnumber)
     *plugnumber = deserializeint32(&source);
 } // receiveplugnumber
 
-void receivescandonemessage(char *source, char **scanfilepath, char **historyfilepath)
+void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath, char **historyfilepath)
 {
+    *virtualscanroot = deserializestring(&source);
     *scanfilepath = deserializestring(&source);
     *historyfilepath = deserializestring(&source);
 } // receivescandonemessage

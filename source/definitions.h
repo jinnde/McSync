@@ -139,6 +139,15 @@ typedef struct hashtable_struct {
     int32 (*eqfn) (void *k1, void *k2);
 } hashtable;
 
+typedef struct virtualfilekey_struct {
+    struct virtualnode_struct *parent;
+    char *name;
+} virtualfilekey;
+
+typedef struct fileinfokey_struct {
+    int32 inode;
+    char *deviceid;
+} fileinfokey;
 // mcsync's notion of an aspect's "history" is captured in the history struct
 
 typedef struct history_struct { // for every tracked file aspect, latest source
@@ -147,10 +156,9 @@ typedef struct history_struct { // for every tracked file aspect, latest source
     int32 devicetime; // device-specific increasing integer, negated if issame
 } *history;
 
-// the fileinfo struct is our platform independent representation of a unix file
 typedef struct continuation_struct {
     struct continuation_struct *next;
-    struct fileinfo *candidate;
+    struct fileinfo_struct *candidate;
 } *continuation;
 
 typedef struct extendedattributes_struct { // a helper struct for fileinfo
@@ -162,6 +170,7 @@ typedef struct extendedattributes_struct { // a helper struct for fileinfo
     history hist_attr;
 } *extendedattributes;
 
+// the fileinfo struct is our platform independent representation of a unix file
 typedef struct fileinfo_struct { // everything to know about a file on disk
     struct fileinfo_struct *next; // directory listing is linked list
     struct fileinfo_struct *down; // if this is a directory, its contents
@@ -195,6 +204,7 @@ typedef struct fileinfo_struct { // everything to know about a file on disk
     history hist_loc; // parent directory
     int64   trackingnumber; // together with devicetime,
     int32   devicetime; // this allows all the aspect histories to skip this entry
+    char    *deviceid;
     // the following is used for matching of scans an histories
     continuation continuation_candidates;
 } fileinfo;
@@ -245,7 +255,6 @@ typedef struct graftee_struct { // describes any real file that maps onto the tr
     struct graftee_struct *next;
     graft *source;
     fileinfo *realfile;
-
 } *graftee;
 
 typedef struct virtualnode_struct {
@@ -458,10 +467,10 @@ void receivevirtualdir(char *source, char **path, queue receivednodes);
 
 // scan communication
 void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node); // to hq
-void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints); // to workers
-void receivescancommand(char *source, char **scanroot, stringlist **prunepoints);
-void sendscandonemessage(connection plug, char *scanfilepath, char *historyfilepath); // to hq
-void receivescandonemessage(char *source, char **scanfilepath, char **historyfilepath);
+void sendscancommand(connection plug, int recipient, char *scanroot, char *virtualscanroot, stringlist *prunepoints); // to workers
+void receivescancommand(char *source, char **scanroot, char **virtualscanroot, stringlist **prunepoints);
+void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath, char *historyfilepath); // to hq
+void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath, char **historyfilepath);
 
 // recruiter communication
 void sendrecruitcommand(connection plug, int32 plugnumber, char *address); // always sent to recruiter
@@ -509,10 +518,14 @@ int32 hashtableinsert(hashtable *h, void *k, void *v); // non-zero on success
 void *hashtablesearch(hashtable *h, void *k);
 void *hashtableremove(hashtable *h, void *k);
 uint32 hashtablecount(hashtable *h);
+
 uint32 hash_int32(void *k);
 int32 int32_equals(void *key1, void *key2);
-uint32 hash_fileinfo(void *k);
-int32 fileinfo_equals(void *key1, void *key2);
+uint32 hash_virtualfilekey(void *k);
+int32 virtualfilekey_equals(void *key1, void *key2);
+uint32 hash_fileinfokey(void *k);
+int32 fileinfokey_equals(void *key1, void *key2);
+
 //////// actual interaction between program parts
 
 // agent system
@@ -562,11 +575,11 @@ void freevirtualnode(virtualnode *node);
 
 // disk scan related
 fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
-                    hashtable *h, scan_progress progress); // get inode info for filename (which includes path) and for any subdirectories
+                    hashtable *h, scan_progress progress, int32 devicetime, char *deviceid); // get inode info for filename (which includes path) and for any subdirectories
 void writeimage(fileinfo* image, char* filename, scan_progress progress);
 fileinfo* readimage(char* filename, scan_progress progress);
 void freefileinfo(fileinfo* skunk);
-void resetscanprogress(scan_progress *progress); // does not alter progress->updateinteval
+void resetscanprogress(scan_progress *progress); // does not alter progress->updateinterval
 
 // tui specific
 void raw_io(void);
