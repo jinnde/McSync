@@ -1,8 +1,5 @@
 #include "definitions.h"
 
-virtualnode virtualroot; // has no siblings and no name
-                         // only to be used by the HQ thread
-
 hashtable *virtualtreeindex;
 hashtable *fileinfoindex;
 
@@ -178,7 +175,6 @@ void initvirtualroot(virtualnode *root)
     // set up root directory
     initvirtualfile(root);
     root->filetype = 1; // 1 = directory
-    root->touched = 1;
 } // initvirtualroot
 
 void virtualtreeinit(void)
@@ -437,30 +433,6 @@ void hq_scan(char *scanrootpath)
     }
 
 } // hq_scan
-
-void sendvirtualnodelisting(char* path) // sends back all children of node at path
-{
-    virtualnode *dir;
-
-    if (!validfullpath(path)) {
-        printerr("Error: Headquarters got invalid path to list: %s\n", path);
-        return;
-    }
-
-    dir = findnode(&virtualroot, path);
-
-    if (!dir) {
-        printerr("Error: Headquarters could not find node with path: %s\n", path);
-        return;
-    }
-
-    if (dir->filetype > 1) {
-        printerr("Error: Headquarters got list request for node which is not a directory: %s\n", path);
-        return;
-    }
-
-    sendvirtualdir(hq_plug, cmd_int, path, dir);
-} // sendvirtualnodelisting
 
 char *getdevicefolderpathonhq(char *deviceid) // allocates string, free when done
 { // creates device folder if is does not exist, returns the device folder path
@@ -789,10 +761,6 @@ void hqmain(void)
                     setstatus(&d, status_inactive); // msg_data is deviceid
                     break;
             }
-            case msgtype_listvirtualdir:
-                    // msg_data is the virtual path of the virtual directory to list
-                    sendvirtualnodelisting(msg_data);
-                    break;
             case msgtype_scanvirtualdir:
                     // msg_data is the virtual path of the node to scan
                     hq_scan(msg_data);

@@ -293,9 +293,9 @@ typedef struct virtualnode_struct {
     int32   selectionnum; // which child is selected (-1 = pls recompute)
     struct virtualnode_struct *selection; // which child is selected
     int32   colwidth; // width of this column (for parent dir listing)
-    int32   touched; // node has changed since last query to HQ, _only_ set on CMD
 } virtualnode;
 
+virtualnode virtualroot; // has no siblings and no name
 
 // messaging
 
@@ -391,18 +391,14 @@ typedef struct scan_progress_struct {
 #define msgtype_disconnected        10
 #define msgtype_identifydevice      11
 #define msgtype_deviceid            12
-#define msgtype_listvirtualdir      13
-#define msgtype_virtualdir          14
-#define msgtype_touch               15
-// ^ mark virtual node as touched (changed) on cmd
-#define msgtype_scanvirtualdir      16
+#define msgtype_scanvirtualdir      13
 // ^ the message contains a virtual path (usually a request from cmd to hq)
-#define msgtype_scan                17
+#define msgtype_scan                14
 // ^ the message contains a host path and prune points (usually a request from hq to workers)
-#define msgtype_scandone            18
-#define msgtype_exit                19
+#define msgtype_scandone            15
+#define msgtype_exit                16
 // ^ tells the receiver to stop running
-#define msgtype_goodbye             20
+#define msgtype_goodbye             17
 // ^ is sent back from a worker who has received a msgtype_exit
 
 // if you change these^, change msgtypelist in communication.c
@@ -459,11 +455,6 @@ void nsendmessage(connection plug, int recipient, int type, char* what, int len)
 
 int receivemessage(connection plug, listint* src, int64* type, char** data);
 char* secondstring(char* string); // read the second string from a sendmessage2 type message (contains two strings)
-
-// virtual node comnunication between cmd and hq
-void sendvirtualnoderquest(virtualnode *root, virtualnode *node); // sends a list virtual node request, only to be used from cmd
-void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
-void receivevirtualdir(char *source, char **path, queue receivednodes);
 
 // scan communication
 void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node); // to hq
@@ -530,7 +521,6 @@ int32 fileinfokey_equals(void *key1, void *key2);
 
 // agent system
 void TUImain(void);
-void climain(void);
 void hqmain(void);
 void workermain(connection workerplug);
 void reqruitermain(void);

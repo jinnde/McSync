@@ -10,8 +10,7 @@ pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 const char* msgtypelist[] = { "error (msgtype==0)",
     "connectdevice","disconnectdevice", "newplugplease", "removeplugplease", "recruitworker",
-    "failedrecruit", "info", "workerisup", "connected", "disconnect",
-    "identifydevice", "deviceid", "listvirtualdir", "virtualdir", "touch",
+    "failedrecruit", "info", "workerisup", "connected", "disconnect", "identifydevice", "deviceid",
     "scanvirtualdir", "scan", "scandone", "exit", "goodbye" };
 
 
@@ -751,15 +750,6 @@ void sendmessage2(connection plug, int recipient, int type, char* what)
                     first + 1 + strlen(what + first + 1)); // don't send second 0
 } // sendmessage2
 
-void sendvirtualnoderquest(virtualnode *root, virtualnode *node)
-{ // helps by assembling the path to a node before sending the request to HQ from CMD
-    bytestream b = initbytestream(128);
-    getvirtualnodepath(b, root, node);
-    bytestreaminsertchar(b, '\0');
-    nsendmessage(cmd_plug, hq_int, msgtype_listvirtualdir, b->data, b->len);
-    freebytestream(b);
-} // sendvirtualnoderquest
-
 void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node)
 {
     bytestream b = initbytestream(128);
@@ -768,25 +758,6 @@ void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node)
     nsendmessage(cmd_plug, hq_int, msgtype_scanvirtualdir, b->data, b->len);
     freebytestream(b);
 } // sendvirtualnodescanrequest
-
-void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir)
-{
-    bytestream serialized = initbytestream(512);
-    virtualnode *child;
-    int32 count = 0;
-
-    for (child = dir->down; child != NULL; child = child->next)
-        count++;
-
-    serializestring(serialized, path);
-    serializeint32(serialized, count); // prepend the number of children
-
-    for(child = dir->down; child != NULL; child = child->next)
-        serializevirtualnode(serialized, child);
-
-    nsendmessage(plug, recipient, msgtype_virtualdir, serialized->data, serialized->len);
-    freebytestream(serialized);
-} // sendvirtualdir
 
 void sendscancommand(connection plug, int recipient, char *scanroot, char *virtualscanroot, stringlist *prunepoints)
 {
