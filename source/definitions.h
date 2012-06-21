@@ -215,6 +215,9 @@ typedef enum { // if you change this, update status_word in headquarters.c
     status_inactive,
     status_reaching,
     status_connected,
+    status_scanning,
+    status_storing,
+    status_loading // includes transferring and reading into memory
 } status_t;
 
 typedef struct devicelocater_struct { // all you need for locating the device
@@ -400,6 +403,7 @@ typedef struct scan_progress_struct {
 // ^ tells the receiver to stop running
 #define msgtype_goodbye             17
 // ^ is sent back from a worker who has received a msgtype_exit
+#define msgtype_scanupdate          18
 
 // if you change these^, change msgtypelist in communication.c
 
@@ -467,8 +471,8 @@ void receivescandonemessage(char *source, char **virtualscanroot, char **scanfil
 void sendrecruitcommand(connection plug, int32 plugnumber, char *address); // always sent to recruiter
 void receiverecruitcommand(char *source, int32 *plugnumber, char **address); // used by recruiter
 
-void sendplugnumber(connection plug, int32 recipient, int32 type, int32 plugnumber);
-void receiveplugnumber(char *source, int32 *plugnumber);
+void sendint32(connection plug, int32 recipient, int32 type, int32 n);
+void receiveint32(char *source, int32 *n);
 
 void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnumber); // used by recruiter
 void receivenewplugresponse(char *source, char **reference, int32 *plugnumber);

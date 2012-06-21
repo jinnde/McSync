@@ -58,15 +58,27 @@ char *commanumber(int64 n) // returns human-readable integer in reused buffer
         return buffer + 1;
 } // commanumber
 
-int SelectedMachineColor[3];
-int UnselectedMachineColor[3];
+int SelectedMachineColor[6];
+int UnselectedMachineColor[6];
+char CurrentDeviceTask[6][8] = { "   ", "   ", "   ", "[S]", "[W]", "[L]" };
+// ^ is printed next to the device nick name in the device list
 
 enum curscolors {
-    BLACKonYELLOW=1,BLACKonGREEN, BLACKonRED, BLACKonCYAN, BLACKonWHITE,
-      REDonYELLOW,                  REDonBLACK,              REDonWHITE,
-                                  GREENonBLACK,            GREENonWHITE,
-                                 YELLOWonBLACK,
-    WHITEonBLUE, WHITEonRED, WHITEonBLACK,
+    BLACKonYELLOW = 1,
+    BLACKonGREEN,
+    BLACKonRED,
+    BLACKonCYAN,
+    BLACKonWHITE,
+    REDonYELLOW,
+    REDonBLACK,
+    REDonWHITE,
+    GREENonBLACK,
+    GREENonWHITE,
+    YELLOWonBLACK,
+    WHITEonBLUE,
+    WHITEonRED,
+    WHITEonBLACK,
+    CYANonBLACK
 };
 
 void setupcolors(void)
@@ -91,13 +103,21 @@ void setupcolors(void)
     init_pair(BLACKonCYAN, COLOR_BLACK, COLOR_CYAN);
     init_pair(WHITEonBLACK, COLOR_WHITE, COLOR_BLACK);
     init_pair(REDonYELLOW, COLOR_RED, COLOR_YELLOW);
+    init_pair(CYANonBLACK, COLOR_CYAN, COLOR_BLACK);
 
     SelectedMachineColor[status_inactive] = BLACKonRED;
     SelectedMachineColor[status_reaching] = BLACKonYELLOW;
     SelectedMachineColor[status_connected] = BLACKonGREEN;
+    SelectedMachineColor[status_scanning] = BLACKonCYAN;
+    SelectedMachineColor[status_storing] = BLACKonCYAN;
+    SelectedMachineColor[status_loading] = BLACKonCYAN;
+
     UnselectedMachineColor[status_inactive] = REDonBLACK;
     UnselectedMachineColor[status_reaching] = YELLOWonBLACK;
     UnselectedMachineColor[status_connected] = GREENonBLACK;
+    UnselectedMachineColor[status_scanning] = CYANonBLACK;
+    UnselectedMachineColor[status_storing] = CYANonBLACK;
+    UnselectedMachineColor[status_loading] = CYANonBLACK;
 } // setupcolors
 
 // gi is for global interface --- variables local to the TUI routines
@@ -195,7 +215,7 @@ void clearrestofline(void)
 
 void refreshdevices(void)
 {
-    device *m, *selm = NULL;
+    device *d, *selm = NULL;
     int num = 0;
 
     move(0,0); // curs: move to top corner
@@ -204,15 +224,15 @@ void refreshdevices(void)
         gi_selecteddevice = 1;
     if (devicelist == NULL)
         printw("  <<< no machines >>>  ");
-    for (m = devicelist; m != NULL; m = m->next) {
+    for (d = devicelist; d != NULL; d = d->next) {
         num++;
-        color_set(UnselectedMachineColor[m->status], NULL);
+        color_set(UnselectedMachineColor[d->status], NULL);
         if (gi_selecteddevice == num) {
             if (gi_mode == 1 || gi_mode == 3 || gi_mode == 4)
-                color_set(SelectedMachineColor[m->status], NULL);
-            selm = m;
+                color_set(SelectedMachineColor[d->status], NULL);
+            selm = d;
         }
-        printw("  %s  ", m->nickname);
+        printw("   %s%s", d->nickname, CurrentDeviceTask[d->status]);
     }
     color_set(UnselectedMachineColor[status_inactive], NULL);
     clearrestofline();
@@ -1157,7 +1177,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     }
                     break;
             case '/': // go down into subdirectory
-                    if (browsingdirectory->selection != NULL) {
+                    if (browsingdirectory->selection != NULL &&
+                        browsingdirectory->selection->filetype != 2) {
                         browsingdirectory = browsingdirectory->selection;
                         refreshscreen();
                     } else {
@@ -1358,6 +1379,15 @@ void TUImain(void)
                         if (doUI)
                             refreshscreen();
                     break;
+                case msgtype_scandone:
+                    if (doUI)
+                        refreshscreen();
+                break;
+                case msgtype_scanupdate:
+                    free(msg_data);
+                    if (doUI)
+                        refreshscreen();
+                break;
                 default:
                         printerr("TUI got unexpected message"
                                         " of type %lld from %d: \"%s\"\n",

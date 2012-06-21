@@ -325,6 +325,7 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
             printerr("\015Scanning directories... "
              "(found %d directories, %d files, %d links, %d other)\n",
              progress->directories, progress->regularfiles, progress->links, progress->other);
+        // In the future the worker plug could be used here to send detailed updates to headquarters
     }
 
     if (toplevel) {

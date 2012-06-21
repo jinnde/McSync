@@ -249,6 +249,8 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
     scan_progress progress;
     char *scanfilepath, *historyfilepath, buf[16];
 
+    sendint32(worker_plug, hq_int, msgtype_scanupdate, status_scanning);
+
     // every device has its own scan folder...
     (void)mkdir(devicefolder, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     // and its own device time
@@ -268,6 +270,7 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
                      progress, devicetime, deviceid);
     // write fresh scans to disk
     resetscanprogress(&progress);
+    sendint32(worker_plug, hq_int, msgtype_scanupdate, status_storing);
     writeimage(scan, scanfilepath, progress);
     // tell hq we're done and send location of the new scan file and history file
     historyfilepath = strdupcat(devicefolder, "/", history_file_name, NULL);

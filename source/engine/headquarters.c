@@ -11,6 +11,9 @@ char* statusword[] = {
     "inactive",
     "reaching",
     "connected",
+    "scanning",
+    "storing",
+    "loading"
 };
 
 void initvirtualfile(virtualnode *vnode)
@@ -285,6 +288,8 @@ void setstatus(device **target, status_t newstatus)
     status_t oldstatus;
     char buf[90];
 
+    //<< sempaphore here
+
     // set the new status
     oldstatus = d->status;
     d->status = newstatus;
@@ -299,6 +304,11 @@ void setstatus(device **target, status_t newstatus)
                 snprintf(buf, 90, "%s", d->deviceid); // unnecessary to use buf
                 sendmessage(hq_plug, cmd_int, msgtype_connected, buf);
             break;
+        case status_scanning:
+        case status_storing:
+        case status_loading:
+                sendmessage(hq_plug, cmd_int, msgtype_scanupdate, "");
+                break;
     }
     printerr("Changed status of %s from %d (%s) to %d (%s).\n",
                 d->nickname,
@@ -522,7 +532,7 @@ void identifydevice(char *localid, char *remoteid)
             printerr("Error: Device with id [%s] was connected to twice!\n", remoteid);
             // connected through another device?
             if (targetdevice != reacheddevice) {
-                sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease,
+                sendint32(hq_plug, recruiter_int, msgtype_removeplugplease,
                                targetdevice->reachplan.routeraddr);
                 setstatus(&targetdevice, status_reaching);
             } // else here would mean we reached a connected device using the same device.
@@ -600,7 +610,7 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
         vkey->name = strrchr(child->filename, '/') + 1;
         v = hashtablesearch(virtualtreeindex, vkey);
         if (!v) {
-            printerr("Could not find %s, adding to virtual tree\n", child->filename);
+            // printerr("Could not find %s, adding to virtual tree\n", child->filename);
             // add new virtual file
             v = (virtualnode*) malloc(sizeof(virtualnode));
             initvirtualfile(v);
@@ -610,6 +620,12 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
             }
             v->up = virtualscanroot;
             virtualscanroot->down = v;
+            v->name = vkey->name;
+            v->numchildren = child->numchildren;
+            v->subtreesize = child->subtreesize;
+            virtualscanroot->numchildren++;
+            virtualscanroot->subtreesize += child->subtreesize;
+            v->filetype = child->filetype;
             // copy the key and store in virtual tree index
             newvkey = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
             newvkey->parent = vkey->parent;
@@ -628,17 +644,25 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
         fkey->deviceid = child->deviceid;
         cc = hashtablesearch(fileinfoindex, fkey);
         if (cc != NULL) {
-            printerr("Found continuation candidate for %s\n", child->filename);
+            // printerr("Found continuation candidate for %s\n", child->filename);
             c = (continuation) malloc(sizeof(struct continuation_struct));
             c->candidate = cc;
             c->next = child->continuation_candidates;
             child->continuation_candidates = c;
         }
         hashtableinsert(fileinfoindex, fkey, child);
+
         virtualtreeinsert(child, v);
     }
     free(vkey);
 } // virtualtree_insert
+
+int32 virtualnodechildsubtreesizesum(virtualnode *firstchild)
+{
+    if (!firstchild)
+        return 0;
+    return firstchild->subtreesize + virtualnodechildsubtreesizesum(firstchild->next);
+} // virtualnodechildsubtreesizesum
 
 void hqmain(void)
 {
@@ -710,7 +734,7 @@ void hqmain(void)
                     break;
                 }
 
-                sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease,
+                sendint32(hq_plug, recruiter_int, msgtype_removeplugplease,
                                                         d->reachplan.routeraddr);
 
                 setstatus(&d, status_reaching);
@@ -734,7 +758,7 @@ void hqmain(void)
                                            // msgdata is plugnumber of the removed device
             {
                 int32 plugnumber;
-                receiveplugnumber(msg_data, &plugnumber);
+                receiveint32(msg_data, &plugnumber);
 
                 if (! (d = getdevicebyplugnum(plugnumber))) {
                     printerr("Error: Received plug number which does not belong "
@@ -749,14 +773,14 @@ void hqmain(void)
                                         // if the recruit was successful, we will hear form worker directly (workerisup message)
             {                           // msg_data is plugnumber
                     int32 plugnumber;
-                    receiveplugnumber(msg_data, &plugnumber);
+                    receiveint32(msg_data, &plugnumber);
 
                     if (! (d = getdevicebyplugnum(plugnumber))) {
                         printerr("Error: Received plug number which does not belong "
                                  "to any device (%d)\n", plugnumber);
                         break;
                     }
-                    sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease, plugnumber);
+                    sendint32(hq_plug, recruiter_int, msgtype_removeplugplease, plugnumber);
                     d->reachplan.routeraddr = -1;
                     setstatus(&d, status_inactive); // msg_data is deviceid
                     break;
@@ -787,6 +811,7 @@ void hqmain(void)
               localscanpath = strdupcat(localdevicefolderpath, strrchr(remotescanpath, '/'), NULL);
               localhistorypath = strdupcat(localdevicefolderpath, "/", history_file_name, NULL);
 
+              setstatus(&d, status_loading);
               scan = loadremoteimage(plug, localscanpath, remotescanpath);
               history = loadremoteimage(plug, localhistorypath, remotehistorypath);
 
@@ -801,12 +826,35 @@ void hqmain(void)
               virtualtreeinsert(history, virtualscanrootnode);
               virtualtreeinsert(scan, virtualscanrootnode);
 
+              // fix the subtreesize of the root node
+              virtualscanrootnode->subtreesize =
+              virtualnodechildsubtreesizesum(virtualscanrootnode->down);
+
+              // << fix the semaphore thing
+              setstatus(&d, status_connected);
+              sendmessage(hq_plug, cmd_int, msgtype_scandone, "");
+
               free(localdevicefolderpath);
               free(localscanpath);
               free(localhistorypath);
               free(virtualscanrootpath);
               break;
             }
+            case msgtype_scanupdate:
+            {
+                status_t s;
+                int32 si;
+
+                if (! (d = getdevicebyplugnum(msg_src))) {
+                    printerr("Error: Received plug number which does not belong "
+                         "to any device (%d)\n", msg_src);
+                }
+                receiveint32(msg_data, &si);
+                s = (status_t)si;
+
+                setstatus(&d, s);
+            }
+                break;
             case msgtype_exit:
                     cleanexit(__LINE__);
                     break;

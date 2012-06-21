@@ -11,7 +11,7 @@ pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 const char* msgtypelist[] = { "error (msgtype==0)",
     "connectdevice","disconnectdevice", "newplugplease", "removeplugplease", "recruitworker",
     "failedrecruit", "info", "workerisup", "connected", "disconnect", "identifydevice", "deviceid",
-    "scanvirtualdir", "scan", "scandone", "exit", "goodbye" };
+    "scanvirtualdir", "scan", "scandone", "exit", "goodbye", "scanupdate" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -105,31 +105,6 @@ stringlist *deserializestringlist(char **source) // may allocate stringlist, fre
     return head;
 } // deserializestringlist
 
-virtualnode *deserializevirtualnode(char **source) // returns allocated virtual node, free when done
-{// *source is manipulated by each deserialization function
-    virtualnode *node = (virtualnode*) malloc(sizeof(virtualnode));
-
-    node->name             = deserializestring(source);
-    node->filetype         = deserializeint32(source);
-    node->accesstime       = deserializeint64(source);
-    node->modificationtime = deserializeint64(source);
-    node->permissions      = deserializeint32(source);
-    node->numericuser      = deserializeint32(source);
-    node->numericgroup     = deserializeint32(source);
-    node->user             = deserializestring(source);
-    node->group            = deserializestring(source);
-    node->redyellow        = deserializeint32(source);
-    node->redgreen         = deserializeint32(source);
-    node->numchildren      = deserializeint32(source);
-    node->subtreesize      = deserializeint32(source);
-    node->subtreebytes     = deserializeint32(source);
-    node->cols             = deserializeint32(source);
-    node->firstvisiblenum  = deserializeint32(source);
-    node->selectionnum     = deserializeint32(source);
-    node->colwidth         = deserializeint32(source);
-    return node;
-} // deserializevirtualnode
-
 void serializeint32(bytestream b, int32 n)
 {
     n = host_to_stream_32(n);
@@ -162,48 +137,6 @@ void serializestringlist(bytestream b, stringlist *list) // prepends the number 
     for (listitem = list; listitem != NULL; listitem = listitem->next)
         serializestring(b, listitem->string);
 } // serializestringlist
-
-void serializehistory(bytestream b, history h)
-{
-        // TODO: Implement serialization for structure
-} // serializehistory
-
-void serializefileinfo(bytestream b, fileinfo* info)
-{
-    // TODO: Implement serialization for structure
-} // serializefileinfo
-
-void serializegraft(bytestream b, graft* graft)
-{
-        // TODO: Implement serialization for structure
-} // serializegraft
-
-void serializegraftee(bytestream b, graftee gee)
-{
-        // TODO: Implement serialization for structure
-} // serializegraftee
-
-void serializevirtualnode(bytestream b, virtualnode *node) // returns allocated stream, free when done
-{
-    serializestring(b, node->name);
-    serializeint32(b, node->filetype);
-    serializeint64(b,node->accesstime);
-    serializeint64(b,node->modificationtime);
-    serializeint32(b, node->permissions);
-    serializeint32(b, node->numericuser);
-    serializeint32(b, node->numericgroup);
-    serializestring(b, node->user);
-    serializestring(b, node->group);
-    serializeint32(b, node->redyellow);
-    serializeint32(b, node->redgreen);
-    serializeint32(b, node->numchildren);
-    serializeint32(b, node->subtreesize);
-    serializeint32(b, node->subtreebytes);
-    serializeint32(b, node->cols);
-    serializeint32(b, node->firstvisiblenum);
-    serializeint32(b, node->selectionnum);
-    serializeint32(b, node->colwidth);
-} // serializevirtualnode
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of serialization ////////////////////////////////
@@ -780,14 +713,14 @@ void sendrecruitcommand(connection plug, int32 plugnumber, char *address)
     freebytestream(serialized);
 } // sendrecruitcommand
 
-void sendplugnumber(connection plug, int32 recipient, int32 type, int32 plugnumber)
+void sendint32(connection plug, int32 recipient, int32 type, int32 n)
 {
     bytestream serialized = initbytestream(4);
 
-    serializeint32(serialized, plugnumber);
+    serializeint32(serialized, n);
     nsendmessage(plug, recipient, type, serialized->data, serialized->len);
     freebytestream(serialized);
-} // sendplugnumber
+} // sendint32
 
 void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath, char *historyfilepath)
 {
@@ -841,21 +774,6 @@ int receivemessage(connection plug, listint* src, int64* type, char** data)
     return 1;
 } // receivemessage
 
-void receivevirtualdir(char *source, char **path, queue receivednodes)
-{
-    *path = deserializestring(&source);
-    int32 count = deserializeint32(&source);
-    virtualnode *node;
-
-    while (count--) {
-        node = deserializevirtualnode(&source);
-        node->next = node->prev = node->up = node->down = NULL;
-        node->firstvisible = node->selection = NULL;
-        node->grafteelist = node->bootedlist = node->graftroots = node->graftends = NULL;
-        queueinserttail(receivednodes, (void*) node);
-    }
-} // receivevirtualdir
-
 void receivescancommand(char *source, char **scanroot, char **virtualscanroot, stringlist **prunepoints)
 {
     *scanroot = deserializestring(&source);
@@ -875,10 +793,10 @@ void receivenewplugresponse(char *source, char **reference, int32 *plugnumber)
     *plugnumber = deserializeint32(&source);
 } // receivenewplugresponse
 
-void receiveplugnumber(char *source, int32 *plugnumber)
+void receiveint32(char *source, int32 *n)
 {
-    *plugnumber = deserializeint32(&source);
-} // receiveplugnumber
+    *n = deserializeint32(&source);
+} // receiveint32
 
 void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath, char **historyfilepath)
 {
