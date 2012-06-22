@@ -672,12 +672,12 @@ void endediting(int keep)
         gi_errorinfo = validate(gi_newstring, gi_editobjecttype);
         if (gi_errorinfo == NULL) { // passed validator
             if (gi_editobjecttype == 5) { // 5=virtual graft point
-                // mapgraftpoint(gi_graft, *gi_editobject, 0, 1);
-                // mapgraftpoint(gi_graft, gi_newstring, 0, 0);
+                mapgraftpoint(gi_graft, *gi_editobject, 0, 1);
+                mapgraftpoint(gi_graft, gi_newstring, 0, 0);
             }
             if (gi_editobjecttype == 6) { // 6=prune point
-                // mapgraftpoint(gi_graft, *gi_editobject, 1, 1);
-                // mapgraftpoint(gi_graft, gi_newstring, 1, 0);
+                mapgraftpoint(gi_graft, *gi_editobject, 1, 1);
+                mapgraftpoint(gi_graft, gi_newstring, 1, 0);
             }
             // replace the string
             free(*gi_editobject);
@@ -896,8 +896,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         *st = (stringlist*) malloc(sizeof(stringlist));
                         (*st)->next = NULL;
                         (*st)->string = strdup("/Home/local");
-                        // TODO: Send message to HQ
-                        // mapgraftpoint(gi_graft, (*st)->string, 1, 0);
+                        mapgraftpoint(gi_graft, (*st)->string, 1, 0);
                         gi_dirtyspecs = 1;
                         refreshscreen();
                     } else {
