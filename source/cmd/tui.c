@@ -879,8 +879,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         (*gf)->hostpath = strdup("~");
                         (*gf)->virtualpath = strdup("/Home");
                         (*gf)->prunepoints = NULL;
-                        // TODO: Send message to HQ
-                        // mapgraftpoint(*gf, (*gf)->virtualpath, 0, 0);
+                        mapgraftpoint(*gf, (*gf)->virtualpath, 0, 0);
                         gi_editselection = gi_editableitemcount - 1;
                         gi_dirtyspecs = 1;
                         refreshscreen();
@@ -930,17 +929,12 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                         graft *sk = *g;
                                         while (sk->prunepoints != NULL) {
                                             stringlist *skunk=sk->prunepoints;
-                                            // TODO: Send message to HQ
-                                            // mapgraftpoint(sk,
-                                                        // skunk->string, 1, 1);
+                                            mapgraftpoint(sk, skunk->string, 1, 1);
                                             sk->prunepoints = skunk->next;
                                             free(skunk->string);
                                             free(skunk);
                                         }
-                                        // TODO: Send to HQ
-                                        // mapgraftpoint(sk,
-                                                        // sk->virtualpath, 0, 1);
-                                        //free(sk->host); NO! it's a device
+                                        mapgraftpoint(sk, sk->virtualpath, 0, 1);
                                         free(sk->hostpath);
                                         free(sk->virtualpath);
                                         *g = sk->next;
@@ -1013,17 +1007,14 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                         // trash the graft!
                                         while (sk->prunepoints != NULL) {
                                             skunk = sk->prunepoints;
-                                            // TODO: Send to HQ
-                                            // mapgraftpoint(sk,
-                                            //             skunk->string, 1, 1);
+                                            mapgraftpoint(sk,
+                                                        skunk->string, 1, 1);
                                             sk->prunepoints = skunk->next;
                                             free(skunk->string);
                                             free(skunk);
                                         }
-                                        // TODO: Send to HQ
-                                        // mapgraftpoint(sk,
-                                                        // sk->virtualpath, 0, 1);
-                                        //free(sk->host); NO! it's a device
+                                        mapgraftpoint(sk,
+                                                        sk->virtualpath, 0, 1);
                                         free(sk->hostpath);
                                         free(sk->virtualpath);
                                         *g = sk->next;
@@ -1044,9 +1035,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                 while (*s != NULL) {
                                     if (&((*s)->string) == gi_editobject){
                                         stringlist *sk = *s;
-                                        // TODO: Send message to HQ
-                                        // mapgraftpoint(gi_graft,
-                                        //                 (*s)->string, 1, 1);
+                                        mapgraftpoint(gi_graft,
+                                                        (*s)->string, 1, 1);
                                         free(sk->string);
                                         *s = sk->next;
                                         free(sk);

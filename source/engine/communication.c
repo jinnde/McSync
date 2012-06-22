@@ -6,7 +6,7 @@ int32 slavemode = 0; // whether McSync is at a possilby remote location in slave
 
 // The new_plug function needs to stop the main routing in order to add new
 // connection to the list
-pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 const char* msgtypelist[] = { "error (msgtype==0)",
     "connectdevice","disconnectdevice", "newplugplease", "removeplugplease", "recruitworker",

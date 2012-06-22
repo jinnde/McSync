@@ -566,6 +566,7 @@ void virtualnoderemovenode(virtualnode **node); // removes and frees node and al
 void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode); // frees oldnode
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // writes the path of node into b
 void freevirtualnode(virtualnode *node);
+void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq);
 
 // disk scan related
 fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
