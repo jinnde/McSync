@@ -223,7 +223,7 @@ void refreshdevices(void)
     if (gi_selecteddevice == 0 && devicelist != NULL)
         gi_selecteddevice = 1;
     if (devicelist == NULL)
-        printw("  <<< no machines >>>  ");
+        printw("  <<< no devices >>>  ");
     for (d = devicelist; d != NULL; d = d->next) {
         num++;
         color_set(UnselectedMachineColor[d->status], NULL);
@@ -457,7 +457,7 @@ typedef struct keycommand_struct {
 struct keycommand_struct keycommand_array[] = {
     {"Ret", "Edit Entry", "Change the value of the currently highlighted item",
         1,  cmd_start_editing,      {KEY_ENTER, 13}}, // ^M
-    {"M", "Add Machine", "Add a new machine to the list of machines",
+    {"M", "Add Device", "Add a new device to the list of devices",
         1,  cmd_add_device,        {'m', 'M'}},
     {NULL, NULL, NULL, 0, 0, {0}}};
 
@@ -466,8 +466,8 @@ char *devicehelparray[][2] = {
     {"C", "Connect"},
     {"X", "Disconnect"},
     {"U", "Unlink"},
-    {"M", "Add Machine"},
-    {"DM", "Delete Machine"},
+    {"M", "Add Device"},
+    {"DM", "Delete Device"},
     {"A", "Add Address"},
     {"DA", "Delete Address"},
     {"G", "Add Graft"},
@@ -508,7 +508,7 @@ char *edithelparray[][2] = {
     {NULL, NULL}};
 
 char *deletehelparray[][2] = {
-    {"M", "Delete Machine"},
+    {"M", "Delete Device"},
     {"A", "Delete Address"},
     {"G", "Delete Graft"},
     {"P", "Delete Prune Point"},
@@ -631,13 +631,13 @@ char *validate(char *str, int type) // returns NULL if str ok, error string if n
         {
             device *m;
             if (*str == 0) // is it the empty string?
-                return "The empty string is not a good machine name!";
+                return "The empty string is not a good device name!";
             if (index(str, ' ') != NULL)
-                return "No spaces allowed in the machine name!"
+                return "No spaces allowed in the device name!"
                         "  (underscore _ is ok)";
             for (m = devicelist; m != NULL; m = m->next) {
                 if (m != gi_device && !strcmp(m->nickname, str))
-                    return "Machine name already in use!";
+                    return "Device name already in use!";
             }
         }
         break;
