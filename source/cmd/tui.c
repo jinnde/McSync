@@ -300,6 +300,8 @@ void showcontents(virtualnode *dir)
     int justprintedselection;
     int height = gi_bbottom - gi_btop + 1 - 1; // minus one for the blue line
 
+    pthread_mutex_lock(&virtualtree_mutex);
+
     // recompute numbers as requested
     if (dir->firstvisiblenum == -1) { // if no scroll state, display from start
         dir->firstvisiblenum = 0;
@@ -351,6 +353,7 @@ void showcontents(virtualnode *dir)
         color_set(REDonWHITE, NULL);
         if (dir->numchildren == 0)
             printw("  <<< Empty Directory >>>  ");
+        pthread_mutex_unlock(&virtualtree_mutex);
         return;
     }
     // fill grid
@@ -398,6 +401,7 @@ void showcontents(virtualnode *dir)
             clearrestofline();
         }
     }
+    pthread_mutex_unlock(&virtualtree_mutex);
     // color rest of line
     {
         int cy, cx;
@@ -407,6 +411,7 @@ void showcontents(virtualnode *dir)
             clearrestofline();
         }
     }
+  //  pthread_mutex_unlock(&virtualtree_mutex);
 } // showcontents
 
 void showstack(virtualnode *dir)
@@ -908,13 +913,13 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     refreshscreen(); // get the deleting help on the screen
                     gi_mode = 1; // 1 means mousing devices
                     loop:
-                        timeout(1000000);
                         ch = getch();
+                        if (ch == ERR)
+                            goto loop;
                         if (ch == KEY_MOUSE || ch == KEY_RESIZE) {
                             handlemouseevents(ch);
                             goto loop;
                         }
-                        timeout(-1);
                     switch (ch) {
                         case 'm': // delete device
                             if (gi_device->status != status_inactive)

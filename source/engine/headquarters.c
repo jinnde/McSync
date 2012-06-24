@@ -116,6 +116,7 @@ void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
     virtualnode *v;
     graftee *gee;
 
+    pthread_mutex_lock(&virtualtree_mutex);
     v = conjuredirectory(&virtualroot, where);
     if (pruneq) // it is a prune point
         gee = &(v->graftends);
@@ -157,6 +158,7 @@ void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
         (*gee)->source = source;
         (*gee)->realfile = NULL; // not used
     }
+    pthread_mutex_unlock(&virtualtree_mutex);
 } // mapgraftpoint
 
 void conjuregraftpoints(void) // make graft roots and prune points exist in v. dir
@@ -214,6 +216,8 @@ void virtualnoderemovenode(virtualnode **node) // removes and frees node and all
     virtualnode *skunk = *node;
     virtualnode *child;
 
+    pthread_mutex_lock(&virtualtree_mutex);
+
     if (!skunk)
         return;
     if (!skunk->prev) // the head of the list, reconnect siblings with parent
@@ -227,10 +231,13 @@ void virtualnoderemovenode(virtualnode **node) // removes and frees node and all
         virtualnoderemovenode(&child);
 
     freevirtualnode(skunk);
+    pthread_mutex_unlock(&virtualtree_mutex);
+
 } // virtualnoderemovechild
 
 void virtualnodeaddchild(virtualnode **parent, virtualnode **child)
 {
+    pthread_mutex_lock(&virtualtree_mutex);
     if ((*parent)->down) {
         (*child)->next = (*parent)->down;
         (*child)->next->prev = *child;
@@ -240,6 +247,7 @@ void virtualnodeaddchild(virtualnode **parent, virtualnode **child)
 
     (*parent)->down = *child;
     (*child)->up = *parent;
+    pthread_mutex_unlock(&virtualtree_mutex);
 } // virtualnodeaddchild
 
 void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode) // frees oldnode
@@ -247,6 +255,7 @@ void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode) // frees
     virtualnode *new = *newnode;
     virtualnode *old = *oldnode;
 
+    pthread_mutex_lock(&virtualtree_mutex);
     if (old->up) {
         new->up = old->up;
         old->up->down = new;
@@ -268,6 +277,7 @@ void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode) // frees
     }
 
     freevirtualnode(old);
+    pthread_mutex_unlock(&virtualtree_mutex);
 } // overwritevirtualnode
 
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node)
@@ -588,11 +598,17 @@ fileinfo *loadremoteimage(connection plug, char *localpath, char *remotepath)
     return result;
 } // loadremoteimage
 
+// IMPORTANT TODO: Because of time pressure I was forced to remove the CMD and
+// HQ seperation code. This means they now both operate on the same virtualtree,
+// devicelist and graftlist. Some mutexes are used to synchronize between the HQ and
+// CMD thread, but currenly they are not complete. This is bad and has to be fixed
+// as soon as possible.
+
 void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
 {
     graft *g;
     graftee gee;
-    virtualnode *v;
+    virtualnode *v, *parent;
     fileinfo *child, *cc; // cc stands for continuation candidate
     virtualfilekey *vkey, *newvkey;
     fileinfokey *fkey;
@@ -602,7 +618,7 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
         return;
 
     // look up each scan or history child in virtualtree index
-    // vkey can be resused as long as it is not used with hashtableinsert
+    // vkey can be resused as long as it is not used with hashtablei
     vkey = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
     vkey->parent = virtualscanroot;
 
@@ -614,6 +630,7 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
             // add new virtual file
             v = (virtualnode*) malloc(sizeof(virtualnode));
             initvirtualfile(v);
+            pthread_mutex_lock(&virtualtree_mutex);
             if (virtualscanroot->down) {
                 v->next = virtualscanroot->down;
                 virtualscanroot->down->prev = v;
@@ -621,11 +638,14 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
             v->up = virtualscanroot;
             virtualscanroot->down = v;
             v->name = vkey->name;
-            v->numchildren = child->numchildren;
-            v->subtreesize = child->subtreesize;
             virtualscanroot->numchildren++;
-            virtualscanroot->subtreesize += child->subtreesize;
+            parent = virtualscanroot;
+            while (parent != NULL) {
+                parent->subtreesize++;
+                parent = parent->up;
+            }
             v->filetype = child->filetype;
+            pthread_mutex_unlock(&virtualtree_mutex);
             // copy the key and store in virtual tree index
             newvkey = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
             newvkey->parent = vkey->parent;
@@ -636,8 +656,11 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
         gee = (graftee) malloc(sizeof(struct graftee_struct));
         gee->source = g;
         gee->realfile = child;
+        pthread_mutex_lock(&virtualtree_mutex);
         gee->next = v->grafteelist;
         v->grafteelist = gee;
+        pthread_mutex_unlock(&virtualtree_mutex);
+
         // look for continuation candidates and keep the fileinfo index up to date
         fkey = (fileinfokey*) malloc(sizeof(struct fileinfokey_struct));
         fkey->inode = child->inode;
@@ -657,12 +680,15 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
     free(vkey);
 } // virtualtree_insert
 
-int32 virtualnodechildsubtreesizesum(virtualnode *firstchild)
+void resetnodevisibiltyandselection(virtualnode *vnode)
 {
-    if (!firstchild)
-        return 0;
-    return firstchild->subtreesize + virtualnodechildsubtreesizesum(firstchild->next);
-} // virtualnodechildsubtreesizesum
+    pthread_mutex_lock(&virtualtree_mutex);
+    vnode->firstvisiblenum = -1;
+    vnode->firstvisible = NULL;
+    vnode->selectionnum = -1;
+    vnode->selection = NULL;
+    pthread_mutex_unlock(&virtualtree_mutex);
+} // resetnodevisibiltyandselection
 
 void hqmain(void)
 {
@@ -823,14 +849,11 @@ void hqmain(void)
                             return;
               }
 
+              resetnodevisibiltyandselection(virtualscanrootnode);
+
               virtualtreeinsert(history, virtualscanrootnode);
               virtualtreeinsert(scan, virtualscanrootnode);
 
-              // fix the subtreesize of the root node
-              virtualscanrootnode->subtreesize =
-              virtualnodechildsubtreesizesum(virtualscanrootnode->down);
-
-              // << fix the semaphore thing
               setstatus(&d, status_connected);
               sendmessage(hq_plug, cmd_int, msgtype_scandone, "");
 

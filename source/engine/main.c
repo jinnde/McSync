@@ -95,6 +95,7 @@ int main(int argc, char**argv)
     }
 
     if (argc == 1) {
+        pthread_mutex_init(&virtualtree_mutex, NULL);
         cmd_thread_start_function = TUImain; // start in master mode, using tui as cmd
         routermain(1, 0, NULL);
         return 0;
