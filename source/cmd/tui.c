@@ -291,14 +291,28 @@ void refreshdevices(void)
     } // if a device is selected
 } // refreshdevices
 
+void sprintfpermissions(char *str, int32 permissions) // size of str needs to be at least 9 bytes
+{
+    sprintf(str, (permissions & S_IRUSR) ? "r" : "-");
+    sprintf(str++, (permissions & S_IWUSR) ? "w" : "-");
+    sprintf(str++, (permissions & S_IXUSR) ? "x" : "-");
+    sprintf(str++, (permissions & S_IRGRP) ? "r" : "-");
+    sprintf(str++, (permissions & S_IWGRP) ? "w" : "-");
+    sprintf(str++, (permissions & S_IXGRP) ? "x" : "-");
+    sprintf(str++, (permissions & S_IROTH) ? "r" : "-");
+    sprintf(str++, (permissions & S_IWOTH) ? "w" : "-");
+    sprintf(str++, (permissions & S_IXOTH) ? "x" : "-");
+} // printpermissions
 
 void showcontents(virtualnode *dir)
 // show filename array according to gi_bstyle on lines gi_btop...gi_bbottom
 {
     virtualnode *vn;
-    int i;
-    int justprintedselection;
-    int height = gi_bbottom - gi_btop + 1 - 1; // minus one for the blue line
+    int32 i;
+    int32 justprintedselection;
+    int32 height = gi_bbottom - gi_btop + 1 - 1; // minus one for the blue line
+    graftee gee;
+    char *modificationtime;
 
     pthread_mutex_lock(&virtualtree_mutex);
 
@@ -394,11 +408,52 @@ void showcontents(virtualnode *dir)
                 clearrestofline();
             }
             color_set(WHITEonBLACK, NULL);
-            printw("Here's a ton of information on %s.", dir->selection->name);
+            if (dir->selection->numchildren > 0) {
+                printw("Contains %d children (%d items)",
+                    dir->selection->numchildren,
+                    dir->selection->subtreesize - 1);
+            } else {
+                printw("Contains no children");
+            }
             clearrestofline();
-            printw("For example, it contains %d items (%d children)",
-            dir->selection->subtreesize - 1, dir->selection->numchildren);
-            clearrestofline();
+            if (dir->selection->grafteelist)
+                clearrestofline();
+            for (gee = dir->selection->grafteelist; gee != NULL; gee = gee->next) {
+                fileinfo *file;
+                device *d;
+                continuation cc;
+                char *tmp, permissionbuf[9], *dname;
+
+                file = gee->realfile;
+                // don't show scan and history as separate if they are continuations
+                if (file->isalreadyshown)
+                    continue;
+                for (cc = file->continuation_candidates; cc != NULL; cc = cc->next)
+                    cc->candidate->isalreadyshown = 1;
+                // format the modification time to a nice string
+                modificationtime = ctime((const time_t *)&file->modificationtime);
+                // a newline is appended by ctime and is not needed
+                tmp = strrchr(modificationtime, '\n');
+                *tmp  = '\0';
+                sprintfpermissions(permissionbuf, file->permissions);
+                d = getdevicebyid(file->deviceid);
+                dname = strdupcat(d->nickname, ":", NULL);
+                printw("%-16s%-32s%-16s%-16d%-16s",
+                    dname,
+                    strrchr(file->filename, '/') + 1,
+                    permissionbuf,
+                    file->filelength,
+                    modificationtime);
+                if (!file->continuation_candidates) {
+                    if (file->trackingnumber < 0)
+                        printw("\t(scanned/new)");
+                    else
+                        printw("\t(tracked/deleted)");
+                } else
+                    printw("\t (tracked/continuation)");
+                clearrestofline();
+                free(dname);
+            }
         }
     }
     pthread_mutex_unlock(&virtualtree_mutex);

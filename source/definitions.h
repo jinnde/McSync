@@ -87,6 +87,7 @@ pthread_attr_t pthread_attributes;
 // ^ used to initialize the agent threads (including forwarder, shipper, receiver)
 
 pthread_mutex_t virtualtree_mutex;
+
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of data types /////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
@@ -208,6 +209,10 @@ typedef struct fileinfo_struct { // everything to know about a file on disk
     char    *deviceid;
     // the following is used for matching of scans an histories
     continuation continuation_candidates;
+    // interface stuff
+    int32   isalreadyshown; // if there is a continuation candidate we only
+                            // show the fileinfo once, as it was a "changed"
+                            // file and not a history and a continuation
 } fileinfo;
 
 // devices
@@ -576,6 +581,9 @@ void writeimage(fileinfo* image, char* filename, scan_progress progress);
 fileinfo* readimage(char* filename, scan_progress progress);
 void freefileinfo(fileinfo* skunk);
 void resetscanprogress(scan_progress *progress); // does not alter progress->updateinterval
+
+// related to devices
+device* getdevicebyid(char *deviceid);
 
 // tui specific
 void raw_io(void);

@@ -145,6 +145,8 @@ void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
                     v->up->down = v->next;
                 if (v->next != NULL)
                     v->next->prev = v->prev;
+                parent->numchildren--;
+                parent->subtreesize -= v->subtreesize;
                 free(v->name);
                 free(v);
                 v = parent;
@@ -618,7 +620,7 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
         return;
 
     // look up each scan or history child in virtualtree index
-    // vkey can be resused as long as it is not used with hashtablei
+    // vkey can be resused as long as it is not used with hashtableinsert
     vkey = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
     vkey->parent = virtualscanroot;
 
@@ -626,7 +628,6 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
         vkey->name = strrchr(child->filename, '/') + 1;
         v = hashtablesearch(virtualtreeindex, vkey);
         if (!v) {
-            // printerr("Could not find %s, adding to virtual tree\n", child->filename);
             // add new virtual file
             v = (virtualnode*) malloc(sizeof(virtualnode));
             initvirtualfile(v);
@@ -667,7 +668,6 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
         fkey->deviceid = child->deviceid;
         cc = hashtablesearch(fileinfoindex, fkey);
         if (cc != NULL) {
-            // printerr("Found continuation candidate for %s\n", child->filename);
             c = (continuation) malloc(sizeof(struct continuation_struct));
             c->candidate = cc;
             c->next = child->continuation_candidates;
@@ -851,6 +851,7 @@ void hqmain(void)
 
               resetnodevisibiltyandselection(virtualscanrootnode);
 
+              // TODO: Find the relevant node in the history, either here or on workers
               virtualtreeinsert(history, virtualscanrootnode);
               virtualtreeinsert(scan, virtualscanrootnode);
 

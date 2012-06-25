@@ -258,8 +258,6 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
     image->hist_perms = NULL;
     image->hist_loc = NULL;
 
-    image->continuation_candidates = NULL;
-
     // if it is a directory, dig out the filenames and recurse
     if (image->filetype == 1) {
         DIR* thisdir;
@@ -474,6 +472,10 @@ void writesubimage(FILE *output, fileinfo* subimage, scan_progress progress)
     put32(output, subimage->devicetime);
     putstring(output, subimage->deviceid);
 
+    // IMPORTANT! The following two fields are not stored and reset everytime an image is read!
+    // subimage->continuation_candidates
+    // subimage->isalreadyshown
+
     {
         fileinfo *child;
         for (child = subimage->down; child != NULL; child = child->next) {
@@ -562,6 +564,10 @@ fileinfo *readsubimage(FILE *input, scan_progress progress)
     subimage->trackingnumber = get64(input);
     subimage->devicetime = get32(input);
     subimage->deviceid = getstring(input, 0);
+
+    // important these two are not stored and reset everytime an image is read!
+    subimage->continuation_candidates = NULL;
+    subimage->isalreadyshown = 0;
 
     subimage->subtreesize = 1;
     subimage->subtreebytes = subimage->filelength;
