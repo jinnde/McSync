@@ -126,6 +126,7 @@ int gi_msx, gi_msy; // mouse location
 int gi_mode = 1; // 1 = mousing devices, 2 = mousing files,
 // 3 = entering input (in mode 1)
 // 4 means deleting something (in mode 1)
+// 5 means editing a virtual node
 int gi_savemode; // push previous mode while mode is 3
 int gi_cols; // for file listing
 int gi_selecteddevice = 0; // 0=none selected, 1-n indicates device 1-n
@@ -304,6 +305,53 @@ void sprintfpermissions(char *str, int32 permissions) // size of str needs to be
     sprintf(str++, (permissions & S_IXOTH) ? "x" : "-");
 } // printpermissions
 
+void showgraftees(virtualnode *dir)
+{
+    fileinfo *file;
+    device *d;
+    continuation cc;
+    graftee gee;
+    char *tmp, permissionbuf[9], *dname, *modificationtime;
+
+    if (dir->selection->grafteelist)
+        clearrestofline();
+    for (gee = dir->selection->grafteelist; gee != NULL; gee = gee->next) {
+        file = gee->realfile;
+        // don't show scan and history as separate if they are continuations
+        if (file->isalreadyshown)
+            continue;
+        for (cc = file->continuation_candidates; cc != NULL; cc = cc->next)
+            cc->candidate->isalreadyshown = 1;
+        // format the modification time to a nice string
+        modificationtime = ctime((const time_t *)&file->modificationtime);
+        // a newline is appended by ctime and is not needed
+        tmp = strrchr(modificationtime, '\n');
+        *tmp  = '\0';
+        sprintfpermissions(permissionbuf, file->permissions);
+        d = getdevicebyid(file->deviceid);
+        dname = strdupcat(d->nickname, ":", NULL);
+        if (gee == dir->selection->selectedgraftee)
+            color_set(YELLOWonBLACK, NULL);
+        else
+            color_set(WHITEonBLACK, NULL);
+        printw("%-16s%-32s%-16s%-16d%-16s",
+            dname,
+            strrchr(file->filename, '/') + 1,
+            permissionbuf,
+            file->filelength,
+            modificationtime);
+        if (!file->continuation_candidates) {
+            if (file->trackingnumber < 0)
+                printw("\t(scanned/new)");
+            else
+                printw("\t(tracked/deleted)");
+        } else
+            printw("\t(tracked/continuation)");
+        clearrestofline();
+        free(dname);
+    }
+} // showgraftees
+
 void showcontents(virtualnode *dir)
 // show filename array according to gi_bstyle on lines gi_btop...gi_bbottom
 {
@@ -311,8 +359,6 @@ void showcontents(virtualnode *dir)
     int32 i;
     int32 justprintedselection;
     int32 height = gi_bbottom - gi_btop + 1 - 1; // minus one for the blue line
-    graftee gee;
-    char *modificationtime;
 
     pthread_mutex_lock(&virtualtree_mutex);
 
@@ -416,44 +462,7 @@ void showcontents(virtualnode *dir)
                 printw("Contains no children");
             }
             clearrestofline();
-            if (dir->selection->grafteelist)
-                clearrestofline();
-            for (gee = dir->selection->grafteelist; gee != NULL; gee = gee->next) {
-                fileinfo *file;
-                device *d;
-                continuation cc;
-                char *tmp, permissionbuf[9], *dname;
-
-                file = gee->realfile;
-                // don't show scan and history as separate if they are continuations
-                if (file->isalreadyshown)
-                    continue;
-                for (cc = file->continuation_candidates; cc != NULL; cc = cc->next)
-                    cc->candidate->isalreadyshown = 1;
-                // format the modification time to a nice string
-                modificationtime = ctime((const time_t *)&file->modificationtime);
-                // a newline is appended by ctime and is not needed
-                tmp = strrchr(modificationtime, '\n');
-                *tmp  = '\0';
-                sprintfpermissions(permissionbuf, file->permissions);
-                d = getdevicebyid(file->deviceid);
-                dname = strdupcat(d->nickname, ":", NULL);
-                printw("%-16s%-32s%-16s%-16d%-16s",
-                    dname,
-                    strrchr(file->filename, '/') + 1,
-                    permissionbuf,
-                    file->filelength,
-                    modificationtime);
-                if (!file->continuation_candidates) {
-                    if (file->trackingnumber < 0)
-                        printw("\t(scanned/new)");
-                    else
-                        printw("\t(tracked/deleted)");
-                } else
-                    printw("\t (tracked/continuation)");
-                clearrestofline();
-                free(dname);
-            }
+            showgraftees(dir);
         }
     }
     pthread_mutex_unlock(&virtualtree_mutex);
@@ -544,6 +553,8 @@ char *browserhelparray[][2] = {
     {"^B", "Back 1 Entry"},
     {"^N", "Next Line of Entries"},
     {"^P", "Previous Line of Entries"},
+    {"^D", "Next Graftee"},
+    // {"^U", "Previous Graftee"}, // for this we need to make graftees doubly linked..
     {"/", "Enter Subdirectory"},
     {"Ret", "Leave Subdirectory"},
     {"+", "More Columns"},
@@ -551,6 +562,7 @@ char *browserhelparray[][2] = {
     {"Space", "Toggle Detail View"},
     {"V", "View Devices"},
     {"S", "Start Scans"},
+    {"Y", "Start Sync"},
     {"VQ", "Quit"},
     {NULL, NULL}};
 
@@ -1192,6 +1204,31 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         refreshscreen();
                     }
                     break;
+            case 4: // ctrl-d
+            {
+                virtualnode *selection = browsingdirectory->selection;
+                graftee gee;
+
+                if (selection) {
+                    if (selection->selectedgraftee) {
+                        for (gee = selection->selectedgraftee->next; gee != NULL; gee = gee->next)
+                            if (!gee->realfile->isalreadyshown)
+                                break;
+                        selection->selectedgraftee = gee;
+                    } else {
+                        // there is currently no selected graftee or we already
+                        // skimmed through the whole list.
+                        selection->selectedgraftee = selection->grafteelist;
+                    }
+                    refreshscreen();
+                }
+             }
+            break;
+            // case 21: // ctrl-u, for this to work graftee has to be a doubly linked list... (no time)
+            // {
+            // }
+            break;
+            break;
             case '=':
             case '+': // more columns
                     if (browsingdirectory != NULL
@@ -1236,7 +1273,6 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     break;
             case 's': // start scans
                     if (browsingdirectory->selection != NULL) {
-                        // TODO: SEMAPHORE
                         sendscanvirtualdirrequest(&virtualroot, browsingdirectory->selection);
                     }
                     break;

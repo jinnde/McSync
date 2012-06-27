@@ -302,6 +302,7 @@ typedef struct virtualnode_struct {
     int32   selectionnum; // which child is selected (-1 = pls recompute)
     struct virtualnode_struct *selection; // which child is selected
     int32   colwidth; // width of this column (for parent dir listing)
+    graftee selectedgraftee;
 } virtualnode;
 
 virtualnode virtualroot; // has no siblings and no name

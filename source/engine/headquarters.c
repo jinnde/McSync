@@ -39,6 +39,7 @@ void initvirtualfile(virtualnode *vnode)
     vnode->firstvisible = NULL;
     vnode->selectionnum = -1; // -1 mevnode needs recompute
     vnode->selection = NULL;
+    vnode->selectedgraftee = NULL;
 } // initvirtualfile
 
 virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir string must be writable
@@ -604,7 +605,7 @@ fileinfo *loadremoteimage(connection plug, char *localpath, char *remotepath)
 // HQ seperation code. This means they now both operate on the same virtualtree,
 // devicelist and graftlist. Some mutexes are used to synchronize between the HQ and
 // CMD thread, but currenly they are not complete. This is bad and has to be fixed
-// as soon as possible.
+// as soon as possible!
 
 void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
 {
@@ -653,6 +654,7 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
             newvkey->name = vkey->name;
             hashtableinsert(virtualtreeindex, newvkey, v);
         }
+
         // add the child to the virtual file graftee list
         gee = (graftee) malloc(sizeof(struct graftee_struct));
         gee->source = g;
