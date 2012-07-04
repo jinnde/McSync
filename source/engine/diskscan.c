@@ -117,7 +117,7 @@ void freefileinfo(fileinfo* skunk)
     freehistory(skunk->hist_name);
     freehistory(skunk->hist_loc);
 
-    // TODO: FREE CANDIDATES
+    // TODO: FREE CANDIDATES!!!!!!
     free(skunk);
 
 } // freefileinfo

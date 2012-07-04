@@ -601,21 +601,32 @@ fileinfo *loadremoteimage(connection plug, char *localpath, char *remotepath)
     return result;
 } // loadremoteimage
 
+void addcontinuation(fileinfo *file, fileinfo *cont, continuation_t ct)
+{
+    continuation c;
+
+    c = (continuation) malloc(sizeof(struct continuation_struct));
+    c->candidate = cont;
+    c->next = file->continuation_candidates;
+    file->continuation_candidates = c;
+    c->continuation_type = ct;
+} // addcontinuation
+
 // IMPORTANT TODO: Because of time pressure I was forced to remove the CMD and
 // HQ seperation code. This means they now both operate on the same virtualtree,
 // devicelist and graftlist. Some mutexes are used to synchronize between the HQ and
 // CMD thread, but currenly they are not complete. This is bad and has to be fixed
 // as soon as possible!
 
+// IMPORTANT: Assumes that histories are inserted before scans of the same device!!
 void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
 {
     graft *g;
     graftee gee;
     virtualnode *v, *parent;
-    fileinfo *child, *cc; // cc stands for continuation candidate
+    fileinfo *child, *ccinode, *ccname; // cc stands for continuation candidate
     virtualfilekey *vkey, *newvkey;
     fileinfokey *fkey;
-    continuation c;
 
     if (!files || !virtualscanroot)
         return;
@@ -654,29 +665,49 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
             newvkey->name = vkey->name;
             hashtableinsert(virtualtreeindex, newvkey, v);
         }
+        if (child->trackingnumber < 0) { // are we a scan?
+            // look for source of contiunation
+            ccname = NULL;
 
+            // find by name
+            for (gee = v->grafteelist; gee != NULL; gee = gee->next) {
+                if (!strcmp(gee->realfile->deviceid, child->deviceid) &&
+                    gee->realfile->trackingnumber > 0) {
+                    ccname = gee->realfile;
+                    break;
+                }
+            }
+            // find by inode
+            fkey = (fileinfokey*) malloc(sizeof(struct fileinfokey_struct));
+            fkey->inode = child->inode;
+            fkey->deviceid = child->deviceid;
+            ccinode = hashtablesearch(fileinfoindex, fkey);
+            free(fkey);
+            // add as continuation candidates of the found histories
+            if (ccinode || ccname) {
+                if (ccinode == ccname)
+                    addcontinuation(ccinode, child, contiunation_fullmatch);
+                else {
+                    if (ccinode)
+                        addcontinuation(ccinode, child, continuation_byinode);
+                    if (ccname)
+                        addcontinuation(ccname, child, continuation_byname);
+                }
+            }
+        } else { // the child is a history / tracked file
+            fkey = (fileinfokey*) malloc(sizeof(struct fileinfokey_struct));
+            fkey->inode = child->inode;
+            fkey->deviceid = child->deviceid;
+            hashtableinsert(fileinfoindex, fkey, child);
+        }
         // add the child to the virtual file graftee list
         gee = (graftee) malloc(sizeof(struct graftee_struct));
         gee->source = g;
         gee->realfile = child;
         pthread_mutex_lock(&virtualtree_mutex);
-        gee->next = v->grafteelist;
-        v->grafteelist = gee;
+            gee->next = v->grafteelist;
+            v->grafteelist = gee;
         pthread_mutex_unlock(&virtualtree_mutex);
-
-        // look for continuation candidates and keep the fileinfo index up to date
-        fkey = (fileinfokey*) malloc(sizeof(struct fileinfokey_struct));
-        fkey->inode = child->inode;
-        fkey->deviceid = child->deviceid;
-        cc = hashtablesearch(fileinfoindex, fkey);
-        if (cc != NULL) {
-            c = (continuation) malloc(sizeof(struct continuation_struct));
-            c->candidate = cc;
-            c->next = child->continuation_candidates;
-            child->continuation_candidates = c;
-        }
-        hashtableinsert(fileinfoindex, fkey, child);
-
         virtualtreeinsert(child, v);
     }
     free(vkey);

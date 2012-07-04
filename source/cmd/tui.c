@@ -1,5 +1,11 @@
 #include "definitions.h"
 
+char* continuation_type_word[] = {
+    "inode",
+    "name",
+    "all"
+};
+
 char *generatedeviceid() // unique device id generation using /dev/random
 {                        // allocs string, free when done!
     char randombuf[device_id_size];
@@ -305,41 +311,49 @@ void sprintfpermissions(char *str, int32 permissions) // size of str needs to be
     sprintf(str++, (permissions & S_IXOTH) ? "x" : "-");
 } // printpermissions
 
+void showfileinfo(fileinfo* file)
+{
+    char *tmp, permissionbuf[9], *modificationtime;
+
+    modificationtime = ctime((const time_t *)&file->modificationtime);
+    // a newline is appended by ctime and is not needed
+    tmp = strrchr(modificationtime, '\n');
+    *tmp  = '\0';
+    sprintfpermissions(permissionbuf, file->permissions);
+    printw("%-32s%-16s%-16d%-16s",
+            strrchr(file->filename, '/') + 1,
+            permissionbuf,
+            file->filelength,
+            modificationtime);
+} // showfileinfo
 void showgraftees(virtualnode *dir)
 {
     fileinfo *file;
     device *d;
     continuation cc;
     graftee gee;
-    char *tmp, permissionbuf[9], *dname, *modificationtime;
+    int32 candidatecount = 0;
+    char *dname;
 
     if (dir->selection->grafteelist)
         clearrestofline();
     for (gee = dir->selection->grafteelist; gee != NULL; gee = gee->next) {
         file = gee->realfile;
         // don't show scan and history as separate if they are continuations
-        if (file->isalreadyshown)
-            continue;
-        for (cc = file->continuation_candidates; cc != NULL; cc = cc->next)
-            cc->candidate->isalreadyshown = 1;
+        // if (file->isalreadyshown)
+        //     continue;
+        // for (cc = file->continuation_candidates; cc != NULL; cc = cc->next)
+        //     cc->candidate->isalreadyshown = 1;
         // format the modification time to a nice string
-        modificationtime = ctime((const time_t *)&file->modificationtime);
-        // a newline is appended by ctime and is not needed
-        tmp = strrchr(modificationtime, '\n');
-        *tmp  = '\0';
-        sprintfpermissions(permissionbuf, file->permissions);
         d = getdevicebyid(file->deviceid);
         dname = strdupcat(d->nickname, ":", NULL);
         if (gee == dir->selection->selectedgraftee)
             color_set(YELLOWonBLACK, NULL);
         else
             color_set(WHITEonBLACK, NULL);
-        printw("%-16s%-32s%-16s%-16d%-16s",
-            dname,
-            strrchr(file->filename, '/') + 1,
-            permissionbuf,
-            file->filelength,
-            modificationtime);
+        printw("%-16s", dname);
+        free(dname);
+        showfileinfo(file);
         if (!file->continuation_candidates) {
             if (file->trackingnumber < 0)
                 printw("\t(scanned/new)");
@@ -348,7 +362,20 @@ void showgraftees(virtualnode *dir)
         } else
             printw("\t(tracked/continuation)");
         clearrestofline();
-        free(dname);
+        if (gee == dir->selection->selectedgraftee) {
+            cc = file->continuation_candidates;
+            //             if (cc && cc->next != NULL) { // more than one candidate...
+            if (cc) { // more than one candidate...
+                for (; cc != NULL; cc = cc->next) {
+                    candidatecount++;
+                    color_set(WHITEonBLACK, NULL);
+                    printw("   Candidate %d: ", candidatecount);
+                    showfileinfo(cc->candidate);
+                    printw("\t(%s)", continuation_type_word[cc->continuation_type]);
+                    clearrestofline();
+                }
+            }
+        }
     }
 } // showgraftees
 
@@ -553,8 +580,10 @@ char *browserhelparray[][2] = {
     {"^B", "Back 1 Entry"},
     {"^N", "Next Line of Entries"},
     {"^P", "Previous Line of Entries"},
-    {"^D", "Next Graftee"},
+    {"^D", "Browse Graftees"},
     // {"^U", "Previous Graftee"}, // for this we need to make graftees doubly linked..
+    {"M", "Mark for continuation"},
+    {"R", "Reset continuation"},
     {"/", "Enter Subdirectory"},
     {"Ret", "Leave Subdirectory"},
     {"+", "More Columns"},
@@ -1271,6 +1300,41 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         beep();
                     }
                     break;
+            case 'm': // set as continuations
+                 if (browsingdirectory->selection != NULL) {
+
+                 } else {
+                    beep();
+                 }
+            break;
+            case 'r': // reset continuations
+            {
+                // graftee gee;
+                // continuation c, skunk;
+
+                // if (browsingdirectory->selection != NULL) {
+                //     gee = browsingdirectory->selection->selectedgraftee;
+                //     if (!gee)
+                //         break;
+                //     pthread_mutex_lock(&virtualtree_mutex);
+                //     c = gee->realfile->continuation_candidates;
+                //     while(c != NULL) {
+                //         c->candidate->isalreadyshown = 0;
+                //         skunk = c;
+                //         c = c->next;
+                //         free(skunk);
+                //     }
+                //     pthread_mutex_unlock(&virtualtree_mutex);
+                // } else {
+                //     beep();
+                // }
+                // get the vtree semaphore
+                // find the selected graftee (of the current browsing directory)
+                // remove from the continuation list
+                // unmark already drawn.
+                // redraw
+            }
+            break;
             case 's': // start scans
                     if (browsingdirectory->selection != NULL) {
                         sendscanvirtualdirrequest(&virtualroot, browsingdirectory->selection);

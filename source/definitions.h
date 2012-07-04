@@ -158,9 +158,17 @@ typedef struct history_struct { // for every tracked file aspect, latest source
     int32 devicetime; // device-specific increasing integer, negated if issame
 } *history;
 
+typedef enum { // if you change this also change continuation_type_word in tui.c
+    continuation_byinode,
+    continuation_byname,
+    contiunation_fullmatch
+} continuation_t;
+
+
 typedef struct continuation_struct {
     struct continuation_struct *next;
     struct fileinfo_struct *candidate;
+    continuation_t continuation_type;
 } *continuation;
 
 typedef struct extendedattributes_struct { // a helper struct for fileinfo
