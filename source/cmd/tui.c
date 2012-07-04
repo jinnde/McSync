@@ -1,9 +1,9 @@
 #include "definitions.h"
 
 char* continuation_type_word[] = {
-    "inode",
-    "name",
-    "all"
+    "by inode",
+    "by name",
+    "full match"
 };
 
 char *generatedeviceid() // unique device id generation using /dev/random
@@ -337,13 +337,20 @@ void showgraftees(virtualnode *dir)
 
     if (dir->selection->grafteelist)
         clearrestofline();
+
+    // don't show scan and history as separate if they are continuations
     for (gee = dir->selection->grafteelist; gee != NULL; gee = gee->next) {
         file = gee->realfile;
-        // don't show scan and history as separate if they are continuations
-        // if (file->isalreadyshown)
-        //     continue;
-        // for (cc = file->continuation_candidates; cc != NULL; cc = cc->next)
-        //     cc->candidate->isalreadyshown = 1;
+        if (file->trackingnumber > 0)
+            for (cc = file->continuation_candidates; cc != NULL; cc = cc->next)
+                if (cc->continuation_type == contiunation_fullmatch)
+                    cc->candidate->show = 0;
+    }
+
+    for (gee = dir->selection->grafteelist; gee != NULL; gee = gee->next) {
+        file = gee->realfile;
+        if (!file->show)
+            continue;
         // format the modification time to a nice string
         d = getdevicebyid(file->deviceid);
         dname = strdupcat(d->nickname, ":", NULL);
@@ -365,7 +372,7 @@ void showgraftees(virtualnode *dir)
         if (gee == dir->selection->selectedgraftee) {
             cc = file->continuation_candidates;
             //             if (cc && cc->next != NULL) { // more than one candidate...
-            if (cc) { // more than one candidate...
+            if (cc) {
                 for (; cc != NULL; cc = cc->next) {
                     candidatecount++;
                     color_set(WHITEonBLACK, NULL);
@@ -1241,7 +1248,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                 if (selection) {
                     if (selection->selectedgraftee) {
                         for (gee = selection->selectedgraftee->next; gee != NULL; gee = gee->next)
-                            if (!gee->realfile->isalreadyshown)
+                            if (gee->realfile->show)
                                 break;
                         selection->selectedgraftee = gee;
                     } else {

@@ -164,7 +164,6 @@ typedef enum { // if you change this also change continuation_type_word in tui.c
     contiunation_fullmatch
 } continuation_t;
 
-
 typedef struct continuation_struct {
     struct continuation_struct *next;
     struct fileinfo_struct *candidate;
@@ -216,11 +215,12 @@ typedef struct fileinfo_struct { // everything to know about a file on disk
     int32   devicetime; // this allows all the aspect histories to skip this entry
     char    *deviceid;
     // the following is used for matching of scans an histories
-    continuation continuation_candidates;
+    continuation continuation_candidates; // if it's a tracked file -> the corresponding
+                                          // scans
     // interface stuff
-    int32   isalreadyshown; // if there is a continuation candidate we only
-                            // show the fileinfo once, as it was a "changed"
-                            // file and not a history and a continuation
+    int32   show; // if there is a continuation candidate we only
+                  // show the fileinfo once, as it was a "changed"
+                  // file and not a history and a continuation
 } fileinfo;
 
 // devices

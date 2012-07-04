@@ -565,9 +565,9 @@ fileinfo *readsubimage(FILE *input, scan_progress progress)
     subimage->devicetime = get32(input);
     subimage->deviceid = getstring(input, 0);
 
-    // important these two are not stored and reset everytime an image is read!
+    // important these are not stored and reset everytime an image is read!
     subimage->continuation_candidates = NULL;
-    subimage->isalreadyshown = 0;
+    subimage->show = 1;
 
     subimage->subtreesize = 1;
     subimage->subtreebytes = subimage->filelength;
