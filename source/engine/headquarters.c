@@ -478,7 +478,7 @@ void transferfile(connection plug, char *localpath, char *remotepath, int32 dire
     } else {
         remotepath = strdupcat(plug->session.uname, "@", plug->session.mname, ":", remotepath, NULL);
         if (USE_RSYNC) {
-            sprintf(buf, "/usr/bin/rsync -z -e ssh -o 'ControlPath %s' %s %s 2>/dev/null",
+            sprintf(buf, "/usr/bin/rsync -c -z -e ssh -o 'ControlPath %s' %s %s 2>/dev/null",
                     plug->session.path,
                     source,
                     destination);
