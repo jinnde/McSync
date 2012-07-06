@@ -468,25 +468,25 @@ char *getdevicefolderpathonhq(char *deviceid) // allocates string, free when don
 
 void transferfile(connection plug, char *localpath, char *remotepath, int32 direction)
 { // direction: 0 -> download (remote to local), 1 -> upload (local to remote)
-    char *source, *destination, buf[512];
+    char **source, **destination, buf[512];
 
-    source = (direction == 0) ? remotepath : localpath;
-    destination = (direction == 0) ? localpath : remotepath;
+    source = (direction == 0) ? &remotepath : &localpath;
+    destination = (direction == 0) ? &localpath : &remotepath;
 
     if (plug->session.path == NULL) { // a local connection, no ssh session
-        sprintf(buf, "/bin/cp %s %s 2> /dev/null", source, destination);
+        sprintf(buf, "/bin/cp %s %s 2> /dev/null", *source, *destination);
     } else {
         remotepath = strdupcat(plug->session.uname, "@", plug->session.mname, ":", remotepath, NULL);
         if (USE_RSYNC) {
-            sprintf(buf, "/usr/bin/rsync -c -z -e ssh -o 'ControlPath %s' %s %s 2>/dev/null",
+            sprintf(buf, "/usr/bin/rsync -c -z -e \"ssh -o \'ControlPath=%s\'\" %s %s 2>/dev/null",
                     plug->session.path,
-                    source,
-                    destination);
+                    *source,
+                    *destination);
         } else {
-            sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath %s' %s %s 2>/dev/null",
+            sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath=%s' %s %s 2>/dev/null",
                     plug->session.path,
-                    source,
-                    destination);
+                    *source,
+                    *destination);
         }
         free(remotepath);
     }
