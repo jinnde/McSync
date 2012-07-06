@@ -14,3 +14,4 @@ The following are known bugs which I have not had the time to track down properl
   currently scanned folder in all cases which leads to shifted inserts.
 
   -> We need to think about how to store, load and transfer history to and from hq and workers.
+  -> currently every graft leads to a scan request which also transferrs the history...

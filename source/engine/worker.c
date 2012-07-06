@@ -535,6 +535,9 @@ void workermain(connection worker_plug)
                         freestringlist(prunepoints);
                     }
             break;
+            case msgtype_scanloaded: // msg_data is the path of the scan to delete
+                 (void)remove(msg_data);
+            break;
             case msgtype_exit:
                 printerr("Worker got exit message... good bye!\n");
                 dowork = 0;

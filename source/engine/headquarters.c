@@ -361,6 +361,27 @@ virtualnode *findnode(virtualnode *root, char *path) // threads '/' as delimiter
     return node;
 } // findnode
 
+fileinfo *findfileinfo(fileinfo *root, char *path)
+{
+    fileinfo *node = root;
+    char delimiter[] = "/";
+    char *rest = NULL;
+    char *pathdup = strdup(path);
+    char *name = strtok_r(pathdup, delimiter, &rest);
+
+    // node is only null if we could not find a node with name
+    while (name != NULL && node != NULL) {
+        for (node = node->down; node != NULL; node = node->next) {
+            if (!strcmp(strrchr(node->filename, '/') + 1, name))
+                break;
+        }
+        // get next node name
+        name = strtok_r(NULL, delimiter, &rest);
+    }
+    free(pathdup);
+    return node;
+} // findfileinfo
+
 int validfullpath(char *path) // returns 1 if path is a valid full virtual path
 // checks file name length and tree depth. Only accepts paths which start at
 // root '/' and do not end in '/'. File names can't start with a space.
@@ -477,10 +498,17 @@ void transferfile(connection plug, char *localpath, char *remotepath, int32 dire
         sprintf(buf, "/bin/cp %s %s 2> /dev/null", source, destination);
     } else {
         remotepath = strdupcat(plug->session.uname, "@", plug->session.mname, ":", remotepath, NULL);
-        sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath %s' %s %s 2>/dev/null",
-                plug->session.path,
-                source,
-                destination);
+        if (USE_RSYNC) {
+            sprintf(buf, "/usr/bin/rsync -z -e ssh -o 'ControlPath %s' %s %s 2>/dev/null",
+                    plug->session.path,
+                    source,
+                    destination);
+        } else {
+            sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath %s' %s %s 2>/dev/null",
+                    plug->session.path,
+                    source,
+                    destination);
+        }
         free(remotepath);
     }
     system(buf);
@@ -614,9 +642,9 @@ void addcontinuation(fileinfo *file, fileinfo *cont, continuation_t ct)
 
 // IMPORTANT TODO: Because of time pressure I was forced to remove the CMD and
 // HQ seperation code. This means they now both operate on the same virtualtree,
-// devicelist and graftlist. Some mutexes are used to synchronize between the HQ and
-// CMD thread, but currenly they are not complete. This is bad and has to be fixed
-// as soon as possible!
+// devicelist and graftlist. Mutexes are used to synchronize between the HQ and
+// CMD thread, but currenly they might not be complete. This is bad and has to
+// be fixed as soon as possible!
 
 // IMPORTANT: Assumes that histories are inserted before scans of the same device!!
 void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
@@ -668,7 +696,6 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot)
         if (child->trackingnumber < 0) { // are we a scan?
             // look for source of contiunation
             ccname = NULL;
-
             // find by name
             for (gee = v->grafteelist; gee != NULL; gee = gee->next) {
                 if (!strcmp(gee->realfile->deviceid, child->deviceid) &&
@@ -867,11 +894,12 @@ void hqmain(void)
               receivescandonemessage(msg_data, &virtualscanrootpath, &remotescanpath, &remotehistorypath);
 
               localdevicefolderpath = getdevicefolderpathonhq(d->deviceid);
-              localscanpath = strdupcat(localdevicefolderpath, strrchr(remotescanpath, '/'), NULL);
+              localscanpath = strdupcat(localdevicefolderpath, "/", scan_files_prefix, NULL);
               localhistorypath = strdupcat(localdevicefolderpath, "/", history_file_name, NULL);
 
               setstatus(&d, status_loading);
               scan = loadremoteimage(plug, localscanpath, remotescanpath);
+              sendmessage(hq_plug, msg_src, msgtype_scanloaded, remotescanpath);
               history = loadremoteimage(plug, localhistorypath, remotehistorypath);
 
               virtualscanrootnode = findnode(&virtualroot, virtualscanrootpath);

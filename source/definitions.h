@@ -39,6 +39,8 @@ extern FILE* ourerr; // we use this instead of stderr
 #define READ_END 0  // for pipes
 #define WRITE_END 1
 
+#define USE_RSYNC 1
+
 #define perm_mask (S_ISUID | S_ISGID | S_ISVTX | S_IRWXU | S_IRWXG | S_IRWXO)
 
 typedef int int32;
@@ -419,6 +421,8 @@ typedef struct scan_progress_struct {
 #define msgtype_goodbye             17
 // ^ is sent back from a worker who has received a msgtype_exit
 #define msgtype_scanupdate          18
+#define msgtype_scanloaded          19
+// ^ hq tell the worker it can delete the local scan file
 
 // if you change these^, change msgtypelist in communication.c
 
