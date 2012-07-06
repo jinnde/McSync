@@ -247,7 +247,7 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
     fileinfo *scan;
     int32 devicetime;
     scan_progress progress;
-    char *scanfilepath, buf[16];
+    char *scanfilepath, buf[32];
 
     sendint32(worker_plug, hq_int, msgtype_scanupdate, status_scanning);
 
@@ -256,7 +256,7 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
     // and its own device time
     if ((devicetime = incrementdevicetime(devicetimefilepath)) < 0)
         return;
-    sprintf(buf, "%d", devicetime);
+    sprintf(buf, "%c%d", scan_files_separator, devicetime);
     scanfilepath = strdupcat(devicefolder, "/", scan_files_prefix, buf, NULL);
     // adjust for local paths
     scanroot = replacetilde(scanroot);
@@ -559,7 +559,11 @@ void workermain(connection worker_plug)
                     }
             break;
             case msgtype_scanloaded: // msg_data is the path of the scan to delete
-                // (void)remove(msg_data);
+                {
+                    char *previousscanpath = getpreviousscanpath(msg_data);
+                    (void)remove(previousscanpath);
+                    free(previousscanpath);
+                }
             break;
             case msgtype_exit:
                 printerr("Worker got exit message... good bye!\n");

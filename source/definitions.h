@@ -62,12 +62,15 @@ typedef unsigned long long int uint64;
 #define device_time_file_path "/data/time"
 #define device_folders_path "/data"
 // ^ these are partial paths which will be completed by the worker using its address,
-// because they should always be relative to the device. Be aware that McSync expects
-// all directories to exists and will not try to create them for you.
+//   because they should always be relative to the device. Be aware that McSync expects
+//   all directories to exist and will not try to create them for you.
 
 // the following relate to files stored in the device folder
 #define scan_files_prefix "scan"
-// ^ naming of the scan files, the scan number will be appended
+#define scan_files_separator '.'
+// ^ naming of the scan files, the scan number will be appended after the
+//   scan files separator char (which can't be 0 or '/' - only change with care!)
+
 #define history_file_name "history"
 // ^ the history file is stored in the device folder
 
@@ -596,8 +599,9 @@ void writeimage(fileinfo* image, char* filename, scan_progress progress);
 fileinfo* readimage(char* filename, scan_progress progress);
 void freefileinfo(fileinfo* skunk);
 void resetscanprogress(scan_progress *progress); // does not alter progress->updateinterval
+char *getpreviousscanpath(char *scanfilepath); // allocates string, free when done
 
-// related to devices
+// device related
 device* getdevicebyid(char *deviceid);
 
 // tui specific

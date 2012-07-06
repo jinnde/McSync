@@ -726,6 +726,26 @@ void resetnodevisibiltyandselection(virtualnode *vnode)
     pthread_mutex_unlock(&virtualtree_mutex);
 } // resetnodevisibiltyandselection
 
+int32 getscannumber(char *scanfilepath)
+{
+    return (int32) atoi(strrchr(scanfilepath, scan_files_separator) + 1);
+} // getscannumber
+
+char *getpreviousscanpath(char *scanfilepath) // allocates string, free when done
+{
+    char buf[32];
+    int32 scannumber = getscannumber(scanfilepath);
+
+    scannumber--;
+    sprintf(buf, "%c%d",scan_files_separator, scannumber);
+    *(strrchr(scanfilepath, '/')) = '\0';
+    return strdupcat(scanfilepath,
+                     "/",
+                     scan_files_prefix,
+                     buf,
+                     NULL);
+} // getpreviousscanpath
+
 void hqmain(void)
 {
     int32 msg_src;
@@ -877,7 +897,7 @@ void hqmain(void)
                 break;
             case msgtype_scandone: // msg_data contains the path of the remote scan file
             {
-                char *remotescanpath, *localscanpath;
+                char *remotescanpath, *localscanpath, *previousscanpath;
                 char *virtualscanrootpath;
                 virtualnode *virtualscanrootnode;
                 fileinfo *scan;
@@ -895,9 +915,13 @@ void hqmain(void)
                 localscanpath = strdupcat(getdevicefolderpathonhq(d->deviceid),
                                           strrchr(remotescanpath, '/'), NULL);
 
+
                 setstatus(&d, status_loading);
                 scan = loadremoteimage(plug, localscanpath, remotescanpath);
                 sendmessage(hq_plug, msg_src, msgtype_scanloaded, remotescanpath);
+
+                previousscanpath = getpreviousscanpath(localscanpath);
+                (void)remove(previousscanpath);
 
                 virtualscanrootnode = findnode(&virtualroot, virtualscanrootpath);
 
@@ -916,6 +940,7 @@ void hqmain(void)
 
                 free(remotescanpath);
                 free(localscanpath);
+                free(previousscanpath);
                 free(virtualscanrootpath);
             }
                 break;
