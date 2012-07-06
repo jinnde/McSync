@@ -11,7 +11,8 @@ static pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 const char* msgtypelist[] = { "error (msgtype==0)",
     "connectdevice","disconnectdevice", "newplugplease", "removeplugplease", "recruitworker",
     "failedrecruit", "info", "workerisup", "connected", "disconnect", "identifydevice", "deviceid",
-    "scanvirtualdir", "scan", "scandone", "exit", "goodbye", "scanupdate" };
+    "scanvirtualdir", "scan", "scandone", "exit", "goodbye", "scanupdate", "scanloaded",
+    "historypath" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
