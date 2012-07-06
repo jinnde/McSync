@@ -247,7 +247,7 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
     fileinfo *scan;
     int32 devicetime;
     scan_progress progress;
-    char *scanfilepath, *historyfilepath, buf[16];
+    char *scanfilepath, buf[16];
 
     sendint32(worker_plug, hq_int, msgtype_scanupdate, status_scanning);
 
@@ -272,12 +272,10 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
     resetscanprogress(&progress);
     sendint32(worker_plug, hq_int, msgtype_scanupdate, status_storing);
     writeimage(scan, scanfilepath, progress);
-    // tell hq we're done and send location of the new scan file and history file
-    historyfilepath = strdupcat(devicefolder, "/", history_file_name, NULL);
-    sendscandonemessage(worker_plug, virtualroot, scanfilepath, historyfilepath);
+    // tell hq we're done and send location of the new scan file
+    sendscandonemessage(worker_plug, virtualroot, scanfilepath);
     freefileinfo(scan);
     free(scanfilepath);
-    free(historyfilepath);
     free(scanroot);
     free(progress);
 } // workerscan
@@ -451,6 +449,16 @@ char *extractdeviceroot(char *address) // allocates string, free when done
     return replacetilde(location);
 } // extractdeviceroot
 
+char *gethistorypath(char *devicefolder)
+{
+   return strdupcat(devicefolder, "/", history_file_name, NULL);
+} // gethistorypath
+
+char *getdevicefolder(char *deviceroot, char *deviceid)
+{
+    return strdupcat(deviceroot, device_folders_path, "/", deviceid, NULL);
+} // getdevicefolder
+
 void workermain(connection worker_plug)
 {
     int32 dowork = 1;
@@ -464,6 +472,7 @@ void workermain(connection worker_plug)
     char *deviceid = NULL;
     char *devicetimefilepath = NULL;
     char *devicefolder = NULL;
+    char *historyfilepath = NULL;
 
     addabortsignallistener(); // as last resort for local worker threads,
                               // will very likely leak memory
@@ -503,6 +512,20 @@ void workermain(connection worker_plug)
                 sendmessage2(worker_plug, hq_int, msgtype_deviceid, buf);
             }
             break;
+            case msgtype_historypath:
+            {
+                if(deviceid == NULL)
+                    break;
+
+                if (devicefolder == NULL)
+                    devicefolder = getdevicefolder(deviceroot, deviceid);
+
+                if (historyfilepath == NULL)
+                    historyfilepath = gethistorypath(devicefolder);
+
+                sendmessage(worker_plug, hq_int, msgtype_historypath, historyfilepath);
+            }
+            break;
             case msgtype_scan: // msg_data is a scan root dir and prune points
                     {
                         char *scanroot, *virtualroot, *currentid;
@@ -526,7 +549,7 @@ void workermain(connection worker_plug)
                         receivescancommand(msg_data, &scanroot, &virtualroot, &prunepoints);
 
                         if (devicefolder == NULL)
-                            devicefolder = strdupcat(deviceroot, device_folders_path, "/", deviceid, NULL);
+                            devicefolder = getdevicefolder(deviceroot, deviceid);
 
                         workerscan(scanroot, devicetimefilepath, devicefolder, deviceid, prunepoints, virtualroot, worker_plug);
                         free(scanroot);
@@ -536,7 +559,7 @@ void workermain(connection worker_plug)
                     }
             break;
             case msgtype_scanloaded: // msg_data is the path of the scan to delete
-                 (void)remove(msg_data);
+                // (void)remove(msg_data);
             break;
             case msgtype_exit:
                 printerr("Worker got exit message... good bye!\n");
@@ -556,6 +579,9 @@ void workermain(connection worker_plug)
     sleep(1);
     if (deviceid != NULL)
         free(deviceid);
+
+    if (historyfilepath != NULL)
+        free(historyfilepath);
 
     free(deviceidfilepath);
     free(devicetimefilepath);

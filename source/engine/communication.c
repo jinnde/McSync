@@ -722,13 +722,12 @@ void sendint32(connection plug, int32 recipient, int32 type, int32 n)
     freebytestream(serialized);
 } // sendint32
 
-void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath, char *historyfilepath)
+void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath)
 {
     bytestream serialized = initbytestream(256);
 
     serializestring(serialized, virtualscanroot);
     serializestring(serialized, scanfilepath);
-    serializestring(serialized, historyfilepath);
     nsendmessage(plug, hq_int, msgtype_scandone, serialized->data, serialized->len);
     freebytestream(serialized);
 } // sendscandonemessage
@@ -798,11 +797,10 @@ void receiveint32(char *source, int32 *n)
     *n = deserializeint32(&source);
 } // receiveint32
 
-void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath, char **historyfilepath)
+void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath)
 {
     *virtualscanroot = deserializestring(&source);
     *scanfilepath = deserializestring(&source);
-    *historyfilepath = deserializestring(&source);
 } // receivescandonemessage
 
 //////////////////////////////////////////////////////////////////////////////////
