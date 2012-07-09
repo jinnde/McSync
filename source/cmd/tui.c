@@ -1254,7 +1254,10 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     } else {
                         // there is currently no selected graftee or we already
                         // skimmed through the whole list.
-                        selection->selectedgraftee = selection->grafteelist;
+                        for (gee = selection->grafteelist; gee != NULL; gee = gee->next)
+                            if (gee->realfile->show)
+                                break;
+                        selection->selectedgraftee = gee;
                     }
                     refreshscreen();
                 }
