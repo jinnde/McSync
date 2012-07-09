@@ -71,8 +71,8 @@ typedef unsigned long long int uint64;
 // ^ naming of the scan files, the scan number will be appended after the
 //   scan files separator char (which can't be 0 or '/' - only change with care!)
 
-#define history_file_name "history"
-// ^ the history file is stored in the device folder
+#define history_files_prefix "history"
+#define history_files_path_separator '.'
 
 #define specs_file_path "./config/specs"
 
@@ -426,8 +426,6 @@ typedef struct scan_progress_struct {
 #define msgtype_scanupdate          18
 #define msgtype_scanloaded          19
 // ^ hq tell the worker it can delete the local scan file
-#define msgtype_historypath         20
-// ^ used for the hq request and the worker response
 
 // if you change these^, change msgtypelist in communication.c
 
@@ -488,8 +486,8 @@ char* secondstring(char* string); // read the second string from a sendmessage2 
 void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node); // to hq
 void sendscancommand(connection plug, int recipient, char *scanroot, char *virtualscanroot, stringlist *prunepoints); // to workers
 void receivescancommand(char *source, char **scanroot, char **virtualscanroot, stringlist **prunepoints);
-void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath); // to hq
-void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath);
+void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath, char *historyfilepath); // to hq
+void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath, char **historyfilepath);
 
 // recruiter communication
 void sendrecruitcommand(connection plug, int32 plugnumber, char *address); // always sent to recruiter

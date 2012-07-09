@@ -240,6 +240,16 @@ int32 incrementdevicetime(char *path) // returns -1 on error
     return devicetime;
 } // incrementdevicetime
 
+char *gethistoryfilename(char *virtualroot) // allocates string, free when done
+{
+    char *name = strdupcat(history_files_prefix, virtualroot, NULL);
+    // replace the '/' with the history file separator to avoid file system problems
+    for (int32 i = strlen(history_files_prefix); i < strlen(name); i++)
+        if (name[i] == '/')
+            name[i] = history_files_path_separator;
+    return name;
+} // gethistoryfilename
+
 void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
                 char *deviceid, stringlist *prunepoints, char *virtualroot,
                 connection worker_plug)
@@ -247,7 +257,7 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
     fileinfo *scan;
     int32 devicetime;
     scan_progress progress;
-    char *scanfilepath, buf[32];
+    char *scanfilepath, *historyfilepath, *historyfilename, buf[32];
 
     sendint32(worker_plug, hq_int, msgtype_scanupdate, status_scanning);
 
@@ -273,9 +283,13 @@ void workerscan(char *scanroot, char *devicetimefilepath, char *devicefolder,
     sendint32(worker_plug, hq_int, msgtype_scanupdate, status_storing);
     writeimage(scan, scanfilepath, progress);
     // tell hq we're done and send location of the new scan file
-    sendscandonemessage(worker_plug, virtualroot, scanfilepath);
+    historyfilename = gethistoryfilename(virtualroot);
+    historyfilepath = strdupcat(devicefolder, "/", historyfilename, NULL);
+    sendscandonemessage(worker_plug, virtualroot, scanfilepath, historyfilepath);
     freefileinfo(scan);
     free(scanfilepath);
+    free(historyfilepath);
+    free(historyfilename);
     free(scanroot);
     free(progress);
 } // workerscan
@@ -449,11 +463,6 @@ char *extractdeviceroot(char *address) // allocates string, free when done
     return replacetilde(location);
 } // extractdeviceroot
 
-char *gethistorypath(char *devicefolder)
-{
-   return strdupcat(devicefolder, "/", history_file_name, NULL);
-} // gethistorypath
-
 char *getdevicefolder(char *deviceroot, char *deviceid)
 {
     return strdupcat(deviceroot, device_folders_path, "/", deviceid, NULL);
@@ -472,7 +481,6 @@ void workermain(connection worker_plug)
     char *deviceid = NULL;
     char *devicetimefilepath = NULL;
     char *devicefolder = NULL;
-    char *historyfilepath = NULL;
 
     addabortsignallistener(); // as last resort for local worker threads,
                               // will very likely leak memory
@@ -510,20 +518,6 @@ void workermain(connection worker_plug)
 
                 snprintf(buf, 90, "%s%c%s", msg_data, 0, deviceid);
                 sendmessage2(worker_plug, hq_int, msgtype_deviceid, buf);
-            }
-            break;
-            case msgtype_historypath:
-            {
-                if(deviceid == NULL)
-                    break;
-
-                if (devicefolder == NULL)
-                    devicefolder = getdevicefolder(deviceroot, deviceid);
-
-                if (historyfilepath == NULL)
-                    historyfilepath = gethistorypath(devicefolder);
-
-                sendmessage(worker_plug, hq_int, msgtype_historypath, historyfilepath);
             }
             break;
             case msgtype_scan: // msg_data is a scan root dir and prune points
@@ -583,9 +577,6 @@ void workermain(connection worker_plug)
     sleep(1);
     if (deviceid != NULL)
         free(deviceid);
-
-    if (historyfilepath != NULL)
-        free(historyfilepath);
 
     free(deviceidfilepath);
     free(devicetimefilepath);

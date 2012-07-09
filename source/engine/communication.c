@@ -11,8 +11,7 @@ static pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 const char* msgtypelist[] = { "error (msgtype==0)",
     "connectdevice","disconnectdevice", "newplugplease", "removeplugplease", "recruitworker",
     "failedrecruit", "info", "workerisup", "connected", "disconnect", "identifydevice", "deviceid",
-    "scanvirtualdir", "scan", "scandone", "exit", "goodbye", "scanupdate", "scanloaded",
-    "historypath" };
+    "scanvirtualdir", "scan", "scandone", "exit", "goodbye", "scanupdate", "scanloaded" };
 
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -723,12 +722,13 @@ void sendint32(connection plug, int32 recipient, int32 type, int32 n)
     freebytestream(serialized);
 } // sendint32
 
-void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath)
+void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath, char *historyfilepath)
 {
     bytestream serialized = initbytestream(256);
 
     serializestring(serialized, virtualscanroot);
     serializestring(serialized, scanfilepath);
+    serializestring(serialized, historyfilepath);
     nsendmessage(plug, hq_int, msgtype_scandone, serialized->data, serialized->len);
     freebytestream(serialized);
 } // sendscandonemessage
@@ -798,10 +798,11 @@ void receiveint32(char *source, int32 *n)
     *n = deserializeint32(&source);
 } // receiveint32
 
-void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath)
+void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath, char **historyfilepath)
 {
     *virtualscanroot = deserializestring(&source);
     *scanfilepath = deserializestring(&source);
+    *historyfilepath = deserializestring(&source);
 } // receivescandonemessage
 
 //////////////////////////////////////////////////////////////////////////////////
