@@ -589,8 +589,8 @@ char *browserhelparray[][2] = {
     {"^P", "Previous Line of Entries"},
     {"^D", "Browse Graftees"},
     // {"^U", "Previous Graftee"}, // for this we need to make graftees doubly linked..
-    {"M", "Mark for continuation"},
-    {"R", "Reset continuation"},
+    {"M", "Mark For Continuation"},
+    {"U", "Unmatch Selection"},
     {"/", "Enter Subdirectory"},
     {"Ret", "Leave Subdirectory"},
     {"+", "More Columns"},
@@ -1317,27 +1317,28 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     beep();
                  }
             break;
-            case 'r': // reset continuations
+            case 'u': // unmatch selection
             {
-                // graftee gee;
-                // continuation c, skunk;
+                graftee gee;
+                continuation *c, skunk;
 
-                // if (browsingdirectory->selection != NULL) {
-                //     gee = browsingdirectory->selection->selectedgraftee;
-                //     if (!gee)
-                //         break;
-                //     pthread_mutex_lock(&virtualtree_mutex);
-                //     c = gee->realfile->continuation_candidates;
-                //     while(c != NULL) {
-                //         c->candidate->isalreadyshown = 0;
-                //         skunk = c;
-                //         c = c->next;
-                //         free(skunk);
-                //     }
-                //     pthread_mutex_unlock(&virtualtree_mutex);
-                // } else {
-                //     beep();
-                // }
+                if (browsingdirectory->selection != NULL) {
+                    gee = browsingdirectory->selection->selectedgraftee;
+                    if (!gee)
+                        break;
+                    pthread_mutex_lock(&virtualtree_mutex);
+                    c = &gee->realfile->continuation_candidates;
+                    while((*c) != NULL) {
+                        (*c)->candidate->show = 1;
+                        skunk = *c;
+                        *c = (*c)->next;
+                        free(skunk);
+                    }
+                    pthread_mutex_unlock(&virtualtree_mutex);
+                    refreshscreen();
+                } else {
+                    beep();
+                }
                 // get the vtree semaphore
                 // find the selected graftee (of the current browsing directory)
                 // remove from the continuation list
