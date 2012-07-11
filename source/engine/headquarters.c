@@ -698,6 +698,7 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot, graft *g)
                     // the latest continuation is always inserted at the head
                     // of the list
                     ccinode->the_chosen_candidate = ccinode->continuation_candidates;
+                    child->the_corresponding_history = ccinode;
                 } else {
                     if (ccinode)
                         addcontinuation(ccinode, child, continuation_byinode);

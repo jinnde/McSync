@@ -568,8 +568,7 @@ fileinfo *readsubimage(FILE *input, scan_progress progress)
     // important these are not stored and reset everytime an image is read!
     subimage->continuation_candidates = NULL;
     subimage->the_chosen_candidate = NULL;
-    subimage->show = 1;
-
+    subimage->the_corresponding_history = NULL;
 
     subimage->subtreesize = 1;
     subimage->subtreebytes = subimage->filelength;

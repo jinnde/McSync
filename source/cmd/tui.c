@@ -339,19 +339,11 @@ void showgraftees(virtualnode *dir)
     if (dir->selection->grafteelist)
         clearrestofline();
 
-    // don't show scan and history as separate if they are continuations
     for (gee = dir->selection->grafteelist; gee != NULL; gee = gee->next) {
         file = gee->realfile;
-        if (file->trackingnumber > 0)
-            for (cc = file->continuation_candidates; cc != NULL; cc = cc->next)
-                if (cc->continuation_type == continuation_fullmatch &&
-                    file->the_chosen_candidate != NULL)
-                    cc->candidate->show = 0;
-    }
 
-    for (gee = dir->selection->grafteelist; gee != NULL; gee = gee->next) {
-        file = gee->realfile;
-        if (!file->show)
+        // don't show scan and history as separate if they are continuations
+        if (file->trackingnumber < 0 && file->the_corresponding_history != NULL)
             continue;
         // format the modification time to a nice string
         d = getdevicebyid(file->deviceid);
@@ -1258,14 +1250,18 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                 if (selection) {
                     if (selection->selectedgraftee) {
                         for (gee = selection->selectedgraftee->next; gee != NULL; gee = gee->next)
-                            if (gee->realfile->show)
+                            if (gee->realfile->trackingnumber > 0 ||
+                                (gee->realfile->trackingnumber < 0 &&
+                                 gee->realfile->the_corresponding_history == NULL))
                                 break;
                         selection->selectedgraftee = gee;
                     } else {
                         // there is currently no selected graftee or we already
                         // skimmed through the whole list.
                         for (gee = selection->grafteelist; gee != NULL; gee = gee->next)
-                            if (gee->realfile->show)
+                            if (gee->realfile->trackingnumber > 0 ||
+                                (gee->realfile->trackingnumber < 0 &&
+                                 gee->realfile->the_corresponding_history == NULL))
                                 break;
                         selection->selectedgraftee = gee;
                     }
@@ -1349,9 +1345,11 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                     break;
                             if (cc)
                                 markedhistory->realfile->the_chosen_candidate = cc;
-                            else
+                            else {
                                 addcontinuation(markedhistory->realfile, markedscan->realfile, continuation_fullmatch);
-                            markedhistory->realfile->the_chosen_candidate = markedhistory->realfile->continuation_candidates;
+                                markedhistory->realfile->the_chosen_candidate = markedhistory->realfile->continuation_candidates;
+                            }
+                            markedscan->realfile->the_corresponding_history = markedhistory->realfile;
                             pthread_mutex_unlock(&virtualtree_mutex);
                             *alreadymarked = *newlymarked = NULL;
                         } else
@@ -1366,18 +1364,15 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             case 'u': // unmatch selection
             {
                 graftee gee;
-                continuation c;
 
                 if (browsingdirectory->selection != NULL) {
                     gee = browsingdirectory->selection->selectedgraftee;
                     if (!gee)
                         break;
                     pthread_mutex_lock(&virtualtree_mutex);
-                    gee->realfile->the_chosen_candidate = NULL;
-                    c = gee->realfile->continuation_candidates;
-                    while(c != NULL) {
-                        c->candidate->show = 1;
-                        c = c->next;
+                    if (gee->realfile->the_chosen_candidate) {
+                        gee->realfile->the_chosen_candidate->candidate->the_corresponding_history = NULL;
+                        gee->realfile->the_chosen_candidate = NULL;
                     }
                     pthread_mutex_unlock(&virtualtree_mutex);
                     refreshscreen();
