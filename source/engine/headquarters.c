@@ -693,9 +693,12 @@ void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot, graft *g)
             free(fkey);
             // add as continuation candidates of the found histories
             if (ccinode || ccname) {
-                if (ccinode == ccname)
-                    addcontinuation(ccinode, child, contiunation_fullmatch);
-                else {
+                if (ccinode == ccname) {
+                    addcontinuation(ccinode, child, continuation_fullmatch);
+                    // the latest continuation is always inserted at the head
+                    // of the list
+                    ccinode->the_chosen_candidate = ccinode->continuation_candidates;
+                } else {
                     if (ccinode)
                         addcontinuation(ccinode, child, continuation_byinode);
                     if (ccname)

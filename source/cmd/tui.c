@@ -159,6 +159,7 @@ int gi_numdevices = 0; // the number of devices in devicelist
 
 // variables for the browser
 virtualnode *browsingdirectory; // the directory we are currently mousing in
+graftee markedscan, markedhistory; // used for continuations management
 int gi_btop, gi_bbottom; // the top and bottom lines available to the browser
 int gi_bstyle; // what colors/format to use: 1=directory stack, 2=mousing contents
 
@@ -343,7 +344,8 @@ void showgraftees(virtualnode *dir)
         file = gee->realfile;
         if (file->trackingnumber > 0)
             for (cc = file->continuation_candidates; cc != NULL; cc = cc->next)
-                if (cc->continuation_type == contiunation_fullmatch)
+                if (cc->continuation_type == continuation_fullmatch &&
+                    file->the_chosen_candidate != NULL)
                     cc->candidate->show = 0;
     }
 
@@ -355,13 +357,19 @@ void showgraftees(virtualnode *dir)
         d = getdevicebyid(file->deviceid);
         dname = strdupcat(d->nickname, ":", NULL);
         if (gee == dir->selection->selectedgraftee)
-            color_set(YELLOWonBLACK, NULL);
+            if (gee == markedscan || gee == markedhistory)
+                color_set(BLACKonRED, NULL);
+            else
+                color_set(YELLOWonBLACK, NULL);
         else
-            color_set(WHITEonBLACK, NULL);
+            if (gee == markedscan || gee == markedhistory)
+                color_set(REDonBLACK, NULL);
+            else
+                color_set(WHITEonBLACK, NULL);
         printw("%-16s", dname);
         free(dname);
         showfileinfo(file);
-        if (!file->continuation_candidates) {
+        if (!file->the_chosen_candidate) {
             if (file->trackingnumber < 0)
                 printw("\t(scanned/new)");
             else
@@ -371,11 +379,13 @@ void showgraftees(virtualnode *dir)
         clearrestofline();
         if (gee == dir->selection->selectedgraftee) {
             cc = file->continuation_candidates;
-            //             if (cc && cc->next != NULL) { // more than one candidate...
-            if (cc) {
+            if (cc && cc->next != NULL) { // more than one candidate...
                 for (; cc != NULL; cc = cc->next) {
                     candidatecount++;
-                    color_set(WHITEonBLACK, NULL);
+                    if (cc == gee->realfile->the_chosen_candidate)
+                        color_set(CYANonBLACK, NULL);
+                    else
+                        color_set(WHITEonBLACK, NULL);
                     printw("   Candidate %d: ", candidatecount);
                     showfileinfo(cc->candidate);
                     printw("\t(%s)", continuation_type_word[cc->continuation_type]);
@@ -1311,39 +1321,69 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     }
                     break;
             case 'm': // set as continuations
-                 if (browsingdirectory->selection != NULL) {
+                    {
+                    graftee gee, *newlymarked, *alreadymarked;
+                    continuation cc;
 
-                 } else {
-                    beep();
-                 }
+                    if (browsingdirectory->selection != NULL) {
+                        gee = browsingdirectory->selection->selectedgraftee;
+                        if (!gee)
+                            break;
+                        if (gee->realfile->the_chosen_candidate != NULL)
+                            break;
+                        if (gee->realfile->trackingnumber < 0) { // we have a scan
+                            newlymarked = &markedscan;
+                            alreadymarked = &markedhistory;
+                        } else { // we have a tracked file / history
+                            newlymarked = &markedhistory;
+                            alreadymarked = &markedscan;
+                        }
+                        (*newlymarked) = gee;
+                        if ((*alreadymarked) && !strcmp((*alreadymarked)->realfile->deviceid, gee->realfile->deviceid)) {
+                            // add the scan as continuation of the history
+                            pthread_mutex_lock(&virtualtree_mutex);
+                            // look for the candidate, before adding a new one
+                            cc = markedhistory->realfile->continuation_candidates;
+                            for (; cc != NULL; cc = cc->next)
+                                if (cc->candidate == markedscan->realfile)
+                                    break;
+                            if (cc)
+                                markedhistory->realfile->the_chosen_candidate = cc;
+                            else
+                                addcontinuation(markedhistory->realfile, markedscan->realfile, continuation_fullmatch);
+                            markedhistory->realfile->the_chosen_candidate = markedhistory->realfile->continuation_candidates;
+                            pthread_mutex_unlock(&virtualtree_mutex);
+                            *alreadymarked = *newlymarked = NULL;
+                        } else
+                            *alreadymarked = NULL;
+                        refreshscreen();
+                    } else {
+                        beep();
+                    }
+                }
+                break;
             break;
             case 'u': // unmatch selection
             {
                 graftee gee;
-                continuation *c, skunk;
+                continuation c;
 
                 if (browsingdirectory->selection != NULL) {
                     gee = browsingdirectory->selection->selectedgraftee;
                     if (!gee)
                         break;
                     pthread_mutex_lock(&virtualtree_mutex);
-                    c = &gee->realfile->continuation_candidates;
-                    while((*c) != NULL) {
-                        (*c)->candidate->show = 1;
-                        skunk = *c;
-                        *c = (*c)->next;
-                        free(skunk);
+                    gee->realfile->the_chosen_candidate = NULL;
+                    c = gee->realfile->continuation_candidates;
+                    while(c != NULL) {
+                        c->candidate->show = 1;
+                        c = c->next;
                     }
                     pthread_mutex_unlock(&virtualtree_mutex);
                     refreshscreen();
                 } else {
                     beep();
                 }
-                // get the vtree semaphore
-                // find the selected graftee (of the current browsing directory)
-                // remove from the continuation list
-                // unmark already drawn.
-                // redraw
             }
             break;
             case 's': // start scans

@@ -166,7 +166,7 @@ typedef struct history_struct { // for every tracked file aspect, latest source
 typedef enum { // if you change this also change continuation_type_word in tui.c
     continuation_byinode,
     continuation_byname,
-    contiunation_fullmatch
+    continuation_fullmatch
 } continuation_t;
 
 typedef struct continuation_struct {
@@ -222,6 +222,7 @@ typedef struct fileinfo_struct { // everything to know about a file on disk
     // the following is used for matching of scans an histories
     continuation continuation_candidates; // if it's a tracked file -> the corresponding
                                           // scans
+    continuation the_chosen_candidate;
     // interface stuff
     int32   show; // if there is a continuation candidate we only
                   // show the fileinfo once, as it was a "changed"
@@ -589,6 +590,7 @@ void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode); // free
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // writes the path of node into b
 void freevirtualnode(virtualnode *node);
 void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq);
+void addcontinuation(fileinfo *file, fileinfo *cont, continuation_t ct);
 
 // disk scan related
 fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
