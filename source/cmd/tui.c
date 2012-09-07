@@ -1,8 +1,10 @@
 #include "definitions.h"
 
-
-virtualnode cmd_virtualroot; // has no siblings and no name
-                             // only to be used by the tui thread
+char* continuation_type_word[] = {
+    "by inode",
+    "by name",
+    "full match"
+};
 
 char *generatedeviceid() // unique device id generation using /dev/random
 {                        // allocs string, free when done!
@@ -62,15 +64,27 @@ char *commanumber(int64 n) // returns human-readable integer in reused buffer
         return buffer + 1;
 } // commanumber
 
-int SelectedMachineColor[3];
-int UnselectedMachineColor[3];
+int SelectedMachineColor[6];
+int UnselectedMachineColor[6];
+char CurrentDeviceTask[6][8] = { "   ", "   ", "   ", "[S]", "[W]", "[L]" };
+// ^ is printed next to the device nick name in the device list
 
 enum curscolors {
-    BLACKonYELLOW=1,BLACKonGREEN, BLACKonRED, BLACKonCYAN, BLACKonWHITE,
-      REDonYELLOW,                  REDonBLACK,              REDonWHITE,
-                                  GREENonBLACK,            GREENonWHITE,
-                                 YELLOWonBLACK,
-    WHITEonBLUE, WHITEonRED, WHITEonBLACK,
+    BLACKonYELLOW = 1,
+    BLACKonGREEN,
+    BLACKonRED,
+    BLACKonCYAN,
+    BLACKonWHITE,
+    REDonYELLOW,
+    REDonBLACK,
+    REDonWHITE,
+    GREENonBLACK,
+    GREENonWHITE,
+    YELLOWonBLACK,
+    WHITEonBLUE,
+    WHITEonRED,
+    WHITEonBLACK,
+    CYANonBLACK
 };
 
 void setupcolors(void)
@@ -95,13 +109,21 @@ void setupcolors(void)
     init_pair(BLACKonCYAN, COLOR_BLACK, COLOR_CYAN);
     init_pair(WHITEonBLACK, COLOR_WHITE, COLOR_BLACK);
     init_pair(REDonYELLOW, COLOR_RED, COLOR_YELLOW);
+    init_pair(CYANonBLACK, COLOR_CYAN, COLOR_BLACK);
 
     SelectedMachineColor[status_inactive] = BLACKonRED;
     SelectedMachineColor[status_reaching] = BLACKonYELLOW;
     SelectedMachineColor[status_connected] = BLACKonGREEN;
+    SelectedMachineColor[status_scanning] = BLACKonCYAN;
+    SelectedMachineColor[status_storing] = BLACKonCYAN;
+    SelectedMachineColor[status_loading] = BLACKonCYAN;
+
     UnselectedMachineColor[status_inactive] = REDonBLACK;
     UnselectedMachineColor[status_reaching] = YELLOWonBLACK;
     UnselectedMachineColor[status_connected] = GREENonBLACK;
+    UnselectedMachineColor[status_scanning] = CYANonBLACK;
+    UnselectedMachineColor[status_storing] = CYANonBLACK;
+    UnselectedMachineColor[status_loading] = CYANonBLACK;
 } // setupcolors
 
 // gi is for global interface --- variables local to the TUI routines
@@ -110,6 +132,7 @@ int gi_msx, gi_msy; // mouse location
 int gi_mode = 1; // 1 = mousing devices, 2 = mousing files,
 // 3 = entering input (in mode 1)
 // 4 means deleting something (in mode 1)
+// 5 means editing a virtual node
 int gi_savemode; // push previous mode while mode is 3
 int gi_cols; // for file listing
 int gi_selecteddevice = 0; // 0=none selected, 1-n indicates device 1-n
@@ -136,6 +159,7 @@ int gi_numdevices = 0; // the number of devices in devicelist
 
 // variables for the browser
 virtualnode *browsingdirectory; // the directory we are currently mousing in
+graftee markedscan, markedhistory; // used for continuations management
 int gi_btop, gi_bbottom; // the top and bottom lines available to the browser
 int gi_bstyle; // what colors/format to use: 1=directory stack, 2=mousing contents
 
@@ -199,7 +223,7 @@ void clearrestofline(void)
 
 void refreshdevices(void)
 {
-    device *m, *selm = NULL;
+    device *d, *selm = NULL;
     int num = 0;
 
     move(0,0); // curs: move to top corner
@@ -207,16 +231,16 @@ void refreshdevices(void)
     if (gi_selecteddevice == 0 && devicelist != NULL)
         gi_selecteddevice = 1;
     if (devicelist == NULL)
-        printw("  <<< no machines >>>  ");
-    for (m = devicelist; m != NULL; m = m->next) {
+        printw("  <<< no devices >>>  ");
+    for (d = devicelist; d != NULL; d = d->next) {
         num++;
-        color_set(UnselectedMachineColor[m->status], NULL);
+        color_set(UnselectedMachineColor[d->status], NULL);
         if (gi_selecteddevice == num) {
             if (gi_mode == 1 || gi_mode == 3 || gi_mode == 4)
-                color_set(SelectedMachineColor[m->status], NULL);
-            selm = m;
+                color_set(SelectedMachineColor[d->status], NULL);
+            selm = d;
         }
-        printw("  %s  ", m->nickname);
+        printw("   %s%s", d->nickname, CurrentDeviceTask[d->status]);
     }
     color_set(UnselectedMachineColor[status_inactive], NULL);
     clearrestofline();
@@ -275,14 +299,104 @@ void refreshdevices(void)
     } // if a device is selected
 } // refreshdevices
 
+void sprintfpermissions(char *str, int32 permissions) // size of str needs to be at least 9 bytes
+{
+    sprintf(str, (permissions & S_IRUSR) ? "r" : "-");
+    sprintf(str++, (permissions & S_IWUSR) ? "w" : "-");
+    sprintf(str++, (permissions & S_IXUSR) ? "x" : "-");
+    sprintf(str++, (permissions & S_IRGRP) ? "r" : "-");
+    sprintf(str++, (permissions & S_IWGRP) ? "w" : "-");
+    sprintf(str++, (permissions & S_IXGRP) ? "x" : "-");
+    sprintf(str++, (permissions & S_IROTH) ? "r" : "-");
+    sprintf(str++, (permissions & S_IWOTH) ? "w" : "-");
+    sprintf(str++, (permissions & S_IXOTH) ? "x" : "-");
+} // printpermissions
+
+void showfileinfo(fileinfo* file)
+{
+    char *tmp, permissionbuf[9], *modificationtime;
+
+    modificationtime = ctime((const time_t *)&file->modificationtime);
+    // a newline is appended by ctime and is not needed
+    tmp = strrchr(modificationtime, '\n');
+    *tmp  = '\0';
+    sprintfpermissions(permissionbuf, file->permissions);
+    printw("%-32s%-16s%-16d%-16s",
+            strrchr(file->filename, '/') + 1,
+            permissionbuf,
+            file->filelength,
+            modificationtime);
+} // showfileinfo
+void showgraftees(virtualnode *dir)
+{
+    fileinfo *file;
+    device *d;
+    continuation cc;
+    graftee gee;
+    int32 candidatecount = 0;
+    char *dname;
+
+    if (dir->selection->grafteelist)
+        clearrestofline();
+
+    for (gee = dir->selection->grafteelist; gee != NULL; gee = gee->next) {
+        file = gee->realfile;
+
+        // don't show scan and history as separate if they are continuations
+        if (file->trackingnumber < 0 && file->the_corresponding_history != NULL)
+            continue;
+        // format the modification time to a nice string
+        d = getdevicebyid(file->deviceid);
+        dname = strdupcat(d->nickname, ":", NULL);
+        if (gee == dir->selection->selectedgraftee)
+            if (gee == markedscan || gee == markedhistory)
+                color_set(BLACKonRED, NULL);
+            else
+                color_set(YELLOWonBLACK, NULL);
+        else
+            if (gee == markedscan || gee == markedhistory)
+                color_set(REDonBLACK, NULL);
+            else
+                color_set(WHITEonBLACK, NULL);
+        printw("%-16s", dname);
+        free(dname);
+        showfileinfo(file);
+        if (!file->the_chosen_candidate) {
+            if (file->trackingnumber < 0)
+                printw("\t(scanned/new)");
+            else
+                printw("\t(tracked/deleted)");
+        } else
+            printw("\t(tracked/continuation)");
+        clearrestofline();
+        if (gee == dir->selection->selectedgraftee) {
+            cc = file->continuation_candidates;
+            if (cc && cc->next != NULL) { // more than one candidate...
+                for (; cc != NULL; cc = cc->next) {
+                    candidatecount++;
+                    if (cc == gee->realfile->the_chosen_candidate)
+                        color_set(CYANonBLACK, NULL);
+                    else
+                        color_set(WHITEonBLACK, NULL);
+                    printw("   Candidate %d: ", candidatecount);
+                    showfileinfo(cc->candidate);
+                    printw("\t(%s)", continuation_type_word[cc->continuation_type]);
+                    clearrestofline();
+                }
+            }
+        }
+    }
+} // showgraftees
 
 void showcontents(virtualnode *dir)
 // show filename array according to gi_bstyle on lines gi_btop...gi_bbottom
 {
     virtualnode *vn;
-    int i;
-    int justprintedselection;
-    int height = gi_bbottom - gi_btop + 1 - 1; // minus one for the blue line
+    int32 i;
+    int32 justprintedselection;
+    int32 height = gi_bbottom - gi_btop + 1 - 1; // minus one for the blue line
+
+    pthread_mutex_lock(&virtualtree_mutex);
 
     // recompute numbers as requested
     if (dir->firstvisiblenum == -1) { // if no scroll state, display from start
@@ -335,6 +449,7 @@ void showcontents(virtualnode *dir)
         color_set(REDonWHITE, NULL);
         if (dir->numchildren == 0)
             printw("  <<< Empty Directory >>>  ");
+        pthread_mutex_unlock(&virtualtree_mutex);
         return;
     }
     // fill grid
@@ -375,13 +490,18 @@ void showcontents(virtualnode *dir)
                 clearrestofline();
             }
             color_set(WHITEonBLACK, NULL);
-            printw("Here's a ton of information on %s.", dir->selection->name);
+            if (dir->selection->numchildren > 0) {
+                printw("Contains %d children (%d items)",
+                    dir->selection->numchildren,
+                    dir->selection->subtreesize - 1);
+            } else {
+                printw("Contains no children");
+            }
             clearrestofline();
-            printw("For example, it contains %d items (%d children)",
-            dir->selection->subtreesize - 1, dir->selection->numchildren);
-            clearrestofline();
+            showgraftees(dir);
         }
     }
+    pthread_mutex_unlock(&virtualtree_mutex);
     // color rest of line
     {
         int cy, cx;
@@ -391,6 +511,7 @@ void showcontents(virtualnode *dir)
             clearrestofline();
         }
     }
+  //  pthread_mutex_unlock(&virtualtree_mutex);
 } // showcontents
 
 void showstack(virtualnode *dir)
@@ -441,7 +562,7 @@ typedef struct keycommand_struct {
 struct keycommand_struct keycommand_array[] = {
     {"Ret", "Edit Entry", "Change the value of the currently highlighted item",
         1,  cmd_start_editing,      {KEY_ENTER, 13}}, // ^M
-    {"M", "Add Machine", "Add a new machine to the list of machines",
+    {"M", "Add Device", "Add a new device to the list of devices",
         1,  cmd_add_device,        {'m', 'M'}},
     {NULL, NULL, NULL, 0, 0, {0}}};
 
@@ -450,8 +571,8 @@ char *devicehelparray[][2] = {
     {"C", "Connect"},
     {"X", "Disconnect"},
     {"U", "Unlink"},
-    {"M", "Add Machine"},
-    {"DM", "Delete Machine"},
+    {"M", "Add Device"},
+    {"DM", "Delete Device"},
     {"A", "Add Address"},
     {"DA", "Delete Address"},
     {"G", "Add Graft"},
@@ -468,6 +589,10 @@ char *browserhelparray[][2] = {
     {"^B", "Back 1 Entry"},
     {"^N", "Next Line of Entries"},
     {"^P", "Previous Line of Entries"},
+    {"^D", "Browse Graftees"},
+    // {"^U", "Previous Graftee"}, // for this we need to make graftees doubly linked..
+    {"M", "Mark For Continuation"},
+    {"U", "Unmatch Selection"},
     {"/", "Enter Subdirectory"},
     {"Ret", "Leave Subdirectory"},
     {"+", "More Columns"},
@@ -475,6 +600,7 @@ char *browserhelparray[][2] = {
     {"Space", "Toggle Detail View"},
     {"V", "View Devices"},
     {"S", "Start Scans"},
+    {"Y", "Start Sync"},
     {"VQ", "Quit"},
     {NULL, NULL}};
 
@@ -492,7 +618,7 @@ char *edithelparray[][2] = {
     {NULL, NULL}};
 
 char *deletehelparray[][2] = {
-    {"M", "Delete Machine"},
+    {"M", "Delete Device"},
     {"A", "Delete Address"},
     {"G", "Delete Graft"},
     {"P", "Delete Prune Point"},
@@ -615,13 +741,13 @@ char *validate(char *str, int type) // returns NULL if str ok, error string if n
         {
             device *m;
             if (*str == 0) // is it the empty string?
-                return "The empty string is not a good machine name!";
+                return "The empty string is not a good device name!";
             if (index(str, ' ') != NULL)
-                return "No spaces allowed in the machine name!"
+                return "No spaces allowed in the device name!"
                         "  (underscore _ is ok)";
             for (m = devicelist; m != NULL; m = m->next) {
                 if (m != gi_device && !strcmp(m->nickname, str))
-                    return "Machine name already in use!";
+                    return "Device name already in use!";
             }
         }
         break;
@@ -651,18 +777,17 @@ char *validate(char *str, int type) // returns NULL if str ok, error string if n
 
 void endediting(int keep)
 {
-    // TODO: Replace with messages to HQ
     gi_mode = gi_savemode; // pop back to the saved mode
     if (keep) {
         gi_errorinfo = validate(gi_newstring, gi_editobjecttype);
         if (gi_errorinfo == NULL) { // passed validator
             if (gi_editobjecttype == 5) { // 5=virtual graft point
-                // mapgraftpoint(gi_graft, *gi_editobject, 0, 1);
-                // mapgraftpoint(gi_graft, gi_newstring, 0, 0);
+                mapgraftpoint(gi_graft, *gi_editobject, 0, 1);
+                mapgraftpoint(gi_graft, gi_newstring, 0, 0);
             }
             if (gi_editobjecttype == 6) { // 6=prune point
-                // mapgraftpoint(gi_graft, *gi_editobject, 1, 1);
-                // mapgraftpoint(gi_graft, gi_newstring, 1, 0);
+                mapgraftpoint(gi_graft, *gi_editobject, 1, 1);
+                mapgraftpoint(gi_graft, gi_newstring, 1, 0);
             }
             // replace the string
             free(*gi_editobject);
@@ -864,8 +989,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         (*gf)->hostpath = strdup("~");
                         (*gf)->virtualpath = strdup("/Home");
                         (*gf)->prunepoints = NULL;
-                        // TODO: Send message to HQ
-                        // mapgraftpoint(*gf, (*gf)->virtualpath, 0, 0);
+                        mapgraftpoint(*gf, (*gf)->virtualpath, 0, 0);
                         gi_editselection = gi_editableitemcount - 1;
                         gi_dirtyspecs = 1;
                         refreshscreen();
@@ -882,8 +1006,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         *st = (stringlist*) malloc(sizeof(stringlist));
                         (*st)->next = NULL;
                         (*st)->string = strdup("/Home/local");
-                        // TODO: Send message to HQ
-                        // mapgraftpoint(gi_graft, (*st)->string, 1, 0);
+                        mapgraftpoint(gi_graft, (*st)->string, 1, 0);
                         gi_dirtyspecs = 1;
                         refreshscreen();
                     } else {
@@ -895,13 +1018,13 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     refreshscreen(); // get the deleting help on the screen
                     gi_mode = 1; // 1 means mousing devices
                     loop:
-                        timeout(1000000);
                         ch = getch();
+                        if (ch == ERR)
+                            goto loop;
                         if (ch == KEY_MOUSE || ch == KEY_RESIZE) {
                             handlemouseevents(ch);
                             goto loop;
                         }
-                        timeout(-1);
                     switch (ch) {
                         case 'm': // delete device
                             if (gi_device->status != status_inactive)
@@ -915,17 +1038,12 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                         graft *sk = *g;
                                         while (sk->prunepoints != NULL) {
                                             stringlist *skunk=sk->prunepoints;
-                                            // TODO: Send message to HQ
-                                            // mapgraftpoint(sk,
-                                                        // skunk->string, 1, 1);
+                                            mapgraftpoint(sk, skunk->string, 1, 1);
                                             sk->prunepoints = skunk->next;
                                             free(skunk->string);
                                             free(skunk);
                                         }
-                                        // TODO: Send to HQ
-                                        // mapgraftpoint(sk,
-                                                        // sk->virtualpath, 0, 1);
-                                        //free(sk->host); NO! it's a device
+                                        mapgraftpoint(sk, sk->virtualpath, 0, 1);
                                         free(sk->hostpath);
                                         free(sk->virtualpath);
                                         *g = sk->next;
@@ -998,17 +1116,14 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                         // trash the graft!
                                         while (sk->prunepoints != NULL) {
                                             skunk = sk->prunepoints;
-                                            // TODO: Send to HQ
-                                            // mapgraftpoint(sk,
-                                            //             skunk->string, 1, 1);
+                                            mapgraftpoint(sk,
+                                                        skunk->string, 1, 1);
                                             sk->prunepoints = skunk->next;
                                             free(skunk->string);
                                             free(skunk);
                                         }
-                                        // TODO: Send to HQ
-                                        // mapgraftpoint(sk,
-                                                        // sk->virtualpath, 0, 1);
-                                        //free(sk->host); NO! it's a device
+                                        mapgraftpoint(sk,
+                                                        sk->virtualpath, 0, 1);
                                         free(sk->hostpath);
                                         free(sk->virtualpath);
                                         *g = sk->next;
@@ -1029,9 +1144,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                                 while (*s != NULL) {
                                     if (&((*s)->string) == gi_editobject){
                                         stringlist *sk = *s;
-                                        // TODO: Send message to HQ
-                                        // mapgraftpoint(gi_graft,
-                                        //                 (*s)->string, 1, 1);
+                                        mapgraftpoint(gi_graft,
+                                                        (*s)->string, 1, 1);
                                         free(sk->string);
                                         *s = sk->next;
                                         free(sk);
@@ -1128,6 +1242,38 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         refreshscreen();
                     }
                     break;
+            case 4: // ctrl-d
+            {
+                virtualnode *selection = browsingdirectory->selection;
+                graftee gee;
+
+                if (selection) {
+                    if (selection->selectedgraftee) {
+                        for (gee = selection->selectedgraftee->next; gee != NULL; gee = gee->next)
+                            if (gee->realfile->trackingnumber > 0 ||
+                                (gee->realfile->trackingnumber < 0 &&
+                                 gee->realfile->the_corresponding_history == NULL))
+                                break;
+                        selection->selectedgraftee = gee;
+                    } else {
+                        // there is currently no selected graftee or we already
+                        // skimmed through the whole list.
+                        for (gee = selection->grafteelist; gee != NULL; gee = gee->next)
+                            if (gee->realfile->trackingnumber > 0 ||
+                                (gee->realfile->trackingnumber < 0 &&
+                                 gee->realfile->the_corresponding_history == NULL))
+                                break;
+                        selection->selectedgraftee = gee;
+                    }
+                    refreshscreen();
+                }
+             }
+            break;
+            // case 21: // ctrl-u, for this to work graftee has to be a doubly linked list... (no time)
+            // {
+            // }
+            break;
+            break;
             case '=':
             case '+': // more columns
                     if (browsingdirectory != NULL
@@ -1162,20 +1308,82 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     }
                     break;
             case '/': // go down into subdirectory
-                    if (browsingdirectory->selection != NULL) {
-                        if (browsingdirectory->selection->touched) {
-                            sendvirtualnoderquest(&cmd_virtualroot, browsingdirectory->selection);
-                            break;
-                        }
+                    if (browsingdirectory->selection != NULL &&
+                        browsingdirectory->selection->filetype != 2) {
                         browsingdirectory = browsingdirectory->selection;
                         refreshscreen();
                     } else {
                         beep();
                     }
                     break;
+            case 'm': // set as continuations
+                    {
+                    graftee gee, *newlymarked, *alreadymarked;
+                    continuation cc;
+
+                    if (browsingdirectory->selection != NULL) {
+                        gee = browsingdirectory->selection->selectedgraftee;
+                        if (!gee)
+                            break;
+                        if (gee->realfile->the_chosen_candidate != NULL)
+                            break;
+                        if (gee->realfile->trackingnumber < 0) { // we have a scan
+                            newlymarked = &markedscan;
+                            alreadymarked = &markedhistory;
+                        } else { // we have a tracked file / history
+                            newlymarked = &markedhistory;
+                            alreadymarked = &markedscan;
+                        }
+                        (*newlymarked) = gee;
+                        if ((*alreadymarked) && !strcmp((*alreadymarked)->realfile->deviceid, gee->realfile->deviceid)) {
+                            // add the scan as continuation of the history
+                            pthread_mutex_lock(&virtualtree_mutex);
+                            // look for the candidate, before adding a new one
+                            cc = markedhistory->realfile->continuation_candidates;
+                            for (; cc != NULL; cc = cc->next)
+                                if (cc->candidate == markedscan->realfile)
+                                    break;
+                            if (cc)
+                                markedhistory->realfile->the_chosen_candidate = cc;
+                            else {
+                                addcontinuation(markedhistory->realfile, markedscan->realfile, continuation_fullmatch);
+                                markedhistory->realfile->the_chosen_candidate = markedhistory->realfile->continuation_candidates;
+                            }
+                            markedscan->realfile->the_corresponding_history = markedhistory->realfile;
+                            pthread_mutex_unlock(&virtualtree_mutex);
+                            *alreadymarked = *newlymarked = NULL;
+                        } else
+                            *alreadymarked = NULL;
+                        refreshscreen();
+                    } else {
+                        beep();
+                    }
+                }
+                break;
+            break;
+            case 'u': // unmatch selection
+            {
+                graftee gee;
+
+                if (browsingdirectory->selection != NULL) {
+                    gee = browsingdirectory->selection->selectedgraftee;
+                    if (!gee)
+                        break;
+                    pthread_mutex_lock(&virtualtree_mutex);
+                    if (gee->realfile->the_chosen_candidate) {
+                        gee->realfile->the_chosen_candidate->candidate->the_corresponding_history = NULL;
+                        gee->realfile->the_chosen_candidate = NULL;
+                    }
+                    pthread_mutex_unlock(&virtualtree_mutex);
+                    refreshscreen();
+                } else {
+                    beep();
+                }
+            }
+            break;
             case 's': // start scans
                     if (browsingdirectory->selection != NULL) {
-                        sendscanvirtualdirrequest(&cmd_virtualroot, browsingdirectory->selection);
+                        sendscanvirtualdirrequest(&virtualroot, browsingdirectory->selection);
                     }
                     break;
             case 'v': // switch to mousing devices
@@ -1312,10 +1520,8 @@ void TUImain(void)
 
     if (doUI)
         TUIstart2D(); // configures the terminal for the interface
-    initvirtualroot(&cmd_virtualroot);
-    browsingdirectory = &cmd_virtualroot;
 
-    sendvirtualnoderquest(&cmd_virtualroot, &cmd_virtualroot); // send ls for root
+    browsingdirectory = &virtualroot;
 
     while (keepgoing) {
         int got_char, got_msg;
@@ -1368,87 +1574,15 @@ void TUImain(void)
                         if (doUI)
                             refreshscreen();
                     break;
-                case msgtype_virtualdir:
-                    {
-                        virtualnode *dir, *child, *receivedchild;
-                        queue receivedlist = initqueue();
-                        queuenode receiveditem;
-                        char *path;
-
-                        receivevirtualdir(msg_data, &path, receivedlist);
-
-                        dir = findnode(&cmd_virtualroot, path);
-
-                        if (!dir) {
-                            printerr("ERROR: TUI does not know about virtual dir: %s\n", path);
-                            goto free_and_return;
-                        }
-
-                        if (!dir->touched) {
-                            printerr("ERROR: TUI got listing for untouched dir: %s\n", path);
-                            goto free_and_return;
-                        }
-
-                        // if a child of dir is in the receivedlist and touched, it is updated
-                        // if it's missing in the received list, it has to be removed from dir too
-                        // if it's in the received list but untouched, we can leave it as it is
-                        // left over nodes in receivedlist are new children of dir!
-                        for (child = dir->down; child != NULL; child = child->next) {
-                            for (receiveditem = receivedlist->head; receiveditem != NULL; receiveditem = receiveditem->next) {
-                                receivedchild = (virtualnode*) receiveditem->data;
-                                if (!strcmp(child->name, receivedchild->name))
-                                    break;
-                            }
-                            if (!receiveditem) // The child was removed on HQ
-                                virtualnoderemovenode(&child);
-                            else { // Node with same name was found
-
-                                receivedchild = (virtualnode*) queueremove(receivedlist, receiveditem);
-
-                                if (child->touched) // Has HQ signaled the change here (with a msgtype_touch)? Might think about the touched attribute naming, but "dirty" would not be better either :)
-                                    overwritevirtualnode(&child, &receivedchild); // frees child, received is always untouched
-                                else
-                                    freevirtualnode(receivedchild); // there was no change
-                            }
-                        }
-                        // add the new children
-                        for (receiveditem = receivedlist->head; receiveditem != NULL; receiveditem = receiveditem->next) {
-                            receivedchild = (virtualnode*) queueremove(receivedlist, receiveditem);
-                            virtualnodeaddchild(&dir, &receivedchild);
-                            if (receivedchild->numchildren > 0)
-                                receivedchild->touched = 1;
-                        }
-
-                        dir->touched = 0;
-
-                        // if the user has left the cursor on the previously touched dir,
-                        // she probably wants us to display said node now.
-                        if (browsingdirectory->selection == dir)
-                            browsingdirectory = browsingdirectory->selection;
-
-                    free_and_return:
-                        free(path);
-                        free(msg_data);
-                        // freequeue does not free the payload data, make sure we do not leak it if we jumped here because of a problem
-                        while(receivedlist->size > 0) {
-                            receivedchild = (virtualnode*) queueremove(receivedlist, receivedlist->head);
-                            freevirtualnode(receivedchild);
-                        }
-                        freequeue(receivedlist);
-                        if (doUI)
-                            refreshscreen();
-                    }
-                    break;
-                case msgtype_touch:
-                    {
-                        // has cmd already loaded said node?
-                        // findnode(path)
-                        // is it in our current browsing path?
-                        // isancestor(browsingdirectory, node)
-                        // it is? oh boy.
-                        // request update and thus send browser to path
-                    }
-                    break;
+                case msgtype_scandone:
+                    if (doUI)
+                        refreshscreen();
+                break;
+                case msgtype_scanupdate:
+                    free(msg_data);
+                    if (doUI)
+                        refreshscreen();
+                break;
                 default:
                         printerr("TUI got unexpected message"
                                         " of type %lld from %d: \"%s\"\n",

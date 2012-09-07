@@ -95,13 +95,8 @@ int main(int argc, char**argv)
     }
 
     if (argc == 1) {
+        pthread_mutex_init(&virtualtree_mutex, NULL);
         cmd_thread_start_function = TUImain; // start in master mode, using tui as cmd
-        routermain(1, 0, NULL);
-        return 0;
-    }
-
-    if (argc == 2 && !strcmp(argv[1], "-cli")) {
-        cmd_thread_start_function = climain; // start in master mode, using cli as cmd
         routermain(1, 0, NULL);
         return 0;
     }
@@ -117,8 +112,6 @@ int main(int argc, char**argv)
     printf("  usage:\n");
     printf("    mcsync\n");
     printf("                Interactive interface for syncing data.\n");
-    printf("    mcsync -cli\n");
-    printf("                Command line based interface instead of TUI.\n");
     printf("    mcsync -slave N\n");
     printf("                Slave mode, does binary I/O instead of ascii.\n");
     printf("                (Invoked by mcsync when it needs a remote agent.)\n");

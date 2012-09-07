@@ -108,12 +108,16 @@ void freefileinfo(fileinfo* skunk)
     if (skunk->filename)
         free(skunk->filename);
 
+    if (skunk->deviceid)
+        free(skunk->deviceid);
+
     freehistory(skunk->hist_modtime);
     freehistory(skunk->hist_contents);
     freehistory(skunk->hist_perms);
     freehistory(skunk->hist_name);
     freehistory(skunk->hist_loc);
 
+    // TODO: FREE CANDIDATES!!!!!!
     free(skunk);
 
 } // freefileinfo
@@ -172,168 +176,9 @@ int sys_setxattr(const char *path, const char *name, const void *value,
 //////////////////////////// start of disk scan //////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
-// from here down to sortchildren is for sorting
-
-typedef struct sorter_struct {
-    fileinfo *d2, *d4, *d6; // data, NULL if absent
-    struct sorter_struct *b1, *b3, *b5, *b7; // the stuff below, NULL if absent
-} sorter;
-
-sorter *newsorter(void)
-{
-    sorter *newguy = (sorter *) malloc(sizeof(sorter));
-    newguy->d2 = newguy->d4 = newguy->d6 = NULL;
-    newguy->b1 = newguy->b3 = newguy->b5 = newguy->b7 = NULL;
-    return newguy;
-} // newsorter
-
-void freesortertree(sorter *skunk)
-{
-    if (skunk == NULL)
-        return;
-    freesortertree(skunk->b5);
-    freesortertree(skunk->b3);
-    freesortertree(skunk->b1);
-    free(skunk);
-} // freesortertree
-
-void insertchild(sorter *holder, fileinfo *child)
-{
-    // the 2-3 algorithm is to go down to the lowest level (NULL b1) & insert it.
-    // Recursively speaking, if the result of an insert is a #4 (d6 != NULL)
-    // then we split it up, growing ourself by 1.
-
-    if (holder->b1 == NULL) {
-        // at bottom
-        if (holder->d2 == NULL || strcmp(rindex(holder->d2->filename, '/'),
-                                         rindex(child->filename, '/')) > 0) {
-            holder->d6 = holder->d4;
-            holder->d4 = holder->d2;
-            holder->d2 = child;
-        } else if (holder->d4 == NULL || strcmp(rindex(holder->d4->filename, '/'),
-                                            rindex(child->filename, '/')) > 0) {
-            holder->d6 = holder->d4;
-            holder->d4 = child;
-        } else {
-            holder->d6 = child;
-        }
-    } else {
-        // not at bottom
-        if (strcmp(rindex(holder->d2->filename, '/'),
-                   rindex(child->filename, '/')) > 0) {
-            insertchild(holder->b1, child);
-            if (holder->b1->d6 != NULL) {
-                holder->b7 = holder->b5;
-                holder->d6 = holder->d4;
-                holder->b5 = holder->b3;
-                holder->d4 = holder->d2;
-                holder->b3 = newsorter();
-                holder->b3->b1 = holder->b1->b5;
-                holder->b3->d2 = holder->b1->d6;
-                holder->b3->b3 = holder->b1->b7;
-                holder->d2 = holder->b1->d4;
-                holder->b1->d4 = NULL;
-                holder->b1->b5 = NULL;
-                holder->b1->d6 = NULL;
-                holder->b1->b7 = NULL;
-            }
-        } else if (holder->d4 == NULL || strcmp(rindex(holder->d4->filename, '/'),
-                                              rindex(child->filename, '/')) > 0) {
-            insertchild(holder->b3, child);
-            if (holder->b3->d6 != NULL) {
-                holder->b7 = holder->b5;
-                holder->d6 = holder->d4;
-                holder->b5 = newsorter();
-                holder->b5->b1 = holder->b3->b5;
-                holder->b5->d2 = holder->b3->d6;
-                holder->b5->b3 = holder->b3->b7;
-                holder->d4 = holder->b3->d4;
-                holder->b3->d4 = NULL;
-                holder->b3->b5 = NULL;
-                holder->b3->d6 = NULL;
-                holder->b3->b7 = NULL;
-            }
-        } else {
-            insertchild(holder->b5, child);
-            if (holder->b5->d6 != NULL) {
-                holder->b7 = newsorter();
-                holder->b7->b1 = holder->b5->b5;
-                holder->b7->d2 = holder->b5->d6;
-                holder->b7->b3 = holder->b5->b7;
-                holder->d6 = holder->b5->d4;
-                holder->b5->d4 = NULL;
-                holder->b5->b5 = NULL;
-                holder->b5->d6 = NULL;
-                holder->b5->b7 = NULL;
-            }
-        }
-    }
-} // insertchild
-
-fileinfo **linkchildren(sorter *subset, fileinfo **tail) // returns new tail
-{
-    *tail = NULL;
-
-    if (subset != NULL) {
-        if (subset->b1 != NULL)
-            tail = linkchildren(subset->b1, tail);
-        if (subset->d2 != NULL)
-            tail = &((*tail = subset->d2)->next);
-        if (subset->b3 != NULL)
-            tail = linkchildren(subset->b3, tail);
-        if (subset->d4 != NULL)
-            tail = &((*tail = subset->d4)->next);
-        if (subset->b5 != NULL)
-            tail = linkchildren(subset->b5, tail);
-    }
-    *tail = NULL;
-
-    return tail;
-} // linkchildren
-
-void sortchildren(fileinfo *image) // sorts so "A" comes before "Z"
-{
-    // we want to sort down, down->next, down->next->next, etc. by filename
-    // strategy: eat the ->next linked list, forming a tree
-    // we want to have reasonable running time even if the order is not random
-    // the point of sorting is that contrastimages can run much faster
-    // without sorting contrastimages is quite slow compared to everything else,
-    // and it is due to big directories (mail messages, movie frames, etc.)
-
-    sorter *root = newsorter();
-    fileinfo *child;
-
-    // build 2-3 tree of children
-    for (child = image->down; child != NULL; child = child->next) {
-        insertchild(root, child);
-        if (root->d6 != NULL) {
-            // the tree is growing one level deeper
-            sorter *newtoplevel, *newroot;
-            newtoplevel = newsorter();
-            newtoplevel->b1 = root->b5;
-            newtoplevel->d2 = root->d6;
-            newtoplevel->b3 = root->b7;
-            root->b5 = NULL;
-            root->d6 = NULL;
-            root->b7 = NULL;
-            newroot = newsorter();
-            newroot->b1 = root;
-            newroot->d2 = root->d4;
-            newroot->b3 = newtoplevel;
-            root->d4 = NULL;
-            root = newroot;
-        }
-    }
-
-    // rebuild linked list of children
-    linkchildren(root, &(image->down));
-
-    freesortertree(root);
-} // sortchildren
-
 // get inode info for filename (which includes path) and for any subdirectories
 fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
-                    hashtable h, scan_progress progress)
+                    hashtable *h, scan_progress progress, int32 devicetime, char *deviceid)
 {  // IMPORTANT: h has to be NULL on top level call!
     fileinfo *image, *twin;
     struct stat status;
@@ -353,7 +198,7 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
 
     if (h == NULL) {
         toplevel = 1;
-        h = inithashtable();
+        h = inithashtable(1024, &hash_int32, &int32_equals);
     }
 
     // prepare some space
@@ -362,7 +207,10 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
 
     // jot down a bunch of stuff about the file, see man page for stat
     image->inode = status.st_ino;
-    twin = storehash(h, image);
+
+    twin = hashtablesearch(h, &image->inode);
+    (void)hashtableinsert(h, &image->inode, image);
+
     switch (status.st_mode & S_IFMT) {
         case S_IFDIR:   image->filetype = 1;   progress->directories++;  break;
         case S_IFREG:   image->filetype = 2;   progress->regularfiles++; break;
@@ -400,6 +248,9 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
     image->user = strdup(getpwuid(status.st_uid)->pw_name);
     image->group = strdup(getgrgid(status.st_gid)->gr_name);
     image->filename = strdup(filename);
+    image->trackingnumber = -1;
+    image->devicetime = devicetime;
+    image->deviceid = strdup(deviceid);
 
     image->hist_modtime = NULL;
     image->hist_contents = NULL;
@@ -442,7 +293,8 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
             }
             childname = strdupcat(filename, "/", entry->d_name, NULL);
 
-            child = formimage(childname, prunepoints, worker_plug, h, progress);
+            child = formimage(childname, prunepoints, worker_plug, h, progress,
+                              devicetime, deviceid);
             if (child == NULL) {
                 // this is not abnormal, it can mean the entry should be ignored
                 // for example, . and .. will result in NULL
@@ -463,19 +315,19 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
             printerr("Warning: could not close directory %s (%s)\n",
                     filename, strerror(errno));
         }
-
-        sortchildren(image);
     }
+
     donewithdir:
 
     if (progress->total % progress->updateinterval == 0) {
             printerr("\015Scanning directories... "
              "(found %d directories, %d files, %d links, %d other)\n",
              progress->directories, progress->regularfiles, progress->links, progress->other);
+        // In the future the worker plug could be used here to send detailed updates to headquarters
     }
 
     if (toplevel) {
-        freehashtable(h);
+        freehashtable(h, 0, 0); // don't free images and don't free inodes
     }
 
     return image;
@@ -618,6 +470,11 @@ void writesubimage(FILE *output, fileinfo* subimage, scan_progress progress)
     puthistory(output, subimage->hist_loc);
     put64(output, subimage->trackingnumber);
     put32(output, subimage->devicetime);
+    putstring(output, subimage->deviceid);
+
+    // IMPORTANT! The following two fields are not stored and reset everytime an image is read!
+    // subimage->continuation_candidates
+    // subimage->isalreadyshown
 
     {
         fileinfo *child;
@@ -706,6 +563,12 @@ fileinfo *readsubimage(FILE *input, scan_progress progress)
     subimage->hist_loc = gethistory(input);
     subimage->trackingnumber = get64(input);
     subimage->devicetime = get32(input);
+    subimage->deviceid = getstring(input, 0);
+
+    // important these are not stored and reset everytime an image is read!
+    subimage->continuation_candidates = NULL;
+    subimage->the_chosen_candidate = NULL;
+    subimage->the_corresponding_history = NULL;
 
     subimage->subtreesize = 1;
     subimage->subtreebytes = subimage->filelength;

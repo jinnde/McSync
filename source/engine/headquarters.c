@@ -1,8 +1,7 @@
 #include "definitions.h"
 
-virtualnode virtualroot; // has no siblings and no name
-                         // only to be used by the HQ thread
-
+hashtable *virtualtreeindex;
+hashtable *fileinfoindex;
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of algo main //////////////////////////////////
@@ -12,13 +11,43 @@ char* statusword[] = {
     "inactive",
     "reaching",
     "connected",
+    "scanning",
+    "storing",
+    "loading"
 };
+
+void initvirtualfile(virtualnode *vnode)
+{
+    vnode->next = NULL;
+    vnode->up = NULL;
+    vnode->prev = NULL;
+    vnode->down = NULL;
+    vnode->grafteelist = NULL;
+    vnode->bootedlist = NULL;
+    vnode->graftroots = NULL;
+    vnode->graftends = NULL;
+    vnode->name = "";
+    vnode->filetype = 0; // 0=stub
+    // that was the structural stuff, now some adorning interface info
+    vnode->redyellow = 0;
+    vnode->redgreen = 0;
+    vnode->numchildren = 0;
+    vnode->subtreesize = 1;
+    vnode->subtreebytes = 0;
+    vnode->cols = 6;
+    vnode->firstvisiblenum = -1; // -1 mevnode needs recompute
+    vnode->firstvisible = NULL;
+    vnode->selectionnum = -1; // -1 mevnode needs recompute
+    vnode->selection = NULL;
+    vnode->selectedgraftee = NULL;
+} // initvirtualfile
 
 virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir string must be writable
 // dir must not end with / or contain //
 // this routine creates all virtual files except for the root (in initvirtualroot)
 {
     virtualnode *parent, *ans;
+    virtualfilekey *key;
     char *pos;
     if (dir[0] != '/') // in general true only for "" (otherwise dir was bad)
         return root;
@@ -31,30 +60,13 @@ virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir stri
             return ans;
     // it doesn't exist
     ans = (virtualnode*) malloc(sizeof(virtualnode));
+    initvirtualfile(ans);
     ans->next = parent->down;
+    ans->up = parent;
     parent->down = ans;
     if (ans->next != NULL)
         ans->next->prev = ans;
-    ans->prev = NULL;
-    ans->down = NULL;
-    ans->up = parent;
-    ans->grafteelist = NULL;
-    ans->bootedlist = NULL;
-    ans->graftroots = NULL;
-    ans->graftends = NULL;
     ans->name = strdup(pos + 1);
-    ans->filetype = 0; // 0=stub
-    // that was the structural stuff, now some adorning interface info
-    ans->redyellow = 0;
-    ans->redgreen = 0;
-    ans->numchildren = 0;
-    ans->subtreesize = 1;
-    ans->subtreebytes = 0;
-    ans->cols = 6;
-    ans->firstvisiblenum = -1; // -1 means needs recompute
-    ans->firstvisible = NULL;
-    ans->selectionnum = -1; // -1 means needs recompute
-    ans->selection = NULL;
     parent->numchildren++;
     parent->firstvisiblenum = -1;
     parent->selectionnum = -1;
@@ -62,12 +74,19 @@ virtualnode *conjuredirectory(virtualnode* root, char *dir) // chars in dir stri
         parent->subtreesize++;
         parent = parent->up;
     }
+    // add the virtual file to the index
+    key = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
+    key->parent = ans;
+    key->name = ans->name;
+    (void)hashtableinsert(virtualtreeindex, key, ans);
     return ans;
 } // conjuredirectory
 
 void removedirectory(virtualnode *skunk) // skunk should be empty
 {
     virtualnode *parent = skunk->up;
+    virtualfilekey *key;
+
     if (skunk->prev != NULL)
         skunk->prev->next = skunk->next;
     else
@@ -83,6 +102,12 @@ void removedirectory(virtualnode *skunk) // skunk should be empty
         parent->subtreesize--;
         parent = parent->up;
     }
+    // remove virtual file from index
+    key = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
+    key->parent = skunk;
+    key->name = skunk->name;
+    (void)hashtableremove(virtualtreeindex, key);
+    free(key);
 } // removedirectory
 
 void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
@@ -92,6 +117,7 @@ void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
     virtualnode *v;
     graftee *gee;
 
+    pthread_mutex_lock(&virtualtree_mutex);
     v = conjuredirectory(&virtualroot, where);
     if (pruneq) // it is a prune point
         gee = &(v->graftends);
@@ -120,6 +146,8 @@ void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
                     v->up->down = v->next;
                 if (v->next != NULL)
                     v->next->prev = v->prev;
+                parent->numchildren--;
+                parent->subtreesize -= v->subtreesize;
                 free(v->name);
                 free(v);
                 v = parent;
@@ -133,6 +161,7 @@ void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq)
         (*gee)->source = source;
         (*gee)->realfile = NULL; // not used
     }
+    pthread_mutex_unlock(&virtualtree_mutex);
 } // mapgraftpoint
 
 void conjuregraftpoints(void) // make graft roots and prune points exist in v. dir
@@ -152,28 +181,8 @@ void conjuregraftpoints(void) // make graft roots and prune points exist in v. d
 void initvirtualroot(virtualnode *root)
 {
     // set up root directory
-    root->next = NULL;
-    root->prev = NULL;
-    root->up = NULL;
-    root->down = NULL; // will change when children are added
-    root->grafteelist = NULL;
-    root->bootedlist = NULL;
-    root->graftroots = NULL;
-    root->graftends = NULL;
-    root->name = "";
+    initvirtualfile(root);
     root->filetype = 1; // 1 = directory
-    // now for the interface stuff
-    root->redyellow = 0;
-    root->redgreen = 0;
-    root->numchildren = 0;
-    root->subtreesize = 1;
-    root->subtreebytes = 0;
-    root->cols = 6;
-    root->firstvisiblenum = -1;
-    root->firstvisible = NULL;
-    root->selectionnum = -1;
-    root->selection = NULL;
-    root->touched = 1;
 } // initvirtualroot
 
 void virtualtreeinit(void)
@@ -210,6 +219,8 @@ void virtualnoderemovenode(virtualnode **node) // removes and frees node and all
     virtualnode *skunk = *node;
     virtualnode *child;
 
+    pthread_mutex_lock(&virtualtree_mutex);
+
     if (!skunk)
         return;
     if (!skunk->prev) // the head of the list, reconnect siblings with parent
@@ -223,10 +234,13 @@ void virtualnoderemovenode(virtualnode **node) // removes and frees node and all
         virtualnoderemovenode(&child);
 
     freevirtualnode(skunk);
+    pthread_mutex_unlock(&virtualtree_mutex);
+
 } // virtualnoderemovechild
 
 void virtualnodeaddchild(virtualnode **parent, virtualnode **child)
 {
+    pthread_mutex_lock(&virtualtree_mutex);
     if ((*parent)->down) {
         (*child)->next = (*parent)->down;
         (*child)->next->prev = *child;
@@ -236,6 +250,7 @@ void virtualnodeaddchild(virtualnode **parent, virtualnode **child)
 
     (*parent)->down = *child;
     (*child)->up = *parent;
+    pthread_mutex_unlock(&virtualtree_mutex);
 } // virtualnodeaddchild
 
 void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode) // frees oldnode
@@ -243,6 +258,7 @@ void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode) // frees
     virtualnode *new = *newnode;
     virtualnode *old = *oldnode;
 
+    pthread_mutex_lock(&virtualtree_mutex);
     if (old->up) {
         new->up = old->up;
         old->up->down = new;
@@ -264,6 +280,7 @@ void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode) // frees
     }
 
     freevirtualnode(old);
+    pthread_mutex_unlock(&virtualtree_mutex);
 } // overwritevirtualnode
 
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node)
@@ -284,6 +301,8 @@ void setstatus(device **target, status_t newstatus)
     status_t oldstatus;
     char buf[90];
 
+    //<< sempaphore here
+
     // set the new status
     oldstatus = d->status;
     d->status = newstatus;
@@ -298,6 +317,11 @@ void setstatus(device **target, status_t newstatus)
                 snprintf(buf, 90, "%s", d->deviceid); // unnecessary to use buf
                 sendmessage(hq_plug, cmd_int, msgtype_connected, buf);
             break;
+        case status_scanning:
+        case status_storing:
+        case status_loading:
+                sendmessage(hq_plug, cmd_int, msgtype_scanupdate, "");
+                break;
     }
     printerr("Changed status of %s from %d (%s) to %d (%s).\n",
                 d->nickname,
@@ -394,25 +418,15 @@ void hq_scan(char *scanrootpath)
         if (!(g->host->status == status_connected))
             continue;
 
-        // if the requested path to scan and the virtualpath of the graft
-        // are the same for the length of the virtual path of the graft,
-        // we need to include said graft.
-
-        // Consider the scan request for "/Home/test" and a graft with virtual
-        // path "/Home". The first 5 charachters are the same and because this
-        // is the length of the virtual path of the graft, it means the requested
-        // scan path is a child of the graft virtual root.
         scanpathcharacter = scanrootpath;
         graftpathcharacter = g->virtualpath;
 
-        while (*graftpathcharacter && *graftpathcharacter == *scanpathcharacter) {
+        while (*graftpathcharacter && *scanpathcharacter && *graftpathcharacter == *scanpathcharacter) {
             graftpathcharacter++;
             scanpathcharacter++;
         }
 
-        if (*graftpathcharacter == '\0') { // we reached the end of the graft virtual path
-            char *physicalpath = strdupcat(g->hostpath, scanpathcharacter, NULL);
-
+        if (*graftpathcharacter == '\0' || *scanpathcharacter == '\0') {
             // get rid of the virtual graft path in the prunes list..
             stringlist *graftprunes, *deviceprunes, *tmp;
             int32 virtualpathlen = strlen(g->virtualpath);
@@ -431,37 +445,12 @@ void hq_scan(char *scanrootpath)
             }
 
             // send scan command to workers using only host paths
-            sendscancommand(hq_plug, g->host->reachplan.routeraddr, physicalpath, deviceprunes);
+            sendscancommand(hq_plug, g->host->reachplan.routeraddr, g->hostpath, g->virtualpath, deviceprunes);
             freestringlist(deviceprunes);
-            free(physicalpath);
         }
     }
 
 } // hq_scan
-
-void sendvirtualnodelisting(char* path) // sends back all children of node at path
-{
-    virtualnode *dir;
-
-    if (!validfullpath(path)) {
-        printerr("Error: Headquarters got invalid path to list: %s\n", path);
-        return;
-    }
-
-    dir = findnode(&virtualroot, path);
-
-    if (!dir) {
-        printerr("Error: Headquarters could not find node with path: %s\n", path);
-        return;
-    }
-
-    if (dir->filetype > 1) {
-        printerr("Error: Headquarters got list request for node which is not a directory: %s\n", path);
-        return;
-    }
-
-    sendvirtualdir(hq_plug, cmd_int, path, dir);
-} // sendvirtualnodelisting
 
 char *getdevicefolderpathonhq(char *deviceid) // allocates string, free when done
 { // creates device folder if is does not exist, returns the device folder path
@@ -474,19 +463,26 @@ char *getdevicefolderpathonhq(char *deviceid) // allocates string, free when don
 
 void transferfile(connection plug, char *localpath, char *remotepath, int32 direction)
 { // direction: 0 -> download (remote to local), 1 -> upload (local to remote)
-    char *source, *destination, buf[512];
+    char **source, **destination, buf[512];
 
-    source = (direction == 0) ? remotepath : localpath;
-    destination = (direction == 0) ? localpath : remotepath;
+    source = (direction == 0) ? &remotepath : &localpath;
+    destination = (direction == 0) ? &localpath : &remotepath;
 
     if (plug->session.path == NULL) { // a local connection, no ssh session
-        sprintf(buf, "/bin/cp %s %s 2> /dev/null", source, destination);
+        sprintf(buf, "/bin/cp %s %s 2> /dev/null", *source, *destination);
     } else {
         remotepath = strdupcat(plug->session.uname, "@", plug->session.mname, ":", remotepath, NULL);
-        sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath %s' %s %s 2>/dev/null",
-                plug->session.path,
-                source,
-                destination);
+        if (USE_RSYNC) {
+            sprintf(buf, "/usr/bin/rsync -c -z -e \"ssh -o \'ControlPath=%s\'\" %s %s 2>/dev/null",
+                    plug->session.path,
+                    *source,
+                    *destination);
+        } else {
+            sprintf(buf, "/usr/bin/scp -q -C -o 'ControlPath=%s' %s %s 2>/dev/null",
+                    plug->session.path,
+                    *source,
+                    *destination);
+        }
         free(remotepath);
     }
     system(buf);
@@ -511,7 +507,7 @@ device* addunknowndevice(char *deviceid, char *address, int32 routeraddr)
     return *d;
 } // addunknowndevice
 
-device* getdevicebyid(char *deviceid) {
+device *getdevicebyid(char *deviceid) {
     device *d;
 
     for (d = devicelist; d != NULL; d = d->next)
@@ -520,7 +516,7 @@ device* getdevicebyid(char *deviceid) {
     return d;
 } // getdevice
 
-device* getdevicebyplugnum(int32 plugnumber) {
+device *getdevicebyplugnum(int32 plugnumber) {
     device *d;
 
     for (d = devicelist; d != NULL; d = d->next)
@@ -529,11 +525,20 @@ device* getdevicebyplugnum(int32 plugnumber) {
     return d;
 } // getdevice
 
-void identifydevice(char *localid, char *remoteid)
+graft *getgraftbyvirtualpath(char *virtualpath, char *deviceid)
 {
+    graft *g;
 
-    device *targetdevice;
-    device *reacheddevice; // those two may refer to the same device
+    for (g = graftlist; g != NULL; g = g->next)
+        if (!strcmp(g->virtualpath, virtualpath) &&
+            !strcmp(g->host->deviceid, deviceid))
+            break;
+    return g;
+} // getgraftbyvirtualpath
+
+void identifydevice(char *localid, char *remoteid) // returns 1 if the device can be considered connected
+{
+    device *targetdevice, *reacheddevice; // those two may refer to the same device
 
     targetdevice = getdevicebyid(localid);
     reacheddevice = getdevicebyid(remoteid);
@@ -551,7 +556,7 @@ void identifydevice(char *localid, char *remoteid)
             printerr("Error: Device with id [%s] was connected to twice!\n", remoteid);
             // connected through another device?
             if (targetdevice != reacheddevice) {
-                sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease,
+                sendint32(hq_plug, recruiter_int, msgtype_removeplugplease,
                                targetdevice->reachplan.routeraddr);
                 setstatus(&targetdevice, status_reaching);
             } // else here would mean we reached a connected device using the same device.
@@ -577,7 +582,6 @@ void identifydevice(char *localid, char *remoteid)
             targetdevice->reachplan.routeraddr = -1;
             setstatus(&targetdevice, status_inactive);
             setstatus(&reacheddevice, status_connected);
-
         } else {
             // we had a temporary, unverified id -> believe workers id and quickly add to specs!
             if (strcmp(localid, remoteid) != 0) {
@@ -607,12 +611,159 @@ fileinfo *loadremoteimage(connection plug, char *localpath, char *remotepath)
     return result;
 } // loadremoteimage
 
+void addcontinuation(fileinfo *file, fileinfo *cont, continuation_t ct)
+{
+    continuation c;
+
+    c = (continuation) malloc(sizeof(struct continuation_struct));
+    c->candidate = cont;
+    c->next = file->continuation_candidates;
+    file->continuation_candidates = c;
+    c->continuation_type = ct;
+} // addcontinuation
+
+// IMPORTANT TODO: Because of time pressure I was forced to remove the CMD and
+// HQ seperation code. This means they now both operate on the same virtualtree,
+// devicelist and graftlist. Mutexes are used to synchronize between the HQ and
+// CMD thread, but currenly they might not be complete. This is bad and has to
+// be fixed as soon as possible!
+
+// IMPORTANT: Assumes that histories are inserted before scans of the same device!!
+void virtualtreeinsert(fileinfo *files, virtualnode *virtualscanroot, graft *g)
+{
+    graftee gee;
+    virtualnode *v, *parent;
+    fileinfo *child, *ccinode, *ccname; // cc stands for continuation candidate
+    virtualfilekey *vkey, *newvkey;
+    fileinfokey *fkey;
+
+    if (!files || !virtualscanroot)
+        return;
+
+    // look up each scan or history child in virtualtree index
+    // vkey can be resused as long as it is not used with hashtableinsert
+    vkey = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
+    vkey->parent = virtualscanroot;
+
+    for (child = files->down; child != NULL; child = child->next) {
+        vkey->name = strrchr(child->filename, '/') + 1;
+        v = hashtablesearch(virtualtreeindex, vkey);
+        if (!v) {
+            // add new virtual file
+            v = (virtualnode*) malloc(sizeof(virtualnode));
+            initvirtualfile(v);
+            pthread_mutex_lock(&virtualtree_mutex);
+            if (virtualscanroot->down) {
+                v->next = virtualscanroot->down;
+                virtualscanroot->down->prev = v;
+            }
+            v->up = virtualscanroot;
+            virtualscanroot->down = v;
+            v->name = vkey->name;
+            virtualscanroot->numchildren++;
+            parent = virtualscanroot;
+            while (parent != NULL) {
+                parent->subtreesize++;
+                parent = parent->up;
+            }
+            v->filetype = child->filetype;
+            pthread_mutex_unlock(&virtualtree_mutex);
+            // copy the key and store in virtual tree index
+            newvkey = (virtualfilekey*) malloc(sizeof(struct virtualfilekey_struct));
+            newvkey->parent = vkey->parent;
+            newvkey->name = vkey->name;
+            hashtableinsert(virtualtreeindex, newvkey, v);
+        }
+        if (child->trackingnumber < 0) { // are we a scan?
+            // look for source of contiunation
+            ccname = NULL;
+            // find by name
+            for (gee = v->grafteelist; gee != NULL; gee = gee->next) {
+                if (!strcmp(gee->realfile->deviceid, child->deviceid) &&
+                    gee->realfile->trackingnumber > 0) {
+                    ccname = gee->realfile;
+                    break;
+                }
+            }
+            // find by inode
+            fkey = (fileinfokey*) malloc(sizeof(struct fileinfokey_struct));
+            fkey->inode = child->inode;
+            fkey->deviceid = child->deviceid;
+            ccinode = hashtablesearch(fileinfoindex, fkey);
+            free(fkey);
+            // add as continuation candidates of the found histories
+            if (ccinode || ccname) {
+                if (ccinode == ccname) {
+                    addcontinuation(ccinode, child, continuation_fullmatch);
+                    // the latest continuation is always inserted at the head
+                    // of the list
+                    ccinode->the_chosen_candidate = ccinode->continuation_candidates;
+                    child->the_corresponding_history = ccinode;
+                } else {
+                    if (ccinode)
+                        addcontinuation(ccinode, child, continuation_byinode);
+                    if (ccname)
+                        addcontinuation(ccname, child, continuation_byname);
+                }
+            }
+        } else { // the child is a history / tracked file
+            fkey = (fileinfokey*) malloc(sizeof(struct fileinfokey_struct));
+            fkey->inode = child->inode;
+            fkey->deviceid = child->deviceid;
+            hashtableinsert(fileinfoindex, fkey, child);
+        }
+        // add the child to the virtual file graftee list
+        gee = (graftee) malloc(sizeof(struct graftee_struct));
+        gee->source = g;
+        gee->realfile = child;
+        pthread_mutex_lock(&virtualtree_mutex);
+            gee->next = v->grafteelist;
+            v->grafteelist = gee;
+        pthread_mutex_unlock(&virtualtree_mutex);
+        virtualtreeinsert(child, v, g);
+    }
+    free(vkey);
+} // virtualtree_insert
+
+void resetnodevisibiltyandselection(virtualnode *vnode)
+{
+    pthread_mutex_lock(&virtualtree_mutex);
+    vnode->firstvisiblenum = -1;
+    vnode->firstvisible = NULL;
+    vnode->selectionnum = -1;
+    vnode->selection = NULL;
+    pthread_mutex_unlock(&virtualtree_mutex);
+} // resetnodevisibiltyandselection
+
+int32 getscannumber(char *scanfilepath)
+{
+    return (int32) atoi(strrchr(scanfilepath, scan_files_separator) + 1);
+} // getscannumber
+
+char *getpreviousscanpath(char *scanfilepath) // allocates string, free when done
+{
+    char buf[32];
+    int32 scannumber = getscannumber(scanfilepath);
+
+    scannumber--;
+    sprintf(buf, "%c%d",scan_files_separator, scannumber);
+    *(strrchr(scanfilepath, '/')) = '\0';
+    return strdupcat(scanfilepath,
+                     "/",
+                     scan_files_prefix,
+                     buf,
+                     NULL);
+} // getpreviousscanpath
+
 void hqmain(void)
 {
     int32 msg_src;
     int64 msg_type;
     char* msg_data;
     device* d;
+
+    virtualtreeindex = inithashtable(65536, &hash_virtualfilekey, &virtualfilekey_equals);
+    fileinfoindex = inithashtable(65536, &hash_fileinfokey, &fileinfokey_equals);
 
     virtualtreeinit();
 
@@ -640,12 +791,12 @@ void hqmain(void)
                     char *localid = msg_data;
                     char *remoteid = secondstring(msg_data);
 
-                    printerr("Heard that device we call [%s] it calls itself [%s]\n",
+                    printerr("Heard that device we call [%s], calls itself [%s]\n",
                              localid, remoteid);
 
                     identifydevice(localid, remoteid);
-                    break;
             }
+                    break;
             case msgtype_connectdevice: // msg_data is device id
                    if (! (d = getdevicebyid(msg_data))) {
                         printerr("Error: Received unknown device id [%s]\n", msg_data);
@@ -674,7 +825,7 @@ void hqmain(void)
                     break;
                 }
 
-                sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease,
+                sendint32(hq_plug, recruiter_int, msgtype_removeplugplease,
                                                         d->reachplan.routeraddr);
 
                 setstatus(&d, status_reaching);
@@ -692,13 +843,13 @@ void hqmain(void)
                 free(deviceid);
                 d->reachplan.routeraddr = plugnumber;
                 hq_reachfor(d);
-                break;
             }
+                break;
             case msgtype_removeplugplease: // answer from recruiter to our removeplugplease message,
                                            // msgdata is plugnumber of the removed device
             {
                 int32 plugnumber;
-                receiveplugnumber(msg_data, &plugnumber);
+                receiveint32(msg_data, &plugnumber);
 
                 if (! (d = getdevicebyplugnum(plugnumber))) {
                     printerr("Error: Received plug number which does not belong "
@@ -707,71 +858,112 @@ void hqmain(void)
                 }
                 d->reachplan.routeraddr = -1;
                 setstatus(&d, status_inactive);
-                break;
             }
+                break;
             case msgtype_failedrecruit: // possible answer to our recruitworker message sent to the recruiter
                                         // if the recruit was successful, we will hear form worker directly (workerisup message)
             {                           // msg_data is plugnumber
-                    int32 plugnumber;
-                    receiveplugnumber(msg_data, &plugnumber);
+                int32 plugnumber;
+                receiveint32(msg_data, &plugnumber);
 
-                    if (! (d = getdevicebyplugnum(plugnumber))) {
-                        printerr("Error: Received plug number which does not belong "
-                                 "to any device (%d)\n", plugnumber);
-                        break;
-                    }
-                    sendplugnumber(hq_plug, recruiter_int, msgtype_removeplugplease, plugnumber);
-                    d->reachplan.routeraddr = -1;
-                    setstatus(&d, status_inactive); // msg_data is deviceid
+                if (! (d = getdevicebyplugnum(plugnumber))) {
+                    printerr("Error: Received plug number which does not belong "
+                             "to any device (%d)\n", plugnumber);
                     break;
+                }
+                sendint32(hq_plug, recruiter_int, msgtype_removeplugplease, plugnumber);
+                d->reachplan.routeraddr = -1;
+                setstatus(&d, status_inactive); // msg_data is deviceid
+                break;
             }
-            case msgtype_listvirtualdir:
-                    // msg_data is the virtual path of the virtual directory to list
-                    sendvirtualnodelisting(msg_data);
-                    break;
             case msgtype_scanvirtualdir:
-                    // msg_data is the virtual path of the node to scan
-                    hq_scan(msg_data);
-                    break;
-            case msgtype_scandone: // msg_data is the path of the remote scan file
+                // msg_data is the virtual path of the node to scan
+                hq_scan(msg_data);
+                break;
+            case msgtype_scandone: // msg_data contains the path of the remote scan file
             {
               char *localdevicefolderpath, *localscanpath, *localhistorypath;
               char *remotehistorypath, *remotescanpath;
+              char *virtualscanrootpath;
               fileinfo *scan, *history;
+              virtualnode *virtualscanrootnode;
+              graft *g;
 
               connection plug = findconnectionbyplugnumber(msg_src);
 
               if (! (d = getdevicebyplugnum(msg_src))) {
-                  printerr("Error: Received plug number which does not belong "
+                printerr("Error: Received plug number which does not belong "
                            "to any device (%d)\n", msg_src);
-                  break;
+                break;
               }
 
-              receivescandonemessage(msg_data, &remotescanpath, &remotehistorypath);
+              receivescandonemessage(msg_data, &virtualscanrootpath, &remotescanpath, &remotehistorypath);
 
               localdevicefolderpath = getdevicefolderpathonhq(d->deviceid);
-              localscanpath = strdupcat(localdevicefolderpath, strrchr(remotescanpath, '/'), NULL);
-              localhistorypath = strdupcat(localdevicefolderpath, "/", history_file_name, NULL);
+              localscanpath = strdupcat(localdevicefolderpath,
+                              strrchr(remotescanpath, '/'), NULL);
+              localhistorypath = strdupcat(localdevicefolderpath,
+                                 strrchr(remotehistorypath, '/'), NULL);
+
+              setstatus(&d, status_loading);
 
               scan = loadremoteimage(plug, localscanpath, remotescanpath);
               history = loadremoteimage(plug, localhistorypath, remotehistorypath);
 
-              // identify(&virtualroot, history);
-              // identify(&virtualroot, scan);
+              // tell the worker that he can delete the scan file on his device
+              sendmessage(hq_plug, msg_src, msgtype_scanloaded, remotescanpath);
+
+              if (! (g = getgraftbyvirtualpath(virtualscanrootpath, d->deviceid))) {
+                printerr("Error: Got scan results for path which does not belong "
+                    "to a graft\n");
+                break;
+              }
+
+              virtualscanrootnode = findnode(&virtualroot, virtualscanrootpath);
+
+              if (!virtualscanrootnode) {
+                  printerr("Error: Received scans or histories (%s) "
+                            "for an unknown virtual node\n", virtualscanrootpath);
+                            break;
+              }
+
+              resetnodevisibiltyandselection(virtualscanrootnode);
+
+              virtualtreeinsert(history, virtualscanrootnode, g);
+              virtualtreeinsert(scan, virtualscanrootnode, g);
+
+              setstatus(&d, status_connected);
+              sendmessage(hq_plug, cmd_int, msgtype_scandone, "");
 
               free(localdevicefolderpath);
               free(localscanpath);
               free(localhistorypath);
-
+              free(virtualscanrootpath);
               break;
             }
+                break;
+            case msgtype_scanupdate:
+            {
+                status_t s;
+                int32 si;
+
+                if (! (d = getdevicebyplugnum(msg_src))) {
+                    printerr("Error: Received plug number which does not belong "
+                         "to any device (%d)\n", msg_src);
+                }
+                receiveint32(msg_data, &si);
+                s = (status_t)si;
+
+                setstatus(&d, s);
+            }
+                break;
             case msgtype_exit:
-                    cleanexit(__LINE__);
-                    break;
+                cleanexit(__LINE__);
+                break;
             default:
-                    printerr("Headquarters got unexpected message"
-                                    " of type %lld from %d: \"%s\"\n",
-                                    msg_type, msg_src, msg_data);
+                printerr("Headquarters got unexpected message"
+                         " of type %lld from %d: \"%s\"\n",
+                         msg_type, msg_src, msg_data);
         } // switch on message type
 
         free(msg_data);

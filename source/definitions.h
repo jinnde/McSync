@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -38,6 +39,8 @@ extern FILE* ourerr; // we use this instead of stderr
 #define READ_END 0  // for pipes
 #define WRITE_END 1
 
+#define USE_RSYNC 1
+
 #define perm_mask (S_ISUID | S_ISGID | S_ISVTX | S_IRWXU | S_IRWXG | S_IRWXO)
 
 typedef int int32;
@@ -59,14 +62,17 @@ typedef unsigned long long int uint64;
 #define device_time_file_path "/data/time"
 #define device_folders_path "/data"
 // ^ these are partial paths which will be completed by the worker using its address,
-// because they should always be relative to the device. Be aware that McSync expects
-// all directories to exists and will not try to create them for you.
+//   because they should always be relative to the device. Be aware that McSync expects
+//   all directories to exist and will not try to create them for you.
 
 // the following relate to files stored in the device folder
 #define scan_files_prefix "scan"
-// ^ naming of the scan files, the scan number will be appended
-#define history_file_name "history"
-// ^ the history file is stored in the device folder
+#define scan_files_separator '.'
+// ^ naming of the scan files, the scan number will be appended after the
+//   scan files separator char (which can't be 0 or '/' - only change with care!)
+
+#define history_files_prefix "history"
+#define history_files_path_separator '.'
 
 #define specs_file_path "./config/specs"
 
@@ -84,6 +90,8 @@ typedef unsigned long long int uint64;
 
 pthread_attr_t pthread_attributes;
 // ^ used to initialize the agent threads (including forwarder, shipper, receiver)
+
+pthread_mutex_t virtualtree_mutex;
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of data types /////////////////////////////////
@@ -122,13 +130,31 @@ typedef struct queue_struct {
     uint32 size;
 }* queue;
 
-typedef struct hashtable_struct {
-    struct fileinfo_struct **table;
-    int32 size;
-    int32 mask;
-    int32 entries;
-}* hashtable;
+typedef struct entry_struct {
+    void *k, *v;
+    uint32 h;
+    struct entry_struct *next;
+} entry;
 
+typedef struct hashtable_struct {
+    uint32 tablelength;
+    struct entry_struct **table;
+    uint32 entrycount;
+    uint32 loadlimit;
+    uint32 primeindex;
+    uint32 (*hashfn) (void *k);
+    int32 (*eqfn) (void *k1, void *k2);
+} hashtable;
+
+typedef struct virtualfilekey_struct {
+    struct virtualnode_struct *parent;
+    char *name;
+} virtualfilekey;
+
+typedef struct fileinfokey_struct {
+    int32 inode;
+    char *deviceid;
+} fileinfokey;
 // mcsync's notion of an aspect's "history" is captured in the history struct
 
 typedef struct history_struct { // for every tracked file aspect, latest source
@@ -137,7 +163,18 @@ typedef struct history_struct { // for every tracked file aspect, latest source
     int32 devicetime; // device-specific increasing integer, negated if issame
 } *history;
 
-// the fileinfo struct is our platform independent representation of a unix file
+typedef enum { // if you change this also change continuation_type_word in tui.c
+    continuation_byinode,
+    continuation_byname,
+    continuation_fullmatch,
+    continuation_user
+} continuation_t;
+
+typedef struct continuation_struct {
+    struct continuation_struct *next;
+    struct fileinfo_struct *candidate;
+    continuation_t continuation_type;
+} *continuation;
 
 typedef struct extendedattributes_struct { // a helper struct for fileinfo
     struct  extendedattributes_struct *next; // we keep them sorted by name
@@ -148,6 +185,7 @@ typedef struct extendedattributes_struct { // a helper struct for fileinfo
     history hist_attr;
 } *extendedattributes;
 
+// the fileinfo struct is our platform independent representation of a unix file
 typedef struct fileinfo_struct { // everything to know about a file on disk
     struct fileinfo_struct *next; // directory listing is linked list
     struct fileinfo_struct *down; // if this is a directory, its contents
@@ -181,6 +219,13 @@ typedef struct fileinfo_struct { // everything to know about a file on disk
     history hist_loc; // parent directory
     int64   trackingnumber; // together with devicetime,
     int32   devicetime; // this allows all the aspect histories to skip this entry
+    char    *deviceid;
+    // the following are used for matching - for histories (tracked files)...
+    continuation continuation_candidates; // scans that would fit as continuations
+    continuation the_chosen_candidate;    // the one which will be used as contiunation
+    // ... and on the scan side
+    struct fileinfo_struct *the_corresponding_history;  // used only on scans, set if there is a
+                                          // history which has this set as continuation
 } fileinfo;
 
 // devices
@@ -189,6 +234,9 @@ typedef enum { // if you change this, update status_word in headquarters.c
     status_inactive,
     status_reaching,
     status_connected,
+    status_scanning,
+    status_storing,
+    status_loading // includes transferring and reading into memory
 } status_t;
 
 typedef struct devicelocater_struct { // all you need for locating the device
@@ -267,9 +315,10 @@ typedef struct virtualnode_struct {
     int32   selectionnum; // which child is selected (-1 = pls recompute)
     struct virtualnode_struct *selection; // which child is selected
     int32   colwidth; // width of this column (for parent dir listing)
-    int32   touched; // node has changed since last query to HQ, _only_ set on CMD
+    graftee selectedgraftee;
 } virtualnode;
 
+virtualnode virtualroot; // has no siblings and no name
 
 // messaging
 
@@ -365,19 +414,18 @@ typedef struct scan_progress_struct {
 #define msgtype_disconnected        10
 #define msgtype_identifydevice      11
 #define msgtype_deviceid            12
-#define msgtype_listvirtualdir      13
-#define msgtype_virtualdir          14
-#define msgtype_touch               15
-// ^ mark virtual node as touched (changed) on cmd
-#define msgtype_scanvirtualdir      16
+#define msgtype_scanvirtualdir      13
 // ^ the message contains a virtual path (usually a request from cmd to hq)
-#define msgtype_scan                17
+#define msgtype_scan                14
 // ^ the message contains a host path and prune points (usually a request from hq to workers)
-#define msgtype_scandone            18
-#define msgtype_exit                19
+#define msgtype_scandone            15
+#define msgtype_exit                16
 // ^ tells the receiver to stop running
-#define msgtype_goodbye             20
+#define msgtype_goodbye             17
 // ^ is sent back from a worker who has received a msgtype_exit
+#define msgtype_scanupdate          18
+#define msgtype_scanloaded          19
+// ^ hq tell the worker it can delete the local scan file
 
 // if you change these^, change msgtypelist in communication.c
 
@@ -434,24 +482,19 @@ void nsendmessage(connection plug, int recipient, int type, char* what, int len)
 int receivemessage(connection plug, listint* src, int64* type, char** data);
 char* secondstring(char* string); // read the second string from a sendmessage2 type message (contains two strings)
 
-// virtual node comnunication between cmd and hq
-void sendvirtualnoderquest(virtualnode *root, virtualnode *node); // sends a list virtual node request, only to be used from cmd
-void sendvirtualdir(connection plug, int recipient, char *path, virtualnode *dir);
-void receivevirtualdir(char *source, char **path, queue receivednodes);
-
 // scan communication
 void sendscanvirtualdirrequest(virtualnode *root, virtualnode *node); // to hq
-void sendscancommand(connection plug, int recipient, char *scanroot, stringlist *prunepoints); // to workers
-void receivescancommand(char *source, char **scanroot, stringlist **prunepoints);
-void sendscandonemessage(connection plug, char *scanfilepath, char *historyfilepath); // to hq
-void receivescandonemessage(char *source, char **scanfilepath, char **historyfilepath);
+void sendscancommand(connection plug, int recipient, char *scanroot, char *virtualscanroot, stringlist *prunepoints); // to workers
+void receivescancommand(char *source, char **scanroot, char **virtualscanroot, stringlist **prunepoints);
+void sendscandonemessage(connection plug, char *virtualscanroot, char *scanfilepath, char *historyfilepath); // to hq
+void receivescandonemessage(char *source, char **virtualscanroot, char **scanfilepath, char **historyfilepath);
 
 // recruiter communication
 void sendrecruitcommand(connection plug, int32 plugnumber, char *address); // always sent to recruiter
 void receiverecruitcommand(char *source, int32 *plugnumber, char **address); // used by recruiter
 
-void sendplugnumber(connection plug, int32 recipient, int32 type, int32 plugnumber);
-void receiveplugnumber(char *source, int32 *plugnumber);
+void sendint32(connection plug, int32 recipient, int32 type, int32 n);
+void receiveint32(char *source, int32 *n);
 
 void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnumber); // used by recruiter
 void receivenewplugresponse(char *source, char **reference, int32 *plugnumber);
@@ -483,17 +526,27 @@ void queueinserthead(queue q, void *data);
 void queueinserttail(queue q, void *data);
 void *queueremove(queue q, queuenode qn); // returns pointer to data, because it will not be freed!!
 
-// hashtable - for fileinfos
-hashtable inithashtable(void);
-void freehashtable(hashtable h);
+// hashtable - due to Christopher Clark, 2002
+hashtable *inithashtable(uint32 minsize, uint32 (*hashfunction) (void*),
+                         int32 (*key_eq_fn) (void*, void*));
+void freehashtable(hashtable *h, int32 free_values, int32 free_keys);
 
-fileinfo* storehash(hashtable h, fileinfo* file); // returns file with same inode or stores new
+int32 hashtableinsert(hashtable *h, void *k, void *v); // non-zero on success
+void *hashtablesearch(hashtable *h, void *k);
+void *hashtableremove(hashtable *h, void *k);
+uint32 hashtablecount(hashtable *h);
+
+uint32 hash_int32(void *k);
+int32 int32_equals(void *key1, void *key2);
+uint32 hash_virtualfilekey(void *k);
+int32 virtualfilekey_equals(void *key1, void *key2);
+uint32 hash_fileinfokey(void *k);
+int32 fileinfokey_equals(void *key1, void *key2);
 
 //////// actual interaction between program parts
 
 // agent system
 void TUImain(void);
-void climain(void);
 void hqmain(void);
 void workermain(connection workerplug);
 void reqruitermain(void);
@@ -535,15 +588,20 @@ void virtualnoderemovenode(virtualnode **node); // removes and frees node and al
 void overwritevirtualnode(virtualnode **oldnode, virtualnode **newnode); // frees oldnode
 void getvirtualnodepath(bytestream b, virtualnode *root, virtualnode *node); // writes the path of node into b
 void freevirtualnode(virtualnode *node);
-
+void mapgraftpoint(graft *source, char *where, int pruneq, int deleteq);
+void addcontinuation(fileinfo *file, fileinfo *cont, continuation_t ct);
 
 // disk scan related
 fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_plug,
-                    hashtable h, scan_progress progress); // get inode info for filename (which includes path) and for any subdirectories
+                    hashtable *h, scan_progress progress, int32 devicetime, char *deviceid); // get inode info for filename (which includes path) and for any subdirectories
 void writeimage(fileinfo* image, char* filename, scan_progress progress);
 fileinfo* readimage(char* filename, scan_progress progress);
 void freefileinfo(fileinfo* skunk);
-void resetscanprogress(scan_progress *progress); //does not alter progress->updateinteval
+void resetscanprogress(scan_progress *progress); // does not alter progress->updateinterval
+char *getpreviousscanpath(char *scanfilepath); // allocates string, free when done
+
+// device related
+device* getdevicebyid(char *deviceid);
 
 // tui specific
 void raw_io(void);

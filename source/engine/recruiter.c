@@ -420,7 +420,7 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     connection plug = remove_connection(plugnumber);
 
     if (!success)
-        printerr("Warning: Disconnecting unresponsive device on plug %d", plugnumber);
+        printerr("Warning: Disconnecting unresponsive device on plug %d\n", plugnumber);
 
     // it it nearly impossible to make threads involved with blocking I/O exit in some sane
     // way. We use a signal that will make them exit on the spot with no way for
@@ -462,7 +462,7 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
 
     freeconnection(plug);
 
-    sendplugnumber(recruiter_plug, hq_int, msgtype_removeplugplease, plugnumber);
+    sendint32(recruiter_plug, hq_int, msgtype_removeplugplease, plugnumber);
 } // disconnectplug
 
 void reqruitermain(void)
@@ -509,14 +509,14 @@ void reqruitermain(void)
                 int32 plugnumber;
                 receiverecruitcommand(msg_data, &plugnumber, &address);
                 if (! recruitworker(plugnumber, address))
-                    sendplugnumber(recruiter_plug, msg_src, msgtype_failedrecruit, plugnumber);
+                    sendint32(recruiter_plug, msg_src, msgtype_failedrecruit, plugnumber);
                 free(address);
             }
             break;
             case msgtype_removeplugplease: // msg_data is the number of the plug we should remove
             {
                 int32 plugnumber;
-                receiveplugnumber(msg_data, &plugnumber);
+                receiveint32(msg_data, &plugnumber);
                 // we first try to reach the worker and if no response is given after
                 // some time we will be a little harsh and just disconnect or kill it.
                 // hopefully remote McSyncs will then eventually get a broken pipe signal
