@@ -1,16 +1,77 @@
 #include "definitions.h"
+#include "util/cJSON/cJSON.h"
 
 /*
 
-This basically handles the preferences for the system.
+This reads and writes the preferences for the system.
 
-It would be nice to have a single specification of the preferences,
-which would then be used for reading, writing, and accessing.
+We store prefs in json format so we can use an off-the-shelf parser.
+Our approach to forward-compatability is that named object properties
+should have hard-coded names and can be freely added in future versions.
+Exception: Any name beginning with "comment" is reserved to never be used.
 
-This would for example make it easy to add a pref,
-without worrying about how the parser works.
+The preferences are stored in config/specs.
+
+It reads/writes the following globals:
+    machinelist
+    directorysetlist
+    devicelist
+    graftlist
+
+Quick summary of format:
+ { "version" : 1,
+   "machines" : [
+                    { "name" : "MyLaptop",
+                      "script" : "isitmylaptop.sh",         EMPTY STRING == NONE
+                      "comment1" : "script (from reaching machine) makes sure we"
+                      "comment2" : "don't talk to executables on strange machines",
+                      "dir" : [ "~/.mcsync",
+                                "/Volumes/DriveNames",
+                                ... ],
+                      "addresses" : [
+                                        { "fromnet" : "home net",
+                                          "how" : "ssh:user@192.168.1.1",
+                                          "reaches" : "internet" },
+                                        ... ]
+                    },
+                    ... ],
+   "directory sets" : [
+                        { "name" : "DriveNames",
+                          "expansion" : [ "USB1/.mcsync",
+                                          "USB2/home/.mcsync",
+                                          ... ]
+                        },
+                        ... ],
+   "devices" : [
+                    { "name" : "Old USB",
+                      "id" : "5123ac84701983c4a7d2d9c139823",
+                      "color" : "red" },
+                    ... ],
+   "grafts" : [
+                { "device" : "Old USB",
+                  "device graft point" : "Work/Documents",
+                  "virtual graft point" : "docs",
+                  "prune points" : [ "Project4/BigFiles",
+                                     "Project6/",           SLASH MEANS CONTENTS
+                                     ... ]
+                },
+                ... ],
+   "tree prefs" : [
+                    { "pref point" : "docs/Project3/svn",
+                      { "prune grafts here" : true, ... } },
+                    { "pref point" : "docs/Project1",
+                      { "autoscan" : true,
+                        "preferred device" : "server", ... } },
+                    ... ]
+ }
 
 */
+
+machine         *machinelist;
+directoryset    *directorysetlist;
+device          *devicelist;
+graft           *graftlist;
+
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// start of specs IO ///////////////////////////////////

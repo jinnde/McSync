@@ -20,7 +20,7 @@ int32 getlockfile(char *path, int32 maxtime)
     if (lockfile)
         return 0;
     if (!(lockfile = fopen(lockfilepath, "w"))) {
-        printerr("Error: Could not write lock file to disk (%s) Path: %s\n",
+        log_line("Error: Could not write lock file to disk (%s) Path: %s\n",
                  strerror(errno), lockfilepath);
         return 0;
     }
@@ -35,13 +35,19 @@ int32 releaselockfile(char *path) //returns 1 if sucessful, 0 otherwise
 
     if (remove(lockfilepath) == -1) {
         if (errno != ENOENT) {
-            printerr("Error: Could not release lock file (%s) Path: %s\n",
+            log_line("Error: Could not release lock file (%s) Path: %s\n",
                      strerror(errno), lockfilepath);
             free(lockfilepath);
             return 0;
         }
-        printerr("Warning: re-releasing lock file! Path: %s\n", lockfilepath);
+        log_line("Warning: re-releasing lock file! Path: %s\n", lockfilepath);
     }
     free(lockfilepath);
     return 1;
 } // releaselockfile
+
+// on a different topic...  but this must not be in a file that uses it...
+int memorybarrier(void* a, void *b)
+{
+    return a==b;
+}

@@ -1,0 +1,188 @@
+
+Phase 1:  Foundation
+
+Goal 1: have network formation working
+1. define network reaching strategy
+	- define preferences format
+2. use proper network node addressing and data structure
+3. encapsulate all tricky or future-expandable things
+	- deciding if device is new
+
+Goal 2: have front end be independent
+1. develop partial/remote knowledge virtual tree data structure
+2. develop request-response protocol
+
+Goal 3: show scan progress
+1. develop periodic update protocol
+
+Goal 4: automatic code spreading
+1. develop mini loader / propagator
+	- must use unchanging but expandable protocol
+	- if reached version is older than reacher's, transfer and recompile
+	- if reached version is newer than reacher's, transfer back to all, recommend restart
+
+Phase 2:  Functionality
+
+
+---------------
+network design
+network starts with just the machine and device and cmd where mcsync is invoked
+each machine in network has a machine worker
+each device in network has a device worker
+each cmd in the network (just one for now) has a cmd worker (tui)
+these are the only workers in the network
+cmd keeps track of network: machine poboxes and device poboxes
+cmd can:
+        ask a machine to reach out to another machine
+        ask device to do a snapshot from a root with prune points
+        ask device to send snapshot or history info to another device
+        give continuation guidance to device
+        give preference guidance to device
+        give instructions to device
+        ask device to compare histories that it has
+
+---------------
+
+tui design
+
+-
+
+network building screen
+
+shows current network, shows list of machines, allows editing machine prefs
+                    machine info: (connected, from where)
+                    machine prefs: (name, verification script, mcsync dir*, address*)
+                    machine actions: (connect, disconnect, set as connection source, set as comparer)
+shows list of devices, allows editing device grafts
+                    device info: (connected, where (dir, machine), hash)
+                    device prefs: (name, color, grafts*, )
+                    device actions: these are done through the virtual tree
+
+-
+
+virtual tree viewing screen
+
+can show files compressed, perhaps color coded (like ls)
+or can show long listing with full details (like ls -l)
+
+for a particular virtual file, shows all corresponding grafted files with full details
+this shows both tracked files and snapshots (merged when continuation is clear)
+number keys can be assigned to particular directories for fast jumping back and forth
+
+actions:
+    scan device (or all) from here
+    set continuation guidance
+    set preferred value guidance
+    sync device (or all) from here
+
+---------------
+
+understand RCTR - ok
+
+RCTR makes connections take place serially!!  when receiving messages to call recruitworker
+
+Why doesn't the PO do this by starting a new thread?
+The PO should spawn a RCTR in a new plug on its own thread that sends a message when successful.
+
+
+ * give POs addresses
+ * have POs spawn RCTRs when needed
+
+
+understand plugnumber
+
+ * get rid of plugnumber
+ * get rid of listener
+
+
+------ (redesign)
+    linked devices
+ ?	understand device linking and recruiter
+		device struct has a field "linked"
+ ?	think through discovering new devices with old device files, finding an unexpected device in place of an expected one
+		you reach to a location, you find a device, you believe the device to be what it says
+			unless you already see that device elsewhere
+			unless the inode has changed
+		if the device claims to be one you have never seen before, still believe it
+ ?	implement proper strategy (add "this is ..." file)
+    histories
+ ?	understand scans with respect to the virtual tree
+ ?	figure out what is required to have scans be with respect to device root
+ ?	implement proper strategy
+    diagnostics
+ ?	create routine to log info to a log file
+
+
+
+
+
+cook:McSync cook$ grep -n plugnumber source/*/*
+source/engine/communication.c:813:void sendrecruitcommand(connection plug, int32 plugnumber, char *address)
+source/engine/communication.c:817:    serializeint32(serialized, plugnumber);
+source/engine/communication.c:824:void receiverecruitcommand(char *source, int32 *plugnumber, char **address)
+source/engine/communication.c:826:    *plugnumber = deserializeint32(&source);
+source/engine/communication.c:855:void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnumber)
+source/engine/communication.c:860:    serializeint32(serialized, plugnumber);
+source/engine/communication.c:866:void receivenewplugresponse(char *source, char **reference, int32 *plugnumber)
+source/engine/communication.c:869:    *plugnumber = deserializeint32(&source);
+source/engine/communication.c:919:                log_line(" (from %d)", plug->plugnumber);
+source/engine/communication.c:1105:connection findconnectionbyplugnumber(int32 plugnumber)
+source/engine/communication.c:1111:        if (plug->plugnumber == plugnumber)
+source/engine/communication.c:1115:} // findconnectionbyplugnumber
+source/engine/communication.c:1119:void add_connection(connection *store_plug_here, int32 plugnumber)
+source/engine/communication.c:1136:    if (plugnumber) { // normal case (any plug but the parent plug)
+source/engine/communication.c:1137:        plug->thisway = singletonintlist(plugnumber);
+source/engine/communication.c:1138:        plug->plugnumber = plugnumber;
+source/engine/communication.c:1147:        plug->plugnumber = 0;
+source/engine/communication.c:1164:connection remove_connection(int32 plugnumber)
+source/engine/communication.c:1173:        if (plug->plugnumber == plugnumber)
+source/engine/communication.c:1180:                 "plug number [%d]", plugnumber);
+source/engine/headquarters.c:519:device *getdevicebyplugnum(int32 plugnumber) {
+source/engine/headquarters.c:523:        if (d->reachplan.routeraddr == plugnumber)
+source/engine/headquarters.c:836:                int32 plugnumber;
+source/engine/headquarters.c:837:                receivenewplugresponse(msg_data, &deviceid, &plugnumber);
+source/engine/headquarters.c:844:                d->reachplan.routeraddr = plugnumber;
+source/engine/headquarters.c:849:                                           // msgdata is plugnumber of the removed device
+source/engine/headquarters.c:851:                int32 plugnumber;
+source/engine/headquarters.c:852:                receiveint32(msg_data, &plugnumber);
+source/engine/headquarters.c:854:                if (! (d = getdevicebyplugnum(plugnumber))) {
+source/engine/headquarters.c:856:                             "to any device (%d)\n", plugnumber);
+source/engine/headquarters.c:865:            {                           // msg_data is plugnumber
+source/engine/headquarters.c:866:                int32 plugnumber;
+source/engine/headquarters.c:867:                receiveint32(msg_data, &plugnumber);
+source/engine/headquarters.c:869:                if (! (d = getdevicebyplugnum(plugnumber))) {
+source/engine/headquarters.c:871:                             "to any device (%d)\n", plugnumber);
+source/engine/headquarters.c:874:                sendint32(hq_plug, recruiter_int, msgtype_removeplugplease, plugnumber);
+source/engine/headquarters.c:892:              connection plug = findconnectionbyplugnumber(msg_src);
+source/engine/recruiter.c:299:    put32safe(plug->tokid, plug->plugnumber);
+source/engine/recruiter.c:357:int32 recruitworker(int32 plugnumber, char *address) // modifies remote addresses
+source/engine/recruiter.c:359:    connection plug = findconnectionbyplugnumber(plugnumber);
+source/engine/recruiter.c:419:    int32 plugnumber = msg_src;
+source/engine/recruiter.c:420:    connection plug = remove_connection(plugnumber);
+source/engine/recruiter.c:423:        log_line("Warning: Disconnecting unresponsive device on plug %d\n", plugnumber);
+source/engine/recruiter.c:465:    sendint32(recruiter_plug, hq_int, msgtype_removeplugplease, plugnumber);
+source/engine/recruiter.c:509:                int32 plugnumber;
+source/engine/recruiter.c:510:                receiverecruitcommand(msg_data, &plugnumber, &address);
+source/engine/recruiter.c:511:                if (! recruitworker(plugnumber, address))
+source/engine/recruiter.c:512:                    sendint32(recruiter_plug, msg_src, msgtype_failedrecruit, plugnumber);
+source/engine/recruiter.c:518:                int32 plugnumber;
+source/engine/recruiter.c:519:                receiveint32(msg_data, &plugnumber);
+source/engine/recruiter.c:524:                sendmessage(recruiter_plug, plugnumber, msgtype_exit, "");
+source/engine/recruiter.c:525:                waitformessage(recruitercallbacks, msgtype_goodbye, plugnumber, 1000000,
+source/engine/worker.c:489:    snprintf(buf, 90, "%d", worker_plug->plugnumber);
+
+Who is using the plugnumber??
+1. worker tells hq the plugnumber of its worker_plug in its workerisup message.
+2. raisechild gives new mcsync process a plugnumber and an address.
+3. The recruitworker message gives (from hq) the recruiter a plug number and an address.  The recruiter uses this to find the plug.
+4. The removeplugplease message gives (from hq) the recruiter a plugnumber.
+5. 
+
+
+
+
+
+
+
+
+

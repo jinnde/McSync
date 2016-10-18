@@ -1,0 +1,116 @@
+\begin{theindex}
+
+  \item ancestor, \hyperpage{27}
+  \item arbitrary distinguishability theorem, \hyperpage{72}
+  \item aspect, \hyperpage{22}
+
+  \indexspace
+
+  \item backups, \hyperpage{77}
+
+  \indexspace
+
+  \item comparing histories, \hyperpage{32}
+  \item computer, \hyperpage{21}
+  \item consistency theorem, \hyperpage{66}
+  \item CPU, \hyperpage{21}
+  \item ctime, \hyperpage{73}
+
+  \indexspace
+
+  \item disk drive, \hyperpage{21}
+  \item distinguishability, \hyperpage{72}
+
+  \indexspace
+
+  \item extended attributes, \hyperpage{23}
+
+  \indexspace
+
+  \item file, \hyperpage{22}, \hyperpage{27}
+  \item file contents, \hyperpage{23}
+  \item file parts, \hyperpage{22}
+  \item filename, \hyperpage{23}
+  \item flash drive, \hyperpage{21}
+  \item free preferability theorem, \hyperpage{72}
+  \item full history, \hyperpage{30}
+
+  \indexspace
+
+  \item ghost deletion theorem, \hyperpage{71}
+  \item global improvement theorem, \hyperpage{66}
+  \item gossip, \hyperpage{33}
+  \item graft, \hyperpage{77}
+  \item guidance, \hyperpage{35}
+
+  \indexspace
+
+  \item hard drive, \hyperpage{21}
+  \item history, \hyperpage{30}
+  \item history comparison, \hyperpage{32}
+
+  \indexspace
+
+  \item identification, \hyperpage{35}
+  \item inode, \hyperpage{73}
+  \item inode and ctime theorem, \hyperpage{73}
+  \item instructions, \hyperpage{39}
+
+  \indexspace
+
+  \item key-value pairs, \hyperpage{25}
+
+  \indexspace
+
+  \item local improvement theorem, \hyperpage{66}
+  \item lossless theorem, \hyperpage{64}
+
+  \indexspace
+
+  \item machine, \hyperpage{21}
+  \item merge tools, \hyperpage{25}
+  \item missing, \hyperpage{22}
+  \item modification time, \hyperpage{23}
+
+  \indexspace
+
+  \item naive merge theorem, \hyperpage{66}
+  \item new version, \hyperpage{29}
+  \item not visible, \hyperpage{22}
+  \item noticing, \hyperpage{38}
+
+  \indexspace
+
+  \item old version, \hyperpage{29}
+  \item optimality theorem, \hyperpage{65}
+
+  \indexspace
+
+  \item parent directory, \hyperpage{23}
+  \item permissions, \hyperpage{23}
+  \item preferability, \hyperpage{29}, \hyperpage{72}
+
+  \indexspace
+
+  \item raw file, \hyperpage{27}
+
+  \indexspace
+
+  \item scan, \hyperpage{29}
+  \item sets, \hyperpage{26}
+  \item snapshot, \hyperpage{29}
+  \item storage device, \hyperpage{21}
+  \item sync, \hyperpage{39}
+
+  \indexspace
+
+  \item tracked file, \hyperpage{27}
+  \item tracking number, \hyperpage{28}
+
+  \indexspace
+
+  \item version, \hyperpage{29}
+  \item virtual file, \hyperpage{27}
+  \item virtual tree, \hyperpage{76}
+
+\end{theindex}

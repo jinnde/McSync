@@ -1,25 +1,32 @@
+# Development Workflow
+
+To compile, go to the mcsync root directory and execute the "compile" script.
+Or, to compile and run (only on success), execute "mcsync".
+
 # Source Code Structure
 
 McSync is organized as a bunch of interacting agents.
 The source files can be understood in relation to these.
 
-    definitions.h           used by everybody
+  general code:
+    definitions.h   used by everybody
+    main.c          starts agents: 1 machine, 1 device, (!slave) user interface, 1 router
+    specs.c         read/write preferences and configuration
+  agents:
+    router.c        handles sending and receiving of messages over channels (PO)
+    reacher.c       connects to remote machine and establishes connection to remote mcsync
+    machine.c       adminstrates requests to create/remove connections, creates reachers
+    device.c        handles device operations: scan files, update file, etc.
+    tui.c           2D textual user interface, source of request messages (CMD)
+                      should have 3 layers: UI high level, UI low level, UI independent
+                        high level has design of what actions/state user can do/see when
+                        low level could be tui or gui or cli
+                        independent handles messaging and virtual tree maintenance
 
-    main.c                  figures out whether it should be CMD / HQ / WKR and runs routermain
-    communication.c         handles sending and receiving of messages over channels (PO)
-    network.c               connects to remote machine and establishes connection to remote mcsync
+--------------------------------- updated to here, needs to be merged into tech report
 
-    workerops.c             code for WKR
-    diskscan.c
 
-    headquarters.c          code for HQ
-    comparisons.c
 
-    tui.c                   code for CMD (user interface)
-    specs.c                 (de)serialize preferences and configuration
-
-To compile, go to the uppermost directory, and type 'make'.
-To run, go one directory higher, and type `'./bin/mcsync'`.
 
 ## The Types of Agents
 

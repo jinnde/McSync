@@ -192,7 +192,7 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
     if (stringlistcontains(prunepoints, filename) != NULL)
         return NULL;
     if (lstat(filename, &status)) {
-        printerr("Scan Warning: Could not stat %s (%s)\n", filename, strerror(errno));
+        log_line("Scan Warning: Could not stat %s (%s)\n", filename, strerror(errno));
         return NULL;
     }
 
@@ -265,7 +265,7 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
 
         thisdir = opendir(filename);
         if (!thisdir) {
-            printerr("Warning: directory %s could not be read (%s)\n",
+            log_line("Warning: directory %s could not be read (%s)\n",
                     filename, strerror(errno));
             goto donewithdir;
         }
@@ -280,13 +280,13 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
             //  Another reason interfaces should be formalized further.)
             if (entry == NULL) {
                 if (errno != 0)
-                    printerr("Warning: error reading directory %s (%s)\n",
+                    log_line("Warning: error reading directory %s (%s)\n",
                             filename, strerror(errno));
                 // if no error, entry==NULL means we have read it all
                 break;
             }
             if (index(entry->d_name, '/')) {
-                printerr("Warning: skipping file \"%s\" because it"
+                log_line("Warning: skipping file \"%s\" because it"
                         " contains a '/' (in directory %s)\n",
                         entry->d_name, filename);
                 continue;
@@ -312,7 +312,7 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
         }
 
         if (closedir(thisdir) != 0) {
-            printerr("Warning: could not close directory %s (%s)\n",
+            log_line("Warning: could not close directory %s (%s)\n",
                     filename, strerror(errno));
         }
     }
@@ -320,7 +320,7 @@ fileinfo* formimage(char* filename, stringlist *prunepoints, connection worker_p
     donewithdir:
 
     if (progress->total % progress->updateinterval == 0) {
-            printerr("\015Scanning directories... "
+            log_line("\015Scanning directories... "
              "(found %d directories, %d files, %d links, %d other)\n",
              progress->directories, progress->regularfiles, progress->links, progress->other);
         // In the future the worker plug could be used here to send detailed updates to headquarters
@@ -373,7 +373,7 @@ char* getstring(FILE* input, char delimiter) // returns new string; free when do
     char *copy;
 
     if (buf == NULL) {
-        //printerr("Initializing input string buffer\n");
+        //log_line("Initializing input string buffer\n");
         buflen = 2048;
         buf = (char*) malloc(buflen);
     }
@@ -391,22 +391,22 @@ char* getstring(FILE* input, char delimiter) // returns new string; free when do
             break;
         if (i - buf >= buflen) {
             char *newbuf;
-            //printerr("Expanding input string buffer from %d to %d\n",
+            //log_line("Expanding input string buffer from %d to %d\n",
             //        buflen, 2 * buflen);
             buflen *= 2;
-            //printerr("last character stored: '%c'  original buffer: %.*s\n",
+            //log_line("last character stored: '%c'  original buffer: %.*s\n",
             //        newchar, buflen/2, buf);
             newbuf = (char*) realloc(buf, buflen);
             i += newbuf - buf;
             buf = newbuf;
-            //printerr("last character stored: '%c'  new buffer: %.*s\n",
+            //log_line("last character stored: '%c'  new buffer: %.*s\n",
             //        newchar, buflen, buf);
         }
     }
     copy = (char*) malloc(i - buf);
     strncpy(copy, buf, i - buf);
     copy[i - buf - 1] = 0;
-    //printerr("read string '%s'\n", copy);
+    //log_line("read string '%s'\n", copy);
     return copy;
 } // getstring
 
@@ -438,7 +438,7 @@ void writesubimage(FILE *output, fileinfo* subimage, scan_progress progress)
     progress->total++;
 
     if (progress->total % progress->updateinterval == 0) {
-            printerr("\015Writing image file to disk... "
+            log_line("\015Writing image file to disk... "
              "(found %d directories, %d files, %d links, %d other)\n",
              progress->directories, progress->regularfiles, progress->links, progress->other);
     }
@@ -491,11 +491,11 @@ void writeimage(fileinfo *image, char *filename, scan_progress progress)
     if (image == NULL) // not clear this should ever happen
         return;
 
-    printerr("Writing image file %s\n", filename);
+    log_line("Writing image file %s\n", filename);
 
     output = fopen(filename, "w");
     if (!output) {
-        printerr("Error opening output file %s (%s)\n",
+        log_line("Error opening output file %s (%s)\n",
                 filename, strerror(errno));
         return;
     }
@@ -580,7 +580,7 @@ fileinfo *readsubimage(FILE *input, scan_progress progress)
         case 4:     progress->other++;          break;
     }
 
-    printerr("\015Reading image file... "
+    log_line("\015Reading image file... "
              "(read %d directories, %d files, %d links, %d other)",
              progress->directories, progress->regularfiles, progress->links, progress->other);
    {
@@ -607,24 +607,24 @@ fileinfo *readimage(char *filename, scan_progress progress)
     int32 fileversion;
     int32 numberofrecords;
 
-    printerr("Reading image file %s\n", filename);
+    log_line("Reading image file %s\n", filename);
 
     input = fopen(filename, "r");
     if (!input) {
-        printerr("Error opening input file %s (%s)\n",
+        log_line("Error opening input file %s (%s)\n",
                 filename, strerror(errno));
         return NULL;
     }
 
     if (get32(input) != magiccookie) {
-        printerr("Error: input file %s does not appear to be an image file\n",
+        log_line("Error: input file %s does not appear to be an image file\n",
                 filename);
         return NULL;
     }
 
     fileversion = get32(input);
     if (fileversion > logfileversionnumber) {
-        printerr("Warning: I can read file formats up to version %d,"
+        log_line("Warning: I can read file formats up to version %d,"
                 " but file %s has format version %d\n",
                 logfileversionnumber, filename, fileversion);
     }
@@ -635,12 +635,12 @@ fileinfo *readimage(char *filename, scan_progress progress)
 
     image = readsubimage(input, progress);
 
-    printerr("\015Reading image file... "
+    log_line("\015Reading image file... "
             "(read %d directories, %d files, %d links, %d other)\n",
             progress->directories, progress->regularfiles, progress->links, progress->other);
 
     if (numberofrecords != image->subtreesize) {
-        printerr("Warning: image file %s claimed to have %d entries,"
+        log_line("Warning: image file %s claimed to have %d entries,"
                 " but it appears to contain %d entries instead.\n",
                 filename, numberofrecords, image->subtreesize);
     }
@@ -649,7 +649,7 @@ fileinfo *readimage(char *filename, scan_progress progress)
 
     {
         char *g1, *g2;
-        printerr("Read image file %s containing %s files (%s bytes).\n",
+        log_line("Read image file %s containing %s files (%s bytes).\n",
                 filename,
                 g1 = strdup(commanumber(image->subtreesize)),
                 g2 = strdup(commanumber(image->subtreebytes)));

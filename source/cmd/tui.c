@@ -1,11 +1,39 @@
 #include "definitions.h"
 
-char* continuation_type_word[] = {
-    "by inode",
-    "by name",
-    "full match"
-};
+/*
 
+The main idea of the TUI is:
+1. There are multiple regions on the screen (machine list, main area, commands, etc.)
+2. There is a current visual location, in one of the regions: on a line: at a word, etc.
+3. Certain commands are available depending on the location and what can be done there
+
+There are three main visual modes:
+        1. browsing machines & device connectivities, activities, and settings
+        2. "tail -f" mode -- observing one or more logs or login attempts
+            a. viewing the login attempt to a machine, perhaps typing a password
+            b. viewing the beep log
+            c. viewing the error log for a machine ("clear to here", "unclear", "save")
+        3. browsing syncable files in the virtual tree (could split view here too)
+            a. directories / files
+            b. grafted file info (both tracked and snapshot)
+            c. action log
+Actually, the split screen should allow any combination.  You could hit "scan"
+in the VT and watch the device statuses change and watch their logs scroll.
+You can save and switch between view combinations.
+Some views can control others.  For example a machine chooser view can specify
+the machine for a machine detailed preferences view.  A file chooser view can
+specify the directory for another.
+
+*/
+
+//////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////   U T I L I T I E S
+
+int32 next_free_pob = first_free_pob;
+
+// XXXXXXXXXXXXXXXX should move to device worker, no reason for cmd to dictate
+// but device could double-check with cmd whether id is already in use, indicating
+// non-random /dev/random
 char *generatedeviceid() // unique device id generation using /dev/random
 {                        // allocs string, free when done!
     char randombuf[device_id_size];
@@ -16,13 +44,13 @@ char *generatedeviceid() // unique device id generation using /dev/random
 
     devrandom = fopen("/dev/random", "rb");
     if (!devrandom) {
-        printerr("Error: Can't open /dev/random for unique device id creation (%s)\n",
+        log_line("Error: Can't open /dev/random for unique device id creation (%s)\n",
                  strerror(errno));
         return NULL;
     }
 
     if (fread(randombuf, 1, device_id_size, devrandom) != device_id_size) {
-        printerr("Error: Can't read from /dev/random for unique device id creation (%s)\n",
+        log_line("Error: Can't read from /dev/random for unique device id creation (%s)\n",
                  strerror(errno));
         fclose(devrandom);
         return NULL;
@@ -67,7 +95,7 @@ char *commanumber(int64 n) // returns human-readable integer in reused buffer
 int SelectedMachineColor[6];
 int UnselectedMachineColor[6];
 char CurrentDeviceTask[6][8] = { "   ", "   ", "   ", "[S]", "[W]", "[L]" };
-// ^ is printed next to the device nick name in the device list
+// CurrentDeviceTask is printed next to the device nickname in the device list
 
 enum curscolors {
     BLACKonYELLOW = 1,
@@ -126,7 +154,8 @@ void setupcolors(void)
     UnselectedMachineColor[status_loading] = CYANonBLACK;
 } // setupcolors
 
-// gi is for global interface --- variables local to the TUI routines
+// gi is for global interface --- variables describing the overall screen/UI state
+
 int gi_scrx, gi_scry; // screen size
 int gi_msx, gi_msy; // mouse location
 int gi_mode = 1; // 1 = mousing devices, 2 = mousing files,
@@ -134,8 +163,36 @@ int gi_mode = 1; // 1 = mousing devices, 2 = mousing files,
 // 4 means deleting something (in mode 1)
 // 5 means editing a virtual node
 int gi_savemode; // push previous mode while mode is 3
-int gi_cols; // for file listing
-int gi_selecteddevice = 0; // 0=none selected, 1-n indicates device 1-n
+int gi_selecteddevice = 0; // 0=none selected, 1--n indicates device 1--n
+
+// the following variables are set by refreshscreen()
+// in other words, they get set as the screen is drawn
+device *gi_device = NULL; // the selected device struct if any, or NULL
+graft *gi_graft = NULL; // the selected graft struct if any, or NULL
+int gi_editableitemcount; // the number of visible editable items
+char **gi_editobject; // the pointer to the original string we get to edit
+int gi_editobjecttype = -1; // 1=nickname, 2=utility directory, 3=ip address,
+// 4=graft path, 5=virtual graft point, 6=prune point
+// 0=device showing but nothing selected, -1=device view but no devices
+int gi_numdevices = 0; // the number of devices in devicelist
+
+// variables for the file browser
+virtualnode *browsingdirectory; // the directory we are currently mousing in
+graftee markedscan, markedhistory; // used for continuations management
+int gi_btop, gi_bbottom; // the top and bottom lines available to the browser
+int gi_bstyle; // what colors/format to use: 1=directory stack, 2=mousing contents
+
+void clearrestofline(void)
+{
+    int k;
+    int currentx, currenty;
+    getyx(stdscr, currenty, currentx);
+    for (k = gi_scrx - currentx; k > 0; k--)
+        printw(" ");
+} // clearrestofline
+
+//////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////   E D I T I N G
 
 // variables for editing
 int gi_editselection = 0; // which editable item is selected, 0=none
@@ -146,22 +203,6 @@ int gi_editcursor; // position of cursor in edited string (0 = at start)
 char *gi_newstring; // the edited version
 char *gi_errorinfo; // the problem found by the validator (or NULL if ok)
 int gi_dirtyspecs = 0; // whether specs have changed since loading the file
-
-// the following variables are set by refreshscreen()
-device *gi_device = NULL; // the selected device struct if any, or NULL
-graft *gi_graft = NULL; // the selected graft struct if any, or NULL
-int gi_editableitemcount; // the number of visible editable items
-char **gi_editobject; // the pointer to the original string we get to edit
-int gi_editobjecttype = -1; // 1=nickname, 2=utility directory, 3=ip address,
-// 4=graft path, 5=virtual graft point, 6=prune point
-// 0=device showing but nothing selected, -1=device view but no devices
-int gi_numdevices = 0; // the number of devices in devicelist
-
-// variables for the browser
-virtualnode *browsingdirectory; // the directory we are currently mousing in
-graftee markedscan, markedhistory; // used for continuations management
-int gi_btop, gi_bbottom; // the top and bottom lines available to the browser
-int gi_bstyle; // what colors/format to use: 1=directory stack, 2=mousing contents
 
 void starteditableitems(void)
 {
@@ -212,14 +253,82 @@ void startediting(void)
     gi_newstring = strdup(*gi_editobject);
 } // startediting
 
-void clearrestofline(void)
+char *validate(char *str, int type) // returns NULL if str ok, error string if not
 {
-    int k;
-    int currentx, currenty;
-    getyx(stdscr, currenty, currentx);
-    for (k = gi_scrx - currentx; k > 0; k--)
-        printw(" ");
-} // clearrestofline
+    switch (type) { // type: 1=nn, ud, ipa, gp, vgp, pp=6
+    case 1: // device nickname
+        {
+            device *m;
+            if (*str == 0) // is it the empty string?
+                return "The empty string is not a good device name!";
+            if (index(str, ' ') != NULL)
+                return "No spaces allowed in the device name!"
+                        "  (underscore _ is ok)";
+            for (m = devicelist; m != NULL; m = m->next) {
+                if (m != gi_device && !strcmp(m->nickname, str))
+                    return "Device name already in use!";
+            }
+        }
+        break;
+    case 3: // ip address
+        {
+        }
+        break;
+    case 2: // utility directory on a disk drive somewhere
+    case 4: // graft point (directory on a drive somewhere)
+        {
+            if (str[0] != '/' && str[0] != '~') // test works on "" too
+                return "Directory must start with '/' or '~'";
+        }
+        break;
+    case 5: // virtual graft point
+    case 6: // prune point
+        {
+            if (str[0] != '/') // test works fine on empty string
+                return "Virtual directory must start with '/'";
+        }
+        break;
+    default: // should never happen
+        break;
+    }
+    return NULL;
+} // validate
+
+void refreshscreen(void); // declaration for endediting to use
+
+void endediting(int keep)
+{
+    gi_mode = gi_savemode; // pop back to the saved mode
+    if (keep) {
+        gi_errorinfo = validate(gi_newstring, gi_editobjecttype);
+        if (gi_errorinfo == NULL) { // passed validator
+            if (gi_editobjecttype == 5) { // 5=virtual graft point
+                mapgraftpoint(gi_graft, *gi_editobject, 0, 1);
+                mapgraftpoint(gi_graft, gi_newstring, 0, 0);
+            }
+            if (gi_editobjecttype == 6) { // 6=prune point
+                mapgraftpoint(gi_graft, *gi_editobject, 1, 1);
+                mapgraftpoint(gi_graft, gi_newstring, 1, 0);
+            }
+            // replace the string
+            free(*gi_editobject);
+            *gi_editobject = gi_newstring;
+            gi_dirtyspecs = 1; // only for specs-related things!
+        } else { // validator does not like it
+            beep();
+            gi_mode = 3; // 3 means editing
+            refreshscreen();
+            usleep(1000000); // let the error message show for one second
+            gi_errorinfo = NULL;
+            // screen will be refreshed when we return now
+        }
+    } else {
+        free(gi_newstring);
+    }
+} // endediting
+
+//////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////   D E V I C E   V I E W
 
 void refreshdevices(void)
 {
@@ -299,14 +408,19 @@ void refreshdevices(void)
     } // if a device is selected
 } // refreshdevices
 
-void sprintfpermissions(char *str, int32 permissions) // size of str needs to be at least 9 bytes
+//////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////   F I L E   V I E W
+
+void sprintfpermissions(char *str, int32 permissions) // str must be >=9 bytes
 {
-    sprintf(str, (permissions & S_IRUSR) ? "r" : "-");
+    sprintf(str++, (permissions & S_IRUSR) ? "r" : "-");
     sprintf(str++, (permissions & S_IWUSR) ? "w" : "-");
     sprintf(str++, (permissions & S_IXUSR) ? "x" : "-");
+    
     sprintf(str++, (permissions & S_IRGRP) ? "r" : "-");
     sprintf(str++, (permissions & S_IWGRP) ? "w" : "-");
     sprintf(str++, (permissions & S_IXGRP) ? "x" : "-");
+    
     sprintf(str++, (permissions & S_IROTH) ? "r" : "-");
     sprintf(str++, (permissions & S_IWOTH) ? "w" : "-");
     sprintf(str++, (permissions & S_IXOTH) ? "x" : "-");
@@ -327,6 +441,13 @@ void showfileinfo(fileinfo* file)
             file->filelength,
             modificationtime);
 } // showfileinfo
+
+char* continuation_type_word[] = {
+    "by inode",
+    "by name",
+    "full match"
+};
+
 void showgraftees(virtualnode *dir)
 {
     fileinfo *file;
@@ -542,6 +663,321 @@ void refreshbrowser(void)
     color_set(BLACKonWHITE, NULL); // just in case it didn't get reset
 } // refreshbrowser
 
+//////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////   S P E C S   M A N I P U L A T I O N
+
+// These "manipulation" functions are for whenever the tui wants to do something
+// beyond pure display issues -- whenever it wants to take an action that another
+// type of interface (besides the tui) might also want to take.
+
+int try_to_save_specs(void)
+{
+    // first do sanity checks
+    if (!specstatevalid())
+        return 0;
+    // now do the manipulation
+    writespecsfile(specs_file_path);
+    // now update the interface
+    gi_dirtyspecs = 0;
+    refreshscreen();
+    return 1;
+} // try_to_save_specs
+
+int try_to_add_device(void)
+{
+    // first do sanity checks
+    // (there are none for this case -- we can always add a device)
+    // now do the manipulation
+    device **m;
+    int i = 0;
+    for (m = &devicelist; *m != NULL; m = &((*m)->next))
+        i++;
+    *m = (device*) malloc(sizeof(device));
+    (*m)->next = NULL;
+    (*m)->nickname = strdup("newdevice");
+    (*m)->deviceid = generatedeviceid();
+    (*m)->linked = 0;
+    (*m)->status = status_inactive;
+    (*m)->reachplan.ipaddrs = NULL;
+    (*m)->reachplan.routeraddr = -1;
+    // now update the interface
+    gi_selecteddevice = i + 1;
+    gi_editselection = 1;
+    gi_dirtyspecs = 1;
+    refreshscreen(); // just to set gi_editobject, etc.
+    startediting(); // in order for startediting to work
+    return 1;
+} // try_to_add_device
+
+int try_to_delete_device(void)
+{
+    // first do sanity checks
+    if (gi_device->status != status_inactive)
+        return 0; // should return an error message code...
+    if (gi_selecteddevice == 0)
+        return 0;
+    // now do the manipulation
+    graft **g;
+    device **m;
+    for (g = &graftlist; *g != NULL; ) {
+        if ((*g)->host == gi_device) {
+            // trash the graft!
+            graft *sk = *g;
+            while (sk->prunepoints != NULL) {
+                stringlist *skunk=sk->prunepoints;
+                mapgraftpoint(sk, skunk->string, 1, 1);
+                sk->prunepoints = skunk->next;
+                free(skunk->string);
+                free(skunk);
+            }
+            mapgraftpoint(sk, sk->virtualpath, 0, 1);
+            free(sk->hostpath);
+            free(sk->virtualpath);
+            *g = sk->next;
+            free(sk);
+        } else {
+            g = &((*g)->next);
+        }
+    }
+    for (m = &devicelist; *m != NULL; ) {
+        if (*m == gi_device) {
+            // trash the device!
+            device *sk = *m;
+            while (sk->reachplan.ipaddrs != NULL) {
+                stringlist *skunk;
+                skunk = sk->reachplan.ipaddrs;
+                sk->reachplan.ipaddrs = skunk->next;
+                free(skunk->string);
+                free(skunk);
+            }
+            free(sk->nickname);
+            free(sk->deviceid);
+            *m = sk->next;
+            free(sk);
+        } else {
+            m = &((*m)->next);
+        }
+    }
+    // now update the interface
+    if (gi_selecteddevice > 0)
+        gi_selecteddevice--;
+    gi_dirtyspecs = 1;
+    // refreshscreen(); done by caller
+    return 1;
+} // try_to_delete_device
+
+int try_to_add_address(void)
+{
+    // first do sanity checks
+    if (gi_device == NULL)
+        return 0;
+    // now do the manipulation
+    stringlist **st;
+    int i = 2;
+    st = &(gi_device->reachplan.ipaddrs);
+    while (*st != NULL) {
+        st = &((*st)->next);
+        i++;
+    }
+    *st = (stringlist*) malloc(sizeof(stringlist));
+    (*st)->next = NULL;
+    (*st)->string = strdup("local:~/.mcsync");
+    // now update the interface
+    gi_editselection = i;
+    gi_dirtyspecs = 1;
+    refreshscreen(); // just to set gi_editobject, etc.
+    startediting();
+    return 1;
+} // try_to_add_address
+
+int try_to_delete_address(void)
+{
+    // first do sanity checks
+    if (gi_editobjecttype != 3)
+        return 0;
+    // now do the manipulation
+    stringlist **s = &(gi_device->reachplan.ipaddrs);
+    while (*s != NULL) {
+        if (&((*s)->string) == gi_editobject) {
+            stringlist *sk = *s;
+            free(sk->string);
+            *s = sk->next;
+            free(sk);
+            break;
+        } else {
+            s = &((*s)->next);
+        }
+    }
+    // now update the interface
+    gi_dirtyspecs = 1;
+    // refreshscreen(); done by caller
+    return 1;
+} // try_to_delete_address
+
+int try_to_add_graft(void)
+{
+    // first do sanity checks
+    if (gi_device == NULL)
+        return 0;
+    // now do the manipulation
+    graft **gf;
+    gf = &(graftlist);
+    while (*gf != NULL)
+        gf = &((*gf)->next);
+    *gf = (graft*) malloc(sizeof(graft));
+    (*gf)->next = NULL;
+    (*gf)->host = gi_device;
+    (*gf)->hostpath = strdup("~");
+    (*gf)->virtualpath = strdup("/Home");
+    (*gf)->prunepoints = NULL;
+    mapgraftpoint(*gf, (*gf)->virtualpath, 0, 0);
+    // now update the interface
+    gi_editselection = gi_editableitemcount - 1;
+    gi_dirtyspecs = 1;
+    refreshscreen();
+    return 1;
+} // try_to_add_graft
+
+int try_to_delete_graft(void)
+{
+    // first do sanity checks
+    if (gi_editobjecttype < 4)
+        return 0;
+    // now do the manipulation
+    graft **g;
+    for (g = &graftlist; *g != NULL; ) {
+        graft *sk = *g;
+        stringlist *skunk = sk->prunepoints;
+        int found = 0;
+        while (skunk != NULL) {
+            if (&(skunk->string) == gi_editobject)
+                found = 1;
+            skunk = skunk->next;
+        }
+        if (&(sk->hostpath) == gi_editobject ||
+            &(sk->virtualpath) == gi_editobject ||
+            found == 1) {
+            // trash the graft!
+            while (sk->prunepoints != NULL) {
+                skunk = sk->prunepoints;
+                mapgraftpoint(sk,
+                            skunk->string, 1, 1);
+                sk->prunepoints = skunk->next;
+                free(skunk->string);
+                free(skunk);
+            }
+            mapgraftpoint(sk,
+                            sk->virtualpath, 0, 1);
+            free(sk->hostpath);
+            free(sk->virtualpath);
+            *g = sk->next;
+            free(sk);
+        } else {
+            g = &((*g)->next);
+        }
+    }
+    // now update the interface
+    gi_dirtyspecs = 1;
+    // refreshscreen(); done by caller
+    return 1;
+} // try_to_delete_graft
+
+int try_to_add_prune_point(void)
+{
+    // first do sanity checks
+    if (gi_graft == NULL)
+        return 0;
+    // now do the manipulation
+    stringlist **st;
+    st = &(gi_graft->prunepoints);
+    while (*st != NULL)
+        st = &((*st)->next);
+    *st = (stringlist*) malloc(sizeof(stringlist));
+    (*st)->next = NULL;
+    (*st)->string = strdup("/Home/local");
+    mapgraftpoint(gi_graft, (*st)->string, 1, 0);
+    // now update the interface
+    gi_dirtyspecs = 1;
+    refreshscreen();
+    return 1;
+} // try_to_add_prune_point
+
+int try_to_delete_prune_point(void)
+{
+    // first do sanity checks
+    if (gi_editobjecttype != 6 || gi_graft == NULL) // just to be safe
+        return 0;
+    // now do the manipulation
+    stringlist **s = &(gi_graft->prunepoints);
+    while (*s != NULL) {
+        if (&((*s)->string) == gi_editobject){
+            stringlist *sk = *s;
+            mapgraftpoint(gi_graft,
+                            (*s)->string, 1, 1);
+            free(sk->string);
+            *s = sk->next;
+            free(sk);
+            break;
+        } else {
+            s = &((*s)->next);
+        }
+    }
+    // now update the interface
+    gi_dirtyspecs = 1;
+    // refreshscreen(); done by caller
+    return 1;
+} // try_to_delete_prune_point
+
+int try_to_unlink_device(void)
+{
+    // first do sanity checks
+    if (gi_device == NULL || gi_device->linked == 0)
+        return 0;
+    // now do the manipulation
+    gi_device->linked = 0;
+    free(gi_device->deviceid);
+    gi_device->deviceid = generatedeviceid();
+    // now update the interface
+    gi_dirtyspecs = 1;
+    refreshscreen();
+    return 1;
+} // try_to_unlink_device
+
+//////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////   F I L E   T R E E   M A N I P U L A T I O N
+
+//////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////   N E T W O R K   M A N I P U L A T I O N
+
+int try_to_connect(void)
+{
+    // first do sanity checks
+    if (gi_device == NULL || gi_device->status != status_inactive)
+        return 0;
+    if (!specstatevalid())
+        return 0;
+    // now do the manipulation
+    // TODO: Allow the user to specify which address to use
+    if (gi_device->reachplan.ipaddrs)
+        gi_device->reachplan.whichtouse = gi_device->reachplan.ipaddrs->string;
+    // TODO: allow user to specify where to connect *from*
+    sendmessage(cmd_plug, hq_int, msgtype_connectdevice, gi_device->deviceid);
+    return 1;
+} // try_to_connect
+
+int try_to_disconnect(void)
+{
+    // first do sanity checks
+    if (gi_device == NULL || gi_device->status != status_connected)
+        return 0;
+    // now do the manipulation
+    sendmessage(cmd_plug, hq_int, msgtype_disconnectdevice, gi_device->deviceid);
+    return 1;
+} // try_to_disconnect
+
+//////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////   G E N E R A L
+
 typedef enum {
     cmd_plain_char, // a char being typed in as part of some text, not a command
     cmd_start_editing,
@@ -570,7 +1006,7 @@ char *devicehelparray[][2] = {
     {"Ret", "Edit Entry"},
     {"C", "Connect"},
     {"X", "Disconnect"},
-    {"U", "Unlink"},
+    {"U", "Unlink (*)"}, // not for final interface
     {"M", "Add Device"},
     {"DM", "Delete Device"},
     {"A", "Add Address"},
@@ -590,7 +1026,7 @@ char *browserhelparray[][2] = {
     {"^N", "Next Line of Entries"},
     {"^P", "Previous Line of Entries"},
     {"^D", "Browse Graftees"},
-    // {"^U", "Previous Graftee"}, // for this we need to make graftees doubly linked..
+    {"^U", "Previous Graftee (*)"}, // not implemented
     {"M", "Mark For Continuation"},
     {"U", "Unmatch Selection"},
     {"/", "Enter Subdirectory"},
@@ -710,12 +1146,12 @@ void refreshhelp(void)
     clearrestofline();
 } // refreshhelp
 
-void refreshscreen(void)
+void refreshscreen(void) // call this whenever display changes, to show new state
 {
     clear(); // curs: clear the screen
     getmaxyx(stdscr, gi_scry, gi_scrx); // curs: get screen size
 
-    refreshdevices();
+    refreshdevices(); // if we are showing info for a device, this shows it
 
     if (gi_mode == 2)
         refreshbrowser();
@@ -732,79 +1168,6 @@ void refreshscreen(void)
     // supposedly it only sends changed portions; I'm not convinced
     // probably changed means written-to, even if it's the same as before
 } // refreshscreen
-
-
-char *validate(char *str, int type) // returns NULL if str ok, error string if not
-{
-    switch (type) { // type: 1=nn, ud, ipa, gp, vgp, pp=6
-    case 1: // device nickname
-        {
-            device *m;
-            if (*str == 0) // is it the empty string?
-                return "The empty string is not a good device name!";
-            if (index(str, ' ') != NULL)
-                return "No spaces allowed in the device name!"
-                        "  (underscore _ is ok)";
-            for (m = devicelist; m != NULL; m = m->next) {
-                if (m != gi_device && !strcmp(m->nickname, str))
-                    return "Device name already in use!";
-            }
-        }
-        break;
-    case 3: // ip address
-        {
-        }
-        break;
-    case 2: // utility directory on a disk drive somewhere
-    case 4: // graft point (directory on a drive somewhere)
-        {
-            if (str[0] != '/' && str[0] != '~') // test works on "" too
-                return "Directory must start with '/' or '~'";
-        }
-        break;
-    case 5: // virtual graft point
-    case 6: // prune point
-        {
-            if (str[0] != '/') // test works fine on empty string
-                return "Virtual directory must start with '/'";
-        }
-        break;
-    default: // should never happen
-        break;
-    }
-    return NULL;
-} // validate
-
-void endediting(int keep)
-{
-    gi_mode = gi_savemode; // pop back to the saved mode
-    if (keep) {
-        gi_errorinfo = validate(gi_newstring, gi_editobjecttype);
-        if (gi_errorinfo == NULL) { // passed validator
-            if (gi_editobjecttype == 5) { // 5=virtual graft point
-                mapgraftpoint(gi_graft, *gi_editobject, 0, 1);
-                mapgraftpoint(gi_graft, gi_newstring, 0, 0);
-            }
-            if (gi_editobjecttype == 6) { // 6=prune point
-                mapgraftpoint(gi_graft, *gi_editobject, 1, 1);
-                mapgraftpoint(gi_graft, gi_newstring, 1, 0);
-            }
-            // replace the string
-            free(*gi_editobject);
-            *gi_editobject = gi_newstring;
-            gi_dirtyspecs = 1; // only for specs-related things!
-        } else { // validator does not like it
-            beep();
-            gi_mode = 3; // 3 means editing
-            refreshscreen();
-            usleep(1000000); // let the error message show for one second
-            gi_errorinfo = NULL;
-            // screen will be refreshed when we return now
-        }
-    } else {
-        free(gi_newstring);
-    }
-} // endediting
 
 void handlemouseevents(int ch)
 {
@@ -899,119 +1262,26 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     }
                     break;
             case 'c': // connect
-                    if (gi_device != NULL
-                                && gi_device->status == status_inactive) {
-                        // TODO: Allow the user to specify which address he/she
-                        // would like to use
-                        if (!specstatevalid())
-                            break;
-
-                        if (gi_device->reachplan.ipaddrs)
-                            gi_device->reachplan.whichtouse = gi_device->reachplan.ipaddrs->string;
-                        sendmessage(cmd_plug, hq_int, msgtype_connectdevice,
-                                    gi_device->deviceid);
-                    } else {
-                        beep();
-                    }
+                    if (! try_to_connect()) beep(); // should have our own beep/log/view func
                     break;
             case 'x': // disconnect
-                    if (gi_device != NULL
-                                && gi_device->status == status_connected) {
-                        sendmessage(cmd_plug, hq_int, msgtype_disconnectdevice,
-                                    gi_device->deviceid);
-                    } else {
-                        beep();
-                    }
-            break;
+                    if (! try_to_disconnect()) beep();
+                    break;
             case 'u': // unlink a device
-                    if (gi_device != NULL && gi_device->linked) {
-                        gi_device->linked = 0;
-                        free(gi_device->deviceid);
-                        gi_device->deviceid = generatedeviceid();
-                        gi_dirtyspecs = 1;
-                        refreshscreen();
-                    } else {
-                        beep();
-                    }
+                    // this is just for testing--a user would not want to do this
+                    if (! try_to_unlink_device()) beep();
                     break;
             case 'm': // add device
-                    {
-                        device **m;
-                        int i = 0;
-                        for (m = &devicelist; *m != NULL; m = &((*m)->next))
-                            i++;
-                        *m = (device*) malloc(sizeof(device));
-                        (*m)->next = NULL;
-                        (*m)->nickname = strdup("newdevice");
-                        (*m)->deviceid = generatedeviceid();
-                        (*m)->linked = 0;
-                        (*m)->status = status_inactive;
-                        (*m)->reachplan.ipaddrs = NULL;
-                        (*m)->reachplan.routeraddr = -1;
-                        gi_selecteddevice = i + 1;
-                        gi_editselection = 1;
-                        refreshscreen(); // just to set gi_editobject, etc.
-                        startediting(); // in order for startediting to work
-                    }
-                    gi_dirtyspecs = 1;
-                    refreshscreen();
+                    if (! try_to_add_device()) beep();
                     break;
             case 'a': // add address
-                    if (gi_device != NULL) {
-                        stringlist **st;
-                        int i = 2;
-                        st = &(gi_device->reachplan.ipaddrs);
-                        while (*st != NULL) {
-                            st = &((*st)->next);
-                            i++;
-                        }
-                        *st = (stringlist*) malloc(sizeof(stringlist));
-                        (*st)->next = NULL;
-                        (*st)->string = strdup("local:~/.mcsync");
-                        gi_editselection = i;
-                        refreshscreen(); // just to set gi_editobject, etc.
-                        startediting();
-                        gi_dirtyspecs = 1;
-                        refreshscreen();
-                    } else {
-                        beep();
-                    }
+                    if (! try_to_add_address()) beep();
                     break;
             case 'g': // add graft
-                    if (gi_device != NULL) {
-                        graft **gf;
-                        gf = &(graftlist);
-                        while (*gf != NULL)
-                            gf = &((*gf)->next);
-                        *gf = (graft*) malloc(sizeof(graft));
-                        (*gf)->next = NULL;
-                        (*gf)->host = gi_device;
-                        (*gf)->hostpath = strdup("~");
-                        (*gf)->virtualpath = strdup("/Home");
-                        (*gf)->prunepoints = NULL;
-                        mapgraftpoint(*gf, (*gf)->virtualpath, 0, 0);
-                        gi_editselection = gi_editableitemcount - 1;
-                        gi_dirtyspecs = 1;
-                        refreshscreen();
-                    } else {
-                        beep();
-                    }
+                    if (! try_to_add_graft()) beep();
                     break;
             case 'p': // add prune point
-                    if (gi_graft != NULL) {
-                        stringlist **st;
-                        st = &(gi_graft->prunepoints);
-                        while (*st != NULL)
-                            st = &((*st)->next);
-                        *st = (stringlist*) malloc(sizeof(stringlist));
-                        (*st)->next = NULL;
-                        (*st)->string = strdup("/Home/local");
-                        mapgraftpoint(gi_graft, (*st)->string, 1, 0);
-                        gi_dirtyspecs = 1;
-                        refreshscreen();
-                    } else {
-                        beep();
-                    }
+                    if (! try_to_add_prune_point()) beep();
                     break;
             case 'd': // delete <M>achine / <A>ddress / <G>raft / <P>rune pt
                     gi_mode = 4; // 4 means deleting something
@@ -1027,137 +1297,16 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         }
                     switch (ch) {
                         case 'm': // delete device
-                            if (gi_device->status != status_inactive)
-                                break;
-                            if (gi_selecteddevice != 0) {
-                                graft **g;
-                                device **m;
-                                for (g = &graftlist; *g != NULL; ) {
-                                    if ((*g)->host == gi_device) {
-                                        // trash the graft!
-                                        graft *sk = *g;
-                                        while (sk->prunepoints != NULL) {
-                                            stringlist *skunk=sk->prunepoints;
-                                            mapgraftpoint(sk, skunk->string, 1, 1);
-                                            sk->prunepoints = skunk->next;
-                                            free(skunk->string);
-                                            free(skunk);
-                                        }
-                                        mapgraftpoint(sk, sk->virtualpath, 0, 1);
-                                        free(sk->hostpath);
-                                        free(sk->virtualpath);
-                                        *g = sk->next;
-                                        free(sk);
-                                    } else {
-                                        g = &((*g)->next);
-                                    }
-                                }
-                                for (m = &devicelist; *m != NULL; ) {
-                                    if (*m == gi_device) {
-                                        // trash the device!
-                                        device *sk = *m;
-                                        while (sk->reachplan.ipaddrs != NULL) {
-                                            stringlist *skunk;
-                                            skunk = sk->reachplan.ipaddrs;
-                                            sk->reachplan.ipaddrs = skunk->next;
-                                            free(skunk->string);
-                                            free(skunk);
-                                        }
-                                        free(sk->nickname);
-                                        free(sk->deviceid);
-                                        *m = sk->next;
-                                        free(sk);
-                                    } else {
-                                        m = &((*m)->next);
-                                    }
-                                }
-                                if (gi_selecteddevice > 0)
-                                    gi_selecteddevice--;
-
-                                gi_dirtyspecs = 1;
-                            } else {
-                                beep();
-                            }
+                            if (! try_to_delete_device()) beep();
                             break;
                         case 'a': // delete address
-                            if (gi_editobjecttype == 3) {
-                                stringlist **s = &(gi_device->reachplan.ipaddrs);
-                                while (*s != NULL) {
-                                    if (&((*s)->string) == gi_editobject) {
-                                        stringlist *sk = *s;
-                                        free(sk->string);
-                                        *s = sk->next;
-                                        free(sk);
-                                        break;
-                                    } else {
-                                        s = &((*s)->next);
-                                    }
-                                }
-                                gi_dirtyspecs = 1;
-                            } else {
-                                beep();
-                            }
+                            if (! try_to_delete_address()) beep();
                             break;
                         case 'g': // delete graft
-                            if (gi_editobjecttype >= 4) {
-                                graft **g;
-                                for (g = &graftlist; *g != NULL; ) {
-                                    graft *sk = *g;
-                                    stringlist *skunk = sk->prunepoints;
-                                    int found = 0;
-                                    while (skunk != NULL) {
-                                        if (&(skunk->string) == gi_editobject)
-                                            found = 1;
-                                        skunk = skunk->next;
-                                    }
-                                    if (&(sk->hostpath) == gi_editobject ||
-                                        &(sk->virtualpath) == gi_editobject ||
-                                        found == 1) {
-                                        // trash the graft!
-                                        while (sk->prunepoints != NULL) {
-                                            skunk = sk->prunepoints;
-                                            mapgraftpoint(sk,
-                                                        skunk->string, 1, 1);
-                                            sk->prunepoints = skunk->next;
-                                            free(skunk->string);
-                                            free(skunk);
-                                        }
-                                        mapgraftpoint(sk,
-                                                        sk->virtualpath, 0, 1);
-                                        free(sk->hostpath);
-                                        free(sk->virtualpath);
-                                        *g = sk->next;
-                                        free(sk);
-                                    } else {
-                                        g = &((*g)->next);
-                                    }
-                                }
-                                gi_dirtyspecs = 1;
-                            } else {
-                                beep();
-                            }
+                            if (! try_to_delete_graft()) beep();
                             break;
                         case 'p': // delete prune point
-                            if (gi_editobjecttype == 6
-                                    && gi_graft != NULL) { // just to be safe
-                                stringlist **s = &(gi_graft->prunepoints);
-                                while (*s != NULL) {
-                                    if (&((*s)->string) == gi_editobject){
-                                        stringlist *sk = *s;
-                                        mapgraftpoint(gi_graft,
-                                                        (*s)->string, 1, 1);
-                                        free(sk->string);
-                                        *s = sk->next;
-                                        free(sk);
-                                        break;
-                                    } else {
-                                        s = &((*s)->next);
-                                    }
-                                }
-                                gi_dirtyspecs = 1;
-                            } else {
-                                beep();
-                            }
+                            if (! try_to_delete_prune_point()) beep();
                             break;
                         case 'n': // delete nothing
                             break;
@@ -1167,11 +1316,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     refreshscreen(); // we have to at least refresh the help
                     break;
             case 's': // save specs file
-                    if(specstatevalid()) {
-                        writespecsfile(specs_file_path);
-                        gi_dirtyspecs = 0;
-                    }
-                    refreshscreen();
+                    if (! try_to_save_specs()) beep();
                     break;
             case 'v': // switch to file view (mousing files)
                     // we leave the selection untouched while in other mode
@@ -1243,35 +1388,39 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                     }
                     break;
             case 4: // ctrl-d
-            {
-                virtualnode *selection = browsingdirectory->selection;
-                graftee gee;
-
-                if (selection) {
-                    if (selection->selectedgraftee) {
-                        for (gee = selection->selectedgraftee->next; gee != NULL; gee = gee->next)
-                            if (gee->realfile->trackingnumber > 0 ||
-                                (gee->realfile->trackingnumber < 0 &&
-                                 gee->realfile->the_corresponding_history == NULL))
-                                break;
-                        selection->selectedgraftee = gee;
-                    } else {
-                        // there is currently no selected graftee or we already
-                        // skimmed through the whole list.
-                        for (gee = selection->grafteelist; gee != NULL; gee = gee->next)
-                            if (gee->realfile->trackingnumber > 0 ||
-                                (gee->realfile->trackingnumber < 0 &&
-                                 gee->realfile->the_corresponding_history == NULL))
-                                break;
-                        selection->selectedgraftee = gee;
+                {
+                    virtualnode *selection = browsingdirectory->selection;
+                    graftee gee;
+    
+                    if (selection) {
+                        if (selection->selectedgraftee) {
+                            for (gee = selection->selectedgraftee->next;
+                                                    gee != NULL; gee = gee->next)
+                                if (gee->realfile->trackingnumber > 0
+                                    || (gee->realfile->trackingnumber < 0
+                                        && gee->realfile->
+                                               the_corresponding_history == NULL))
+                                    break;
+                            selection->selectedgraftee = gee;
+                        } else {
+                            // there is currently no selected graftee or we
+                            // already skimmed through the whole list
+                            for (gee = selection->grafteelist; gee != NULL;
+                                                               gee = gee->next)
+                                if (gee->realfile->trackingnumber > 0
+                                    || (gee->realfile->trackingnumber < 0
+                                        && gee->realfile->
+                                               the_corresponding_history == NULL))
+                                    break;
+                            selection->selectedgraftee = gee;
+                        }
+                        refreshscreen();
                     }
-                    refreshscreen();
                 }
-             }
             break;
-            // case 21: // ctrl-u, for this to work graftee has to be a doubly linked list... (no time)
-            // {
-            // }
+            case 21: // ctrl-u, possible if graftee were a doubly linked list...
+            {
+            }
             break;
             break;
             case '=':
@@ -1335,7 +1484,9 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                             alreadymarked = &markedscan;
                         }
                         (*newlymarked) = gee;
-                        if ((*alreadymarked) && !strcmp((*alreadymarked)->realfile->deviceid, gee->realfile->deviceid)) {
+                        if ((*alreadymarked)
+                            && !strcmp((*alreadymarked)->realfile->deviceid,
+                                       gee->realfile->deviceid)) {
                             // add the scan as continuation of the history
                             pthread_mutex_lock(&virtualtree_mutex);
                             // look for the candidate, before adding a new one
@@ -1346,10 +1497,14 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                             if (cc)
                                 markedhistory->realfile->the_chosen_candidate = cc;
                             else {
-                                addcontinuation(markedhistory->realfile, markedscan->realfile, continuation_fullmatch);
-                                markedhistory->realfile->the_chosen_candidate = markedhistory->realfile->continuation_candidates;
+                                addcontinuation(markedhistory->realfile,
+                                                markedscan->realfile,
+                                                continuation_fullmatch);
+                                markedhistory->realfile->the_chosen_candidate =
+                                    markedhistory->realfile->continuation_candidates;
                             }
-                            markedscan->realfile->the_corresponding_history = markedhistory->realfile;
+                            markedscan->realfile->the_corresponding_history =
+                                markedhistory->realfile;
                             pthread_mutex_unlock(&virtualtree_mutex);
                             *alreadymarked = *newlymarked = NULL;
                         } else
@@ -1383,7 +1538,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
             break;
             case 's': // start scans
                     if (browsingdirectory->selection != NULL) {
-                        sendscanvirtualdirrequest(&virtualroot, browsingdirectory->selection);
+                        sendscanvirtualdirrequest(&virtualroot,
+                                                  browsingdirectory->selection);
                     }
                     break;
             case 'v': // switch to mousing devices
@@ -1396,8 +1552,8 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
         }
     } else if (gi_mode == 3) { // 3 means editing
 
-        // Poor mans case range expression, read as case 36 ... 126:
-        if(36 <= ch && ch <= 126) {
+        // poor man's case range expression, read as case 36 ... 126:
+        if (36 <= ch && ch <= 126) {
             {
                 int p, len = strlen(gi_newstring);
                 gi_newstring = (char*) realloc(gi_newstring, len + 2);
@@ -1456,7 +1612,7 @@ int TUIprocesschar(int ch) // returns 1 if user wants to quit
                         endediting(0);
                         refreshscreen();
                         break;
-                case 9: // tab, KEY_TAB doesn't exist, commit edits and move to next
+                case 9: // tab, KEY_TAB doesn't exist, commit edits + move to next
                         endediting(1);
                         gi_editselection++;
                         refreshscreen(); // find next object to edit
@@ -1547,7 +1703,7 @@ void TUImain(void)
                     int devicenum = 1;
 
                     // device name's color will change with new status
-                    printerr("TUI heard that \"%s\" is connected.\n",
+                    log_line("TUI heard that \"%s\" is connected.\n",
                               msg_data);
 
                     for (d = devicelist; d != NULL; d = d->next) {
@@ -1568,7 +1724,7 @@ void TUImain(void)
                 break;
                 case msgtype_disconnected:
                         // device name's color will change with new status
-                        printerr("TUI heard that \"%s\" is disconnected.\n",
+                        log_line("TUI heard that \"%s\" is disconnected.\n",
                                         msg_data);
                         free(msg_data);
                         if (doUI)
@@ -1584,7 +1740,7 @@ void TUImain(void)
                         refreshscreen();
                 break;
                 default:
-                        printerr("TUI got unexpected message"
+                        log_line("TUI got unexpected message"
                                         " of type %lld from %d: \"%s\"\n",
                                         msg_type, msg_src, msg_data);
                         free(msg_data);

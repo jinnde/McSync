@@ -1,0 +1,40 @@
+#!/bin/bash
+
+echo "script not ready yet -- need to use elscreen and store setup in a register or some such"
+
+# McSync/source/util/sanitychecks.c
+# McSync/source/util/bytestream.c
+# McSync/source/util/stringlist.c
+# McSync/source/util/hashtable.c
+# McSync/source/util/queue.c
+# McSync/source/util/lock.c
+# McSync/source/util/cJSON/README
+# McSync/source/util/cJSON/cJSON.h
+# McSync/source/util/cJSON/cJSON.c
+# 
+# McSync/source/README.txt
+# 
+# McSync/source/engine/device.c
+# McSync/source/engine/main.c
+# McSync/source/engine/machine.c
+# McSync/source/engine/specs.c
+# McSync/source/engine/diskscan.c
+# McSync/source/engine/headquarters.c
+# McSync/source/engine/router.c
+# McSync/source/engine/comparisons.c
+# McSync/source/engine/conversation.c
+# McSync/source/engine/reacher.c
+# 
+# McSync/source/cmd/tui.c
+# 
+# McSync/source/ToDoMC.txt
+# 
+# McSync/source/definitions.h
+# 
+# McSync/README.txt
+# McSync/mcsync
+# network.c
+# McSync/debug
+# McSync/compile
+# McSync/config/README.txt
+# McSync/clone

@@ -1,0 +1,61 @@
+\indexentry{machine|hyperpage}{21}
+\indexentry{computer|hyperpage}{21}
+\indexentry{CPU|hyperpage}{21}
+\indexentry{storage device|hyperpage}{22}
+\indexentry{hard drive|hyperpage}{22}
+\indexentry{disk drive|hyperpage}{22}
+\indexentry{flash drive|hyperpage}{22}
+\indexentry{file|hyperpage}{22}
+\indexentry{file parts|hyperpage}{22}
+\indexentry{aspect|hyperpage}{22}
+\indexentry{missing|hyperpage}{23}
+\indexentry{not visible|hyperpage}{23}
+\indexentry{filename|hyperpage}{23}
+\indexentry{parent directory|hyperpage}{23}
+\indexentry{file contents|hyperpage}{23}
+\indexentry{modification time|hyperpage}{23}
+\indexentry{permissions|hyperpage}{23}
+\indexentry{extended attributes|hyperpage}{23}
+\indexentry{merge tools|hyperpage}{25}
+\indexentry{key-value pairs|hyperpage}{25}
+\indexentry{sets|hyperpage}{26}
+\indexentry{file|hyperpage}{27}
+\indexentry{tracked file|hyperpage}{27}
+\indexentry{raw file|hyperpage}{27}
+\indexentry{virtual file|hyperpage}{27}
+\indexentry{ancestor|hyperpage}{27}
+\indexentry{four meanings|hyperpage}{27}
+\indexentry{tracking number|hyperpage}{28}
+\indexentry{preferability|hyperpage}{29}
+\indexentry{new version|hyperpage}{29}
+\indexentry{old version|hyperpage}{29}
+\indexentry{version|hyperpage}{29}
+\indexentry{scan|hyperpage}{29}
+\indexentry{snapshot|hyperpage}{29}
+\indexentry{full history|hyperpage}{30}
+\indexentry{history|hyperpage}{30}
+\indexentry{history comparison|hyperpage}{32}
+\indexentry{comparing histories|hyperpage}{32}
+\indexentry{gossip|hyperpage}{33}
+\indexentry{guidance|hyperpage}{35}
+\indexentry{identification|hyperpage}{35}
+\indexentry{noticing|hyperpage}{38}
+\indexentry{instructions|hyperpage}{39}
+\indexentry{sync|hyperpage}{40}
+\indexentry{lossless theorem|hyperpage}{57}
+\indexentry{optimality theorem|hyperpage}{58}
+\indexentry{consistency theorem|hyperpage}{58}
+\indexentry{local improvement theorem|hyperpage}{58}
+\indexentry{global improvement theorem|hyperpage}{58}
+\indexentry{naive merge theorem|hyperpage}{59}
+\indexentry{ghost deletion theorem|hyperpage}{64}
+\indexentry{free preferability theorem|hyperpage}{64}
+\indexentry{preferability|hyperpage}{64}
+\indexentry{arbitrary distinguishability theorem|hyperpage}{65}
+\indexentry{distinguishability|hyperpage}{65}
+\indexentry{inode and ctime theorem|hyperpage}{65}
+\indexentry{inode|hyperpage}{65}
+\indexentry{ctime|hyperpage}{65}
+\indexentry{virtual tree|hyperpage}{78}
+\indexentry{graft|hyperpage}{79}
+\indexentry{backups|hyperpage}{80}

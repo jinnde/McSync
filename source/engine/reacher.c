@@ -37,8 +37,6 @@ parent.  For example, it could set the failed flag that reachforremote is pollin
 
 */
 
-static int32 next_free_address = firstfree_int;
-
 static queue recruitercallbacks;
 
 char* homedirectory(void) // caches answer -- do not alter or free!
@@ -115,6 +113,7 @@ void firststeps(connection plug) // executed by child process, doesn't return
     }
     if (fclose(stderr)) {
         // who can we tell... we're deaf dumb and blind!
+        ourperror("Child: Error closing stderr"); // logs it to a file
         cleanexit(__LINE__); // that's who!
     }
     // remap the new pipe connections to stdin, stdout, and stderr
@@ -192,20 +191,19 @@ int givebirth(connection plug) // fork off a process we can talk to
     return -1;
 } // givebirth
 
-volatile int passinginput;
 // the point of this function is to allow typing to the remote process while connecting
-void* passinput(void* streamout) // threadgiver thread starts here
+void* passinput(void* voidplug) // threadgiver thread starts here
 {
-    FILE* sout = (FILE*) streamout; // so compiler knows type
-    // passinginput = 1; // optimizer does not understand this is VOLATILE!!!
+    connection plug = (connection) voidplug; // so compiler knows type
+    //plug->passinginput = 1; // optimizer does not understand this is VOLATILE!!!
     raw_io(); // turn off local echoing, pass chars as they are typed
-    while (passinginput) { // gets set to 0 by other thread to kill us
+    while (plug->passinginput) { // gets set to 0 by other thread to kill us
         int c = getch(); // but if this blocks, one char will be taken after 0
-        //printerr("<%d:%d:%d:%c>", ERR, EOF, passinginput, c);
+        //log_line("<%d:%d:%d:%c>", ERR, EOF, plug->passinginput, c);
         if (c != ERR) {
-            if (passinginput) {
-                putc(c, sout);
-                fflush(sout);
+            if (plug->passinginput) {
+                putc(c, plug->tokid);
+                fflush(plug->tokid);
             } else {
                 ungetc(c, stdin);
             }
@@ -224,8 +222,6 @@ char* copynchars(char* source, int len)
     return copy;
 } // nchars
 
-int32 raised, failed;
-
 void* raisechild(void* voidplug)
 {
     connection plug = (connection) voidplug;
@@ -239,8 +235,8 @@ void* raisechild(void* voidplug)
         char* sep = index(plug->address, ':');
         char* psep = index(plug->address, '`');
         if (sep == NULL) {
-            printerr("Error: Couldn't find ':' in net path.\n");
-            failed = 1;
+            log_line("Error: Couldn't find ':' in net path.\n");
+            plug->childfailed = 1;
             return NULL;
         }
         // wait for prompt from machine we ssh'd to
@@ -250,8 +246,8 @@ void* raisechild(void* voidplug)
             usleep(6000000);
         }
         pthread_t inputgiver;
-        passinginput = 1;
-        pthread_create(&inputgiver, &pthread_attributes, &passinput, plug->tokid);
+        plug->passinginput = 1;
+        pthread_create(&inputgiver, &pthread_attributes, &passinput, (void*)plug);
         while (1) {
             char* nextsep = index(sep + 1, ':');
             char* at;
@@ -277,7 +273,7 @@ void* raisechild(void* voidplug)
                     (uname && *uname) ? uname : "",
                     mname);
             fflush(plug->tokid);
-            printerr("Reaching %s...\n", mname);
+            log_line("Reaching %s...\n", mname);
             free(mname);
             if (uname != nuthin)
                 free(uname);
@@ -289,70 +285,74 @@ void* raisechild(void* voidplug)
             }
             sep = nextsep;
         }
-        passinginput = 0; // kill inputgiver
-        printerr("Just set passing input to 0.\n");
+        plug->passinginput = 0; // kill inputgiver
+        log_line("Just set passing input to 0.\n");
         fprintf(plug->tokid, "\n%s/mcsync -slave\n", sep + 1);
         fflush(plug->tokid);
     }
     waitforstring(plug->fromkid, slave_start_string); // till mcsync is live
     fprintf(plug->tokid, "%s", hi_slave_string);
-    put32safe(plug->tokid, plug->plugnumber);
+    put32safe(plug->tokid, plug->thisway->values[0]);
     putstring(plug->tokid, plug->address);
     fflush(plug->tokid);
-    raised = 1;
+    plug->childraised = 1;
     pthread_exit(NULL);
 } // raisechild
 
 int32 reachforremote(connection plug) // try to get mcsync started on remote site
 {
-    // here we try to connect to the remote McSync device supplying passwords along
-    // the way as necessary and once there, we invoke the device's "mcsync -slave <addr>"
+    // here we try to connect to McSync on a remote machine
+    // and once there, we invoke the device's "mcsync -slave <addr>"
     int retval = 1;
     pthread_t raiser;
     password_pause = 1; // tell TUI (or parent) to not steal stdin characters
-    // TODO: This hould really be done using a message to TUI
+    // TODO: This should really be done using a message to TUI
     TUIstop2D(); // switch to normal terminal scrolling mode
-    printerr("<entering terminal mode>\n");
+    log_line("<entering terminal mode>\n");
 
     int kidpid = givebirth(plug); //////// <<<<<<<<<<<<<<<<<<<<<<<< ////////
 
     if (kidpid == -1) {
-        raised = 0;
-        failed = 1;
-        goto leave_terminal_mode;
-    }
-
-    raised = 0;
-    failed = 0;
-    struct timeval basetime, latertime;
-    gettimeofday(&basetime, NULL);
-    pthread_create(&raiser, &pthread_attributes, &raisechild, (void*)plug);
-
-    while (! raised && ! failed) {
-        usleep(25000); // we don't know how long this actually takes
-        // check for timeout
-        gettimeofday(&latertime, NULL);
-        if ((latertime.tv_sec - basetime.tv_sec) * 1000 * 1000
-                 + (latertime.tv_usec - basetime.tv_usec) > 20 * 1000 * 1000) {
-                printerr("Timed out.\n");
-                pthread_cancel(raiser);
-                kill(kidpid, SIGKILL);
-                removefromintlist(OurChildren, kidpid);
-                raised = 0; // just in case it made it to 1 as it died
-                failed = 1;
+        plug->childraised = 0;
+        plug->childfailed = 1;
+    } else {
+        plug->childraised = 0;
+        plug->childfailed = 0;
+        struct timeval basetime, latertime;
+        gettimeofday(&basetime, NULL);
+        pthread_create(&raiser, &pthread_attributes, &raisechild, (void*)plug);
+    
+        while (! plug->childraised && ! plug->childfailed) {
+            usleep(25000); // we don't know how long this actually takes
+            // check for timeout
+            gettimeofday(&latertime, NULL);
+            if ((latertime.tv_sec - basetime.tv_sec) * 1000 * 1000
+              + (latertime.tv_usec - basetime.tv_usec) > 20 * 1000 * 1000) {
+                    log_line("Timed out.\n");
+                    pthread_cancel(raiser);
+                    kill(kidpid, SIGKILL);
+                    removefromintlist(OurChildren, kidpid);
+                    // plug->childraised = 0; // futile: could still get set to 1!
+                    plug->childfailed = 1;
             }
         }
-
-leave_terminal_mode:
-    if (raised == 0 || failed == 1) { // total failure
-        printerr("Could not connect!\n");
+    }
+    // at this point, either plug->childraised==1 or plug->childfailed==1 or both
+    // but if plug->childraised==1 then plug->childfailed will not change further
+    // if both, plug->childfailed==1 has priority: we already started killing it
+    if (plug->childfailed == 1) { // total failure
+        log_line("Could not connect!\n");
         retval = 0;
     }
-    printerr("<leaving terminal mode>\n");
+    log_line("<leaving terminal mode>\n");
     TUIstart2D(); // switch back to 2D interface
     password_pause = 0;
     return retval; // 1 == success
 } // reachforremote
+
+//////////////////////////////////////////////////////////////////////////////////
+///////////////////////////// stuff below here is very suspicious ////////////////
+//////////////////////////////////////////////////////////////////////////////////
 
 int32 recruitworker(int32 plugnumber, char *address) // modifies remote addresses
 { // (those who do not start with "local:")
@@ -365,14 +365,14 @@ int32 recruitworker(int32 plugnumber, char *address) // modifies remote addresse
     plug->address = strdup(address);
 
     if (!strncmp(address, "local:", 6)) {
-        channel_launch(plug, &localworker_initializer);
+        channel_launch(plug, &machineworker_main);
         return 1;
     }
 
     // it's a remote connection, butcher address into information for ssh
     pos = index(address, ':');
     if (pos == NULL) {
-        printerr("Error: no ':' in address\n");
+        log_line("Error: no ':' in address\n");
         return 0;
     }
     *pos = 0; // the plug has a full copy, so we can trash it now.
@@ -420,26 +420,25 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     connection plug = remove_connection(plugnumber);
 
     if (!success)
-        printerr("Warning: Disconnecting unresponsive device on plug %d\n", plugnumber);
+        log_line("Warning: Disconnecting unresponsive device on plug %d\n", plugnumber);
 
-    // it it nearly impossible to make threads involved with blocking I/O exit in some sane
-    // way. We use a signal that will make them exit on the spot with no way for
-    // the threads to clean up after themselves. We need this because most of the
-    // stuff our threads do is block on some streams. The thing we have to worry
-    // about are memory leaks. There is no problem for stream_shipping
+    // It it nearly impossible to make threads involved with blocking I/O exit in
+    // some sane way. We use a signal that will make them exit on the spot with no
+    // way for the threads to clean up after themselves. We need this because most
+    // of the stuff our threads do is block on some streams. The thing we have to
+    // worry about are memory leaks. There is no problem for stream_shipping
     // because it does not allocate memory and we will be able to free any left
     // message later on. The same is true for forward_raw_errors. The stream reciever,
     // has a point of failure which would leak memory (while it is filling up a new
     // message). To avoid leaking this message, there is a field on the plug called
     // plug->unprocessed_message which stores a reference to such a message. It
     // can thus also be freed. The worst case is cancelling a local worker thread.
-    // In this case there will be a memory leak because of the way McSync is
-    // currently set up.
+    // In this case there will be a memory leak as described in the next paragraph.
 
-    // the best solution for all of this would be a signal on the plug which would
+    // The best solution for all of this would be a signal on the plug which would
     // be polled by all involved parties instead of blocking, letting the threads
     // decide themselves when to exit and what to clean up. The only reason this
-    // can't be implemented at this time, is that it involed changing vast parts
+    // can't be implemented at this time, is that it involved changing vast parts
     // of the I/O functions (put32, waitforsequence et al) to support non blocking
     // file streams and to check the field. For the regular connecting / disconnecting
     // the current structure will 'leak' 8kb of unflushed buffer data and it should
@@ -465,7 +464,7 @@ void disconnectplug(int32 msg_type, int32 msg_src, char* msg_data, int32 success
     sendint32(recruiter_plug, hq_int, msgtype_removeplugplease, plugnumber);
 } // disconnectplug
 
-void reqruitermain(void)
+void recruitermain(void)
 {
     int32 msg_src;
     int64 msg_type;
@@ -486,7 +485,7 @@ void reqruitermain(void)
         if (recruitercallbacks->head != NULL) {
             if (messagearrived(recruitercallbacks, msg_type, msg_src, msg_data)) {
                 // ... yes, steal it and do not execute the regular actions described
-                // in the switch statement down bellow!
+                // in the switch statement down below!
                 free(msg_data);
                 continue;
             }
@@ -494,15 +493,16 @@ void reqruitermain(void)
         // ... no one is waiting, handle the message in the regular way
         switch (msg_type) {
             case msgtype_info:
-                    printerr("recruiter got info message: \"%s\" from %d\n",
+                    log_line("recruiter got info message: \"%s\" from %d\n",
                                     msg_data, msg_src);
                     break;
-            case msgtype_newplugplease: // msg_data is the reference we should
-                                        // send back toghether with a new plug number
-                add_connection(NULL, next_free_address);
-                sendnewplugresponse(msg_src, msg_data, next_free_address);
-                next_free_address++;
-                break;
+            case msgtype_newplugplease: { // msg_data is the reference we should
+                                          // send back toghether with a new plug number
+                int new_pob
+                add_connection(new_pob); 
+                sendnewplugresponse(msg_src, msg_data, new_pob);
+            }
+            break;
             case msgtype_recruitworker:
             {
                 char *address;
@@ -534,11 +534,11 @@ void reqruitermain(void)
                 cleanexit(__LINE__);
             break;
             default:
-                    printerr("worker got unexpected message"
+                    log_line("worker got unexpected message"
                                     " of type %lld from %d: \"%s\"\n",
                                     msg_type, msg_src, msg_data);
         }
 
         free(msg_data);
     }
-} // reqruitermain
+} // recruitermain

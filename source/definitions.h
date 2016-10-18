@@ -26,11 +26,11 @@
 
 extern FILE* ourerr; // we use this instead of stderr
 
-#define printerr(...) do { fprintf(ourerr, __VA_ARGS__); fflush(ourerr); } while (0)
+#define log_line(...) do {fprintf(ourerr,__VA_ARGS__); fflush(ourerr);} while (0)
 
 #define assert(test)                                                    \
         if (!(test)) {                                                  \
-            printerr("Assertion failed: (%s), "                         \
+            log_line("Assertion failed: (%s), "                         \
                 "function %s, file %s, line %d.\n",                     \
                 #test, __FUNCTION__, __FILE__, __LINE__);               \
             __builtin_trap(); /* make THIS thread crash */              \
@@ -48,7 +48,7 @@ typedef unsigned int uint32;
 typedef long long int int64;
 typedef unsigned long long int uint64;
 
-#define programversionnumber ((int32) 1)
+#define programversionnumber ((int32) 401) // xxyyzz, x=major y=minor z=release
 #define logfileversionnumber ((int32) 1)
 #define specsfileversionnumber ((int32) 1)
 #define deviceidfileversionnumber ((int32) 1)
@@ -61,9 +61,10 @@ typedef unsigned long long int uint64;
 #define device_id_file_path "/data/id"
 #define device_time_file_path "/data/time"
 #define device_folders_path "/data"
-// ^ these are partial paths which will be completed by the worker using its address,
-//   because they should always be relative to the device. Be aware that McSync expects
-//   all directories to exist and will not try to create them for you.
+// ^ these are partial paths which will be completed by the worker using its
+//   address, because they should always be relative to the device. Be aware
+//   that McSync expects all directories to exist and will not try to create
+//   them for you.
 
 // the following relate to files stored in the device folder
 #define scan_files_prefix "scan"
@@ -104,7 +105,7 @@ typedef struct intlist_struct {
     listint *values; // allocated memory belonging to this struct
 } *intlist;
 
-extern intlist OurChildren; // pids of all child processes, so we can kill them on exit
+extern intlist OurChildren; // pids of child processes, to kill on exit
 
 typedef struct stringlist_struct {
     struct stringlist_struct *next;
@@ -112,7 +113,7 @@ typedef struct stringlist_struct {
 } stringlist;
 
 typedef struct bytestream_struct {
-    char *data;       // not necessarily usable as regular string! (allowed to contain '\0')
+    char *data;       // may not be usable as regular string! (can contain '\0')
     char *head;       // the current writing position
     uint32 len;       // bytes written into stream
     uint32 streamlen; // total allocated memory of bytestream
@@ -130,7 +131,7 @@ typedef struct queue_struct {
     uint32 size;
 }* queue;
 
-typedef struct entry_struct {
+typedef struct entry_struct { // what IS this?
     void *k, *v;
     uint32 h;
     struct entry_struct *next;
@@ -222,11 +223,12 @@ typedef struct fileinfo_struct { // everything to know about a file on disk
     char    *deviceid;
     // the following are used for matching - for histories (tracked files)...
     continuation continuation_candidates; // scans that would fit as continuations
-    continuation the_chosen_candidate;    // the one which will be used as contiunation
+    continuation the_chosen_candidate;    // the one to be used as contiunation
     // ... and on the scan side
-    struct fileinfo_struct *the_corresponding_history;  // used only on scans, set if there is a
-                                          // history which has this set as continuation
+    struct fileinfo_struct *the_corresponding_history;  // used only on scans,
+                // set if there is a history which has this set as continuation
 } fileinfo;
+
 
 // devices
 
@@ -260,6 +262,19 @@ typedef struct device_struct { // all you need to know about an arbitrary device
 } device;
 
 extern device *devicelist; // the list of devices we know about
+
+typedef struct machine_struct {
+    int shut_up_compiler;
+} machine;
+
+extern machine *machinelist; // the list of machines we know about
+
+typedef struct directoryset_struct {
+    int shut_up_compiler;
+} directoryset;
+
+extern directoryset *directorysetlist;
+
 
 // the virtual tree
 
@@ -322,19 +337,19 @@ virtualnode virtualroot; // has no siblings and no name
 
 // messaging
 
-// messages are sent between agents -- every agent has a postal address (an integer)
+// messages are sent between agents -- every agent has a postal address (integer)
 // there are 4 types of agents
 // 1. tui = command = CMD = 2
 // 2. headquarters = HQ = 1
 // 3. worker = WKR = 3
 // 4. parent = 0
-// at a given post office, there is a connection_list of plugs, each listing the agents
+// at each post office, there is a connection_list of plugs, each listing agents
 // which lie in that direction.  the parent plug is used for all unknown agents.
 
 typedef struct message_struct { // threads communicate by sending these
     int32 source; // return address
     intlist destinations; // allocated to this struct if not NULL
-    int64 type;
+    int64 type; // BUG why is this 64 bits? message_callback_struct thinks it's 32
     int64 len;
     char* data; // allocated to this struct if not NULL
     int nextisready; // really one nice atomic bit: 0 (no next) or 1 (next ready)
@@ -347,32 +362,34 @@ typedef struct ssh_session_struct {
     char *path;         // where the session is stored on disk (using SSH -M -S)
 } ssh_session;
 
-typedef struct connection_struct { // all a router needs to provide plug  huh? XXX
-    int32           plugnumber;     // the plugnumber associated with this connection
+typedef struct connection_struct { // info for both creating and using plug
     intlist         thisway; // what sites lie in this direction, including itself
-    message         messages_tokid_tail, messages_fromkid_head; // for router
-    message         messages_tokid_head, messages_fromkid_tail; // for kid r/w:h/t
+    message         messages_tokid_tail, messages_fromkid_head; // used by router
+    message         messages_tokid_head, messages_fromkid_tail; // used by kid
     pthread_t       listener; // on local connections this also writes the output
-    pthread_t       stream_shipper, stream_receiver, stderr_forwarder;  // for remote & parent
+    pthread_t       stream_shipper, stream_receiver, stderr_forwarder;  // for r&p
     FILE            *tokid, *fromkid, *errfromkid;      // for remote & parent
     ssh_session     session; // used for multiplexing the ssh connection
     struct connection_struct *next;
     // from here on down is only used during creation of the connection
-    char            *address;       // the address we try to connect to
+    char            *address; // the ssh: or expect: address we try to connect to
     int             kidinpipe[2], kidoutpipe[2], kiderrpipe[2]; // filedescriptors
                     // r/w:  write to [WRITE_END=1], read from [READ_END=0]
     int             processpid; // the id of the process we spawn to reach remote
+    int             childraised, childfailed; // feedback on success of child
+    int32           tuiscreenid; // identifier for raw I/O with tui
+    int             passinginput; // flag for raw I/O
     // from here on down is used for disconnecting the plug
     int32           disconnecting; // is set by routermain when it sees an exit
                                    // message sent to a plug in order to avoid
                                    // lost messages
-    message         unprocessed_message; // stream_receiving allocates the messages
-                                         // is has not fully received into this to
+    message         unprocessed_message; // stream_receiving allocates messages
+                                         // it has not fully received into this to
                                          // avoid leaking memory on thread exits
                                          // (only used for remote plugs)
 } *connection; // also known as a plug
 
-extern connection cmd_plug, hq_plug, recruiter_plug, parent_plug; // for direct access
+extern connection cmd_plug, hq_plug, recruiter_plug, machine_worker_plug, parent_plug; // for direct access
 
 // the following data types are used in helper functions which allow agents to
 // wait for a message and take actions depending on whether the message was
@@ -382,8 +399,8 @@ typedef void (*message_callback_function) (int32 msg_type, int32 msg_src, char* 
 typedef struct message_callback_struct {
     int32 msg_type; // the type of the message we are waiting for
     int32 msg_src; // its source (plugnumber)
-    int32 timeout; // how long in ms receive waiting time (the time the agent waits for messages)
-                   // should we wait before calling fn with success = 0, data = NULL
+    int32 timeout; // how long (ms) should we wait before reporting failure
+                   // (calling fn with success = 0, data = NULL)
     message_callback_function fn;   // who we should call on receive or timeout
 }* message_callback;
 
@@ -397,10 +414,20 @@ typedef struct scan_progress_struct {
     int32 updateinterval;
 }* scan_progress;
 
-#define hq_int          1
-#define cmd_int         2
-#define recruiter_int   3
-#define firstfree_int   4
+// routing address numbers (post office boxes, "pob")
+// 0 is used to tell add_connection to make an "everything else" parent connection
+// 1 is used by the machine worker to send messages to its local router thread
+// 2 is used by new agents to send an existence message all the way up the tree
+#define not_a_pob           0 // not a destination
+#define local_router_pob    1 // location-dependent destination
+#define all_the_way_up_pob  2 // location-dependent set of destinations
+#define cmd_pob             3 // the user interface
+#define hq_int              4 // XXXXXXXXXXXXXX should go
+#define recruiter_int       5 // XXXXXXXXXXXXXX should go
+#define first_free_pob      6 // this and higher numbers are available
+// there is no expectation that the set of pobs in use will be consecutive
+// but the system must be very sure not to use a number (>=3) in >1 place
+// even pobs in different post offices must be different
 
 #define msgtype_connectdevice       1
 #define msgtype_disconnectdevice    2
@@ -433,17 +460,16 @@ typedef struct scan_progress_struct {
 #define hi_slave_string "you are "
 
 void (*cmd_thread_start_function)(); // this is the function called by the cmd thread.
-                                     // depending on user choice this is currently either TUImain or climain
 
-typedef void* (*channel_initializer) (void* arguments); // is the function provided to channel_launch
-                                                        // which will turn a newly created thread into
-                                                        // the corresponding agent
+typedef void* (*thread_main_func) (void* args); // "main" func type for new thread
 
 //////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// end of data types ///////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////
 
 //////// some utility functions
+
+int checktypes(void); // checks that int32 and int64 use that number of bits
 
 char* hostname(void); // caches answer -- do not alter or free!
 char* homedirectory(void); // caches answer -- do not alter or free!
@@ -499,6 +525,9 @@ void receiveint32(char *source, int32 *n);
 void sendnewplugresponse(int32 recipient, char *theirreference, int32 plugnumber); // used by recruiter
 void receivenewplugresponse(char *source, char **reference, int32 *plugnumber);
 
+// general thread communication
+int memorybarrier(void* a, void *b); // compiler should use correct *a, *b at point of call
+
 ////////  general purpose data structures
 
 // intlist
@@ -549,9 +578,9 @@ int32 fileinfokey_equals(void *key1, void *key2);
 void TUImain(void);
 void hqmain(void);
 void workermain(connection workerplug);
-void reqruitermain(void);
+void recruitermain(void);
 
-void routermain(int32 master, int32 plug_id, char *plug_address);
+void routermain(int32 plug_id);
 
 // callback helper functions for agents
 void waitformessage(queue callbackqueue, int32 msg_type, int32 msg_src, int32 timeout, message_callback_function fn);
@@ -559,14 +588,14 @@ void callbacktick(queue callbackqueue, int32 milliseconds);
 int32 messagearrived(queue callbackqueue, int32 msg_type, int32 msg_src, char *msg_data);
 
 // post office (routermain) and recruiter interaction
-void add_connection(connection *storeplughere, int plugnumber);
+connection add_connection(int address);
 connection remove_connection(int32 plugnumber);
 void freeconnection(connection skunk);
 
 connection findconnectionbyplugnumber(int32 plugnumber);
-void channel_launch(connection plug, channel_initializer initializer);
+void channel_launch(connection plug, thread_main_func zer);
 
-void* localworker_initializer(void *voidplug); // only used by routermain and recruiter
+void* machineworker_main(void *voidplug); // only used by routermain and recruiter
 void* forward_raw_errors(void* voidplug);
 void* stream_receiving(void* voidplug);
 void* stream_shipping(void* voidplug);
@@ -609,7 +638,6 @@ void raw_io(void);
 extern int doUI; // can be turned off by -batch option
 extern int password_pause; // signals when input should be allowed to go to ssh
 extern int waitmode; // changed to 1 on startup if "-wait" flag is provided
-extern int slavemode; // whether we are in slave mode, thus only a remote worker and a parent
 
 void TUIstart2D(void); // enter 2D mode
 void TUIstop2D(void); // leave 2D mode, go back to scrolling terminal

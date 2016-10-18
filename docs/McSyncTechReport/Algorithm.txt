@@ -23,7 +23,83 @@ McSync is a file synchronizer that is:
 
 McSync has two fundamental innovations:
 1. Its "virtual tree" interface lets you easily organize what should be synced with what on various machines.
-2. Under the hood, its optimal syncing algorithms are enabled by its "file aspect history" record-keeping.
+2. Under the hood, its optimal syncing algorithms are enabled by its advanced approach to file histories.
+
+
+
+New structure needed for this document:  (and convert to latex so readable doc is publishable PDF)
+
+0. Museum analogy.
+
+1. What does it mean to sync.
+   This requires some of the definitions:
+      Machine
+      Storage Device
+      Files & Aspects
+      Merge Tools
+      Tracked Files
+      Preferability
+      Scan
+   Up to here the definitions are straightforward.
+      History :::: Complete Histories
+      Comparing Histories :::: Complete ones
+   Moving forwards, we need to motivate the implicit necessity of each item.
+      Gossip
+      Guidance - Identification
+      Guidance - Preferred Values
+      Noticing
+      Instructions
+      Sync
+
+2. What is our algorithm for doing this.
+      Sequence of Operations
+      Proof of sufficiency of "issame" approach.
+      History :::: Optimized
+      Comparing Histories :::: Optimized
+      what is actually stored in histories, instructions, etc.
+      more proofs of correctness
+      comparisons with previous works
+
+3. How do we organize things for the user.
+      Virtual Tree
+      Graft
+      Backup Devices
+      settings are synced in the normal way, first
+      sources are synced in a different way (since user doesn't change them, and both ends need to match to run at all)
+      security issues
+
+4. How do we deal with mobility issues.
+      Locations
+      McSync's Internal Network
+      separation of controller from large record keeping
+
+5. How is the program organized.
+      Networking layer
+      -- maintains network of devices.
+      -- responsible for transmitting packets.
+      -- responsible for starting program on other machines.
+         (starting program requires program existing on an accessible storage device)
+      -- requires network specification settings of a certain form.
+      Device access layer
+      -- uses unix calls or whatever is appropriate.
+      -- can take snapshots.
+      -- can follow instructions.
+      Information transmission layer
+      -- knows McSync formats.
+      -- transfers various types of files between machines.
+      -- responsible for any compression or delta optimizations.
+      Interface layer
+      -- knows about virtual tree.
+      -- can request snapshots.
+      -- can generate guidance.
+      -- can request syncs.
+      -- can request new connections.
+      Algorithm layer
+      -- knows McSync formats.
+      -- can incorporate scans into histories.
+      -- can compare histories.
+      -- can generate instructions.
+
 
 
 
@@ -39,9 +115,11 @@ Machines are not very important.  They only have three uses:
 2. They can access data (including the McSync executable) on storage devices.
 3. They can communicate with other machines at other locations.
 
-Everything McSync knows is stored on the devices.  Nothing is stored on a machine -- storage requires storage devices.
+Everything McSync knows is stored on the devices.  Nothing is stored on a machine -- storage requires a storage device.
 
-Even the name of a machine is given either by data on a storage device (point 2 above) or by a network address (point 3 above).  Replacing the cpu (just point 1 above) has very little effect, except that perhaps a new executable will need to be compiled and used.
+Even the name of a machine is given either by data on a storage device (point 2 above) or by a network address (point 3 above).  Replacing the cpu (just point 1 above) has very little effect, except that perhaps a different executable will need to be compiled and used.
+
+Anything a machine knows is like short-term memory, only useful for a current operation.  Only a device has long-term memory.
 
 
 #####  2. Storage Device
@@ -76,6 +154,14 @@ There can be an arbitrary number of aspects.  Each extended attribute (as in get
 "Missing" is a value that an aspect has if, according to the file system, that file does not have that aspect.
 "Notvisible" is used for an aspect whose value presumably exists, but cannot be accessed (typically due to permission problems -- can happen for file contents, or for certain extended attributes, or for everything).  "Notvisible" is not a real value that an aspect can actually have.
 
+The aspects used in McSync are:
+  *  filename
+  *  parent directory
+  *  contents
+  *  modification time
+  *  security (owner/group/permissions)
+  *  any extended attributes
+
 Names do not include the path.
 Paths are not explicitly stored, although they are implicit via the names along the chain of parent directories.
 
@@ -83,7 +169,7 @@ Note that only leaves can be multiply-hard-linked.  (Only leaf inodes can be ref
 Exceptions:
 * Mac's TimeMachine drives -- we will ignore these.
 * . and .. are hardlinks to directories.
-So it is correct to think of the structure as a tree.  McSync treats hardlinks as separate files which happen to share certain aspects, so syncing with one file will also update part of the other's history.
+So it is correct to think of the directory structure as a tree.  McSync treats hardlinks as separate files which happen to share certain aspects, so syncing with one file can also update part of the other's history (e.g. for content updates but not for filename updates).
 
 Pretty much all aspects are given by the inode.  The only thing not from there is the name and parent directory.
 
@@ -100,6 +186,8 @@ Can this be the same approach as is used for parts of the tree pruned on a certa
 Yes, the quandaries are solved by "unstorable" being different from "missing", since only the latter indicates a deletion.  A file that has been moved within a remote graft, but is now outside the current graft, gets every aspect marked as "unstorable".
 The value "unstorable" does not have an associated adoption time, whereas "missing" does.  "Missing" means it was deliberately removed, whereas "unstorable" is a disability of the file system or graft leading to a lack of knowledge about this aspect, much like "notvisible" (which results from uncooperativity of the filesystem).
 
+Certain filesystems may have "coordination restrictions" on what can be stored.  For example, you typically can't delete a file's name or permissions without deleting the file's contents: different aspects are forced to coordinate on the value "missing".  Another "co-res" is that two files in the same directory cannot have the same name.  Another that only applies on some systems is that two files cannot coexist if their names match except for case.  Co-resses interfere with storing arbitrary data.  If a co-res exists on A but not on B, then it can be impossible to replicate B's state on A.  In these cases, McSync will arbitrarily choose some of the data to be "unstorable".
+
 Deleted files are considered as "ghosts" for a while, files that are "present" but for which every aspect has the value "missing".  This allows deletions to propagate properly.
 
 We have three special values for aspects:
@@ -112,14 +200,19 @@ The third, "missing", is more like a normal value to be synced and compared with
 "Notvisible" and "unstorable" are things that are noted about a file aspect, while the aspect itself may still have a known value (or hash) in the history.
 
 
-##### 4. Tracking Number / Tracked File / Conceptual File
+##### 4. Tracked Files
 
-The word "file" is unfortunately the natural word for three different concepts.
-1. Raw files.  A device contains raw files.  These are files in the standard UNIX sense.  It helps to imagine that these only exist (with a particular name / contents / other aspects) when you look at them.
-2. Tracked files.  Also called conceptual files.  McSync keeps track of the history of a file.  This is a conceptual file, the sort of thing the synchronizer should track changes in.  It is not a raw file, since its name/locaion/inode might change over time for example.
-3. Virtual files.  A location in the virtual tree, corresponding to mutiple conceptual files on multiple devices, which are kept synced with each other.  No records are kept on virtual files.  A virtual file feels to the user like a single file, stored in mulltiple places.
+The word "file" is unfortunately the natural word for at least four different concepts.
 
-McSync uses its own tracking number to identify files.  A tracking number represents one conceptual file on one device.  At any instant, it corresponds to at most one file on the device.  A tracking number is the same as a tracked file, although one refers more to the id number and the other refers more to the intuitive feeling (having conceptual continuity) of the whole file.
+1. Raw files.  A device contains raw files.  These are files in the standard UNIX sense.  It helps to imagine that these only exist (with a particular name / contents / other aspects) when you look at them, since users and programs may be changing/moving them at any time.  Only the operating system can monitor all changes to a file; user level programs can only take snapshots of the raw file's state at any time.  And even the OS can only do it for local disks.  To be compatible with existing operating systems, McSync works with snapshots.
+
+2. Tracked files.  On each device, McSync keeps track of files.  A tracked file corresponds to a sequence of snapshots that have been determined to correspond to the same conceptual file.  A tracked file is not a raw file, since its name/locaion/inode might change over time for example.  Tracked files are also called replicas.  Replicas are what can be synced with each other.
+
+3. Virtual files.  A virtual file is a location in the virtual tree, corresponding to multiple tracked files on multiple devices, which are kept synced with each other.  A virtual file feels to the user like a single file, stored in multiple places.  No records are kept on virtual files.  From the algorithm's point of view, there are only tracked files, which get synced with each other.  Only the interface uses virtual files, to help the user organize their thoughts.
+
+4. Ancestors.  This is not a standard concept.  These are previous or remote versions of aspects, as listed in McSync's history records.  Actually, even the current local version is listed as an ancestor.
+
+McSync uses its own tracking number to identify files.  A tracking number represents one tracked file on one device.  At any instant, it corresponds to at most one file on the device.  A tracking number is the same as a tracked file, although one refers more to the id number and the other refers more to the intuitive feeling (having conceptual continuity) of the whole file.
 
 A tracking number includes the device number.  (This might be only implicitly represented in the code, since many tracking numbers typically share a large constant device number.)  When the device number is explicitly included, we call it the global tracking number.
 
@@ -129,12 +222,12 @@ The history of the files on a device contains a history (defined below) for each
 
 At any given instant, a file system contains files in the way determined by the data and format of that file system.  But in our minds, files are things that persist over time, in a way that the file system is unaware of.  For example, many applications, when saving a file, actually create a new file and then remove the original (to reduce the danger of data loss), but as users we view the new file as the unique continuation of the old one.  McSync's job is to track files as they change over time, and so it thinks of a file as something that persists over time.  This is why it needs to use its own tracking numbers to represent conceptually persistent files -- because the file system itself cannot maintain identifiers whose persistence corresponds to our intuitive notion of "the same file".
 
-Although McSync will follow a conceptual file as it evolves on a single file system, it does not view other files on the same or other file systems as also being the same.  When we sync two files, whether on the same or on different file systems, they have distinct tracking numbers.  Syncing is an operation in which file aspects get copied from one file to another.  McSync records the fact that certain file aspects were copied from one to the other, but their file tracking numbers remain distinct.  In other words, there is no notion of an inter-system file.  The virtual tree is the structure for helping to figure out what files on one system should be synced with what files on another system (and the histories of individual files also have related information), but there is no explicit record anywhere of all the files in the virtual tree -- there are no virtual files.  A file exists on a single filesystem, and has a unique state at any given time.  Any two files can be synced at any time, and this sync will be recorded in their histories, but it has no effect on the fact that they are two separate files.
+Although McSync will follow a tracked file as it evolves on a single file system, it does not view other files on the same or other file systems as also being the same.  When we sync two files, whether on the same or on different file systems, they have distinct tracking numbers.  Syncing is an operation in which file aspects get copied from one file to another.  McSync records the fact that certain file aspects were copied from one to the other, but their file tracking numbers remain distinct.  In other words, there is no notion of an inter-system file.  The virtual tree is the structure for helping to figure out what files on one system should be synced with what files on another system (and the histories of individual files also have related information), but there is no explicit record anywhere of all the files in the virtual tree -- there are no virtual files.  A file exists on a single filesystem, and has a unique state at any given time.  Any two files can be synced at any time, and this sync will be recorded in their histories, but it has no effect on the fact that they are two separate files.
 
 
 #####  5. Preferability
 
-An updated version of a (conceptual) file is to be preferred over an old version.  If you doubt this, then you don't want a synchronizer.  This is the one and only idea underlying what it means to do synchronization.
+An updated version of a (tracked) file is to be preferred over an old version.  If you doubt this, then you don't want a synchronizer.  This is the one and only idea underlying what it means to do synchronization.
 
 What a synchronizer does is to replace non-preferred versions of files (or file aspects) with preferred versions.
 
@@ -144,7 +237,7 @@ Preferences are discovered by observing changes on disk (via a scan), and they c
 
 Preferability is transitive.  If A is preferable to B, and B is preferable to C, then A is preferable to C.  The same goes for "preferable to or equal to".
 
-[[ discuss preferability given full history.  show that only our data structure is needed. ]]
+[[ discuss preferability given full history.  show that only our data structure is needed.  but our data structure isn't introduced yet. ]]
 
 When comparing two histories, the files are equal if any of the "issame" parts of the histories match.  File A is obsolete compared to file B if there is any machine where A shows "same" but B shows a later adoption time or an equal one but is not the same.  If more than one of "same", "less", "greater" seems to hold, a conflict is marked.  If there is a version that a machine is purely obsolete with respect to, then the machine will get instructions instead of gossip for this item.
 
@@ -167,6 +260,8 @@ Of course, the user can ask to rescan (or not scan) any portion of the virtual t
 
 A scan takes place at a certain "scan time", which is given by a device-specific integer that increases with each mass-scan.  All the syncing algorithm needs is for each aspect of each file to have such an integer, but we use a common integer for all scanned file aspects in a mass-scan, to make it easier for the interface to figure out when the scan was.  We could use the absolute time, but that would force us to trust the system clock (which might be on different cpus for different scans of the same file system), or use a combination of absolute and increasing time.  Presumably an incremented integer could allow much better compression than an accurate time, which would be different for every file in a mass-scan.
 
+Note that one file on a device might be scanned at t=16 before another file gets scanned at t=15, for example if the device is following instructions, and using t=15 for the pre-update check that nothing has changed, and t=16 for the post-update check that the update worked.
+
 The scan will of course use the mtime etc. flags to optimize away the reading in of the whole file and recomputation of the md5.
 
 If a directory is accidentally set to be unreadable, there will be a problem with that part of the scan, rather than it looking like everything was erased.  The unreachable file aspects will be noted as "notvisible".
@@ -178,17 +273,16 @@ The purpose of a scan is to be merged into a history.  But to do this correctly 
 
 Each storage device maintains a history for each file.
 
-Histories turn out to be somewhat similar to the well-known (well, I didn't know about them!) concept of "version vectors", but histories are designed to work in a decentralized context.  There is more on this in the "relation to previous work" section below.
+Histories are somewhat similar to the well-known concept of "version vectors", and even more similar to the more recent concept of "vector time pairs".  However, histories are designed to work in a decentralized context.  There is more on this in the "relation to previous work" section below.
 
 [see figure]
 [figure shows tracked file lines on multiple devices, connecting snapshots.  Some new snapshots need to be connected by identification guidance.  A history connects multiple lines, can be on same or different devices.  The connections are horizontal (if the lines were vertical) n-way connections -- these are the syncs.  Snapshots are marked where a change occurred.  The history of a tracked file goes up lines and across syncs, ending at each snapshot of change.]
 
-The history of a file has a list of other files that this file has ever had any aspect synced with ("mirrors"), including itself (all aspects always being "synced" with itself with every scan).
-For each mirror, the history has a list of every aspect that has ever been synced with that mirror.
-For each such aspect, the history records the most recent time that it knows about that said aspect changed for the mirror, and whether the current aspect on the local file is untouched since then.  It could record more, much more, but surprisingly it turns out that this is all it actually needs to know.
-This "time" only needs to be a quantity that can be checked for equality, and increases with each scan of the file.  This scan time is discussed above.
+Every aspect of every tracked file has a history.  The history is a list of ancestors.  Ancestors are aspects that are the same version or an earlier version of the current local one.  The most recent ancestor is recorded for each other tracked file that the aspect has ever been synced with.  Specifically, the (scan) time of adoption (by that tracked file) is recorded, and the "sameness": whether the version is the same vs. prior to the local version.
 
-The history can be thought of as the storage device's proud description of who (what other files) adopted the current great state of this file when, and who (poor things) adopted a previous version when.  A file is equal to or newer than everything in its history.  A file's history cannot know that the file is out of date or that there are any branched versions of it.  (Although there is some knowledge like that right when it is getting updated.)  A file only knows about its current version and strictly older ancestor versions.  There may be a lot that that particular storage device doesn't know about, but of course that isn't in the history, is it.  The history is the history of the file that is there, not some abstract history of related files it might be synced with in the future.
+Histories could record more, much more, but surprisingly it turns out that this is all that needs to be known.  See the Optimality Theorem.
+
+Histories do not keep track of alternate versions (which might after all not be the same virtual file anymore in the user's mind).  A file's history cannot know that the file is out of date or that there are any branched versions of it.  The history is the list of ancestors of the file that is there, not some abstract history of related files it might or might not be synced with in the future.
 
 Each aspect has a list of (storage device : file tracking number, latestchange, issame) records.
 	Each storage device has its own file tracking number assignment system, so (storage device, file tracking number) makes a global file tracking number.
@@ -196,8 +290,6 @@ Each aspect has a list of (storage device : file tracking number, latestchange, 
 	latestchange is the birthday (first scan time on that device when the new value was noticed) of the latest value of this aspect that we know about on that device.
 	issame is a flag that says whether the aspect has changed at all (even if changed back) since then.
 Any value aspect that a history knows about is always one that is strictly previous to (has been updated to) the current aspect.
-
-Histories do not keep track of alternate versions (which might after all not be the same conceptual file anymore in the user's mind).  They keep track of the history that is prior to the present version.  And they don't remember everything -- they only remember the most recent ancestor version on each machine, and even then only the time of adoption of that ancestor on that machine, and whether it is up-to-date or not from this machine's point of view.  (Even if they did remember everything, this is all they would ever use, so it provides a huge performance benefit to only store this.)
 
 Example:
 	file tracking number 72: name:"file.txt",(m1:56,17,no),(m2:72,12,yes), owner:"cook",(m1:56,14,yes),(m2:72,12,yes)
@@ -211,26 +303,71 @@ If all the info for a ghost file indicates that it has been deleted (all aspects
 
 The history list may be of a different length for different files or different aspects, because the user on some occasions might just sync the name but not the permissions, or whatever.
 
-A new file would have for every aspect a list of length one: (the present machine, the current time, yes).
+A new file would have for every aspect a list of length one: (the present machine, the current time, yes).  This is set(¿,t).
 
 In general, each aspect has a list entry for every device in the past light cone of the file, giving the time of the last change (on that device) before the cone boundary and whether the file at that point was the same as it is now.  The light cone is defined in the web of gossip links and tracked-file edges (both directed by time).  Note that if the file at that point differed in any aspects from the one now, then the one now is a strictly newer (preferable) version.  This is discussed much more under "Proofs of Correctness".
 
-The light cone:  Only gossip (based on the user indicating that two files are indeed mirrors of each other) connects spatially different points (different tracked files).  If a file is noticed to be changed but is not then synced, no synchronization occurred, and the histories do not assume that the two files should be synced, i.e. they do not assume that they still correspond to the same virtual file -- only a sync confirms this.
+The light cone:  Only gossip connects spatially different points (different tracked files).  If a file is noticed to be changed but is not then synced, no synchronization occurred, and the histories do not assume that the two files should be synced, i.e. they do not assume that they still correspond to the same virtual file -- only a sync confirms this.  A sync causes a history to include ancestors of the previous version as well as of the new version, but all communication between tracked files regarding ancestors is gossip.
 
-XXXXXX that last par is probably wrong ------------ is it gossip or syncs that connect tracked files?
-
-A sync is a finalization of the opinion that two actual files should match in (some of) their aspects, and one's aspect is preferable to the other's, so the other's should progress in its ongoing history (actuality plus the history record), upgrading to the value of the one's.
-
-Up until the sync, it could be the case that the user has decided to fork the two actual files, and they should never be synced again.  In fact, this can be considered the default assumption of a file's historian, until a sync (the declaration of preferability) occurs.
+Up until the sync, it could be the case that the user has decided to fork the two actual files, and they should never be synced again.  In fact, this is the default assumption.  (Even a conflict-free update needs to be approved in some sense by the user.)
 
 The purpose of a history is to enable the algorithm:  If two files have a common ancestor, and one is unchanged since then, it updates to the more modern one IF/WHEN the two files are synced again.
 
 
-#####  8. Gossip
+#####  8. Comparing Histories
 
-At the same time that guidance is sent back (i.e. once the user has indicated what files now correspond to what), parts of histories from other machines are also sent so that the histories can be updated.  This is called gossip.  Gossip is the only way history information spreads between machines.  It handles the spatial component of the light cone.
+There are a few relations/operations that are defined on histories.
 
-The histories of two files might include a common ancestor that one of them matches.  If a replica feels superior or equivalent to another (current) replica that it hears about, then it can add any new information that the other replica has acquired since the fork (such as that version having propagated to other machines).
+First note that when comparing (tracked file aspect A, t=N1, issame=B1) with (A, t=N2, issame=B2), we are comparing the numbers N1 and N2, with the caveat that if issame=NO, then that adds an arbitrary amount (0.01 to infinity) to the corresponding number.  So we have:
+
+Comparison
+    absent 3= 3­ 4= 4­ 5= 5­
+absent  ?  ?  ?  ?  ?  ?  ?
+    3=  ?  =  ^  ^  ^  ^  ^
+    3­  ?  <  ?  ?  ?  ?  ?
+    4=  ?  <  ?  =  ^  ^  ^
+    4­  ?  <  ?  <  ?  ?  ?
+    5=  ?  <  ?  <  ?  =  ^
+    5­  ?  <  ?  <  ?  <  ?
+
+We can see an absent record is like (-infinity, ­).
+If the lower number has an =, then it is less.  If equal numbers each have an =, then they are the same.  Otherwise they are incomparable.
+
+h1 ~ h2    At most one of =, <, or > holds among all (h1.t, h2.t) for tracked files present in both histories.
+If h1 ~ h2 does not hold, that is a conflict.  This could happen if a conflict is resolved different ways in different places.
+
+h1 > h2    h1 ~ h2 and for some tracked file present in both histories, h1.t > h2.t.
+h1 = h2    h1 ~ h2 and for some tracked file present in both histories, h1.t = h2.t.
+h1 >= h2   h1 > h2 or h1 = h2
+
+h1 + h2    Addition yields a merged history.  It is like a termwise max, with ­ worth 0.5.  But terms can interact slightly:
+           If h1 > h2, then h1 + h2 = h1 + post(h2).  This part of it is not termwise.  The rhs, h1 + post(h2), can be done termwise.
+           More generally, if h1 ~ h2 does not hold, only those histories go un"post"ed which are in no term less than any other history.
+           However, if there are multiple such equivalence classes (as in a naive merge), only one may go unposted.
+           Addition yields the history to use when ancestors had the summand histories.
+
+Addition
+     +  ab 3= 3­ 4= 4­ 5= 5­
+    ab  ab 3= 3­ 4= 4­ 5= 5­     ab = absent
+    3=  3= 3= 3­ 4= 4­ 5= 5­
+    3­  3­ 3­ 3­ 4= 4­ 5= 5­
+    4=  4= 4= 4= 4= 4­ 5= 5­
+    4­  4­ 4­ 4­ 4­ 4­ 5= 5­
+    5=  5= 5= 5= 5= 5= 5= 5­
+    5­  5­ 5­ 5­ 5­ 5­ 5­ 5­
+
+post(h1)   This unary operation simply changes every = to a ­.
+set(h1,t)  This binary operation sets h1.t to the current scan time, with =.
+
+
+#####  9. Gossip
+
+There are only two kinds of information that gets sent between devices (specifically, between tracked files).  One is that during a sync, the actual values of aspects are transferred.  But the other is that ancestor information (history information) gets spread around.  Even when actual aspect values are transferred, they are accompanied by the history of the new value.  Sending of histories between tracked files is called gossip.  Gossip provides the spatial component of the light cone.
+
+The idea of gossip is simply that an ancestor of an ancestor is also an ancestor.  So any information about their ancestors that you hear about from your ancestors can be incorporated into your own ancestor information.
+
+If t.h >= s.h, then t.h can update its history to t.h + s.h.
+This is the gossip operation.  It transports information between tracked files.
 
 Gossip is when two file aspects can tell from their histories that they are related.
 	mirror A: file1: contents: p (A:file1, 3, y)(C:file1, 5, y)
@@ -258,7 +395,7 @@ This could be done even if the files are not synced.  [check how exactly the int
 
 The gossip spreading in these examples happens quite apart from any syncing or updating of actual files.  It is just the spreading of existing history information from one actual file's history to another's.  [show figure]
 
-The info for a mirror in a history represents the last update of that mirror that this version of the file can remember.  Info from new machines is only sent if the history on the target would be updated (in practice generally due to new devices or user-resolved conflicts).  A target is interested in gossip about versions that are known to be equal to its own or just plain obsolete compared to its own.  It is not interested in versions that may be forking from its own.
+The info for a mirror in a history represents the last update of that mirror that this version of the file can remember.  Info from new machines is only sent if the history on the target would be updated (in practice generally due to partial syncing patterns).  A target is interested in gossip about versions that are known to be equal to its own or just plain obsolete compared to its own.  It is not interested in versions that may be forking from its own.
 
 Gossip can help resolve conflicts.  Say machines A and B are synced to one version of a file and machines C and D are synced to a conflicting version.  You sync A and C, specifying that A is better.  Now if you sync B and D, they don't know that you have specified that A is better, and you will have to specify it again.  But if you sync A and B first, then even though the file is fine (the same version is on A and B), A can send B the gossip that its version is better than the one adopted by C and D, and so then the sync between B and D will not exhibit a conflict.
 	A: file1: contents: p (A:file1, 1, y)(B:file1, 1, y)(C:file1, 2, y)
@@ -268,7 +405,7 @@ Gossip can help resolve conflicts.  Say machines A and B are synced to one versi
 Gossip is simply the propagation and incorporation of histories.
 
 
-#####  9. Guidance - Identification
+##### 10. Guidance - Identification
 
 Guidance (both identification guidance and preferred value guidance) is all the things that a human can indicate using the McSync interface:
 	- that a certain directory is the new version of a certain old directory
@@ -310,8 +447,6 @@ Once the mapping is chosen, it is represented as follows.  Of course it is in re
 
 Different files on a single device might correspond to the same file in the virtual tree, but they still have distinct file tracking numbers and histories.  A single file might correspond to multiple files in the virtual tree, but it still has a unique file tracking number and history.  The virtual tree is just convenient notation for saying which files should be synced with which other files, and can change at any time at the whim of the user without affecting the syncing algorithm or any histories.  Syncs can be between files on the same device just as easily as between files on different devices.
 
-Identification guidance defines file tracking number defines what history a current file inherits, gives the timelike links of space-time.
-
 ---- trying for perfect clarity....
 
 A file tracking number, or tracked file, is different from a file on the disk.
@@ -331,7 +466,7 @@ Everything else operates only on the tracked files.
 We could say that the device sends its old history and scan, and the human sends back the new history, but the human cannot send back an arbitrary history, and it is useful to separate this process into identification guidance (the arbitrary human input) and noticing (a logical algorithmic step).
 
 
-#####  10. Guidance - Preferred Values
+##### 11. Guidance - Preferred Values
 
 Users are allowed to specify all sorts of things in the interface.  Some of it is in the form of identification guidance, saying which current files correspond to which historical files.  But other things can be specified too, such as new attribute values, or preferences between different versions.
 
@@ -348,7 +483,7 @@ You should be able (in the McSync interface, but without connecting to other dev
 This requires "unstorable" to be able to coexist with a specification of all the attributes.  Perhaps only the large attributes (file contents and others where only a hash is stored) receive values of unstorable?  No, "unstorable" and "notvisible" are extra information next to the ordinary information.  "Missing" is the only one that can actually be a current value.
 
 
-#####  11. Noticing
+##### 12. Noticing
 
 Noticing is the act of updating a history with guidance and a scan.
 Once the guidance tells us which scanned file corresponds to which history file, we can update the history.  We say the history notices the information.
@@ -363,24 +498,28 @@ We have the scan from each machine, giving the current set of aspects on that ma
 The user is shown a tree with every branch that is in any history or scan.  But some branches are merged, because they have the same file tracking number.
 
 If the file has ever been scanned before, then every aspect has been recorded for the local "mirror" (itself).
-Each aspect is examined to see if it has been changed, and if so, the adoption time for the local mirror is updated to now, and all other mirrors are marked as obsolete (not the same).
+Each aspect is examined to see if it has been changed, and if so, the adoption time for the local mirror is updated to now, and all other mirrors are marked as obsolete (not the same).  set(post(h),t) = h + set(¿,t)
 If the aspect has not changed, then nothing in the history is changed for it.
 
-If the file has never been scanned before, then it gets a file tracking number and is considered to be its only mirror and every aspect gets an adoption time of now.
+If the file has never been scanned before, then it gets a file tracking number and is considered to be its only mirror and every aspect gets an adoption time of now.  set(¿,t) = set(post(¿),t)
 
 If A gets renamed to C on machine 1 and B gets renamed to C on machine 2, then this will be a conflict, but this specification of the continuations should be allowed.
 
 If directories B and C get moved around so that A/B/C/D becomes A/C/B/D on machine 1 (not crazy -- suppose B="2009" and C="receipts"), then we don't want to present the user with an infinite tree of B/C/B/C/..., even after the user has said that B and C correspond as they do.  We cannot solve this by only showing paths that actually exist on some machine, since perhaps the correct tree does not correspond to any actual current machine state.  The good solution is to show the virtual tree in the one way that it is supposed to be.  Of course, a file present on some machine which is not supposed to be at that point in the virtual tree is marked as such, but if going through it further down the tree, you either jump to the appropriate point for that file in the virtual tree, or you are off the virtual tree and only looking at the machines having that file (the only way to examine files that need to be deleted).  At each directory in the virtual tree, you see the virtual path, and all machine directories which correspond to that point.  For the contents, you see all machine files which are in any machine directory corresponding to this point, as well as any machine files which belong in this directory.  For each of these content files, you see the name under which it is supposed to be (there or elsewhere).
 
 
-#####  12. Instructions
+##### 13. Instructions
 
 When a comparison and/or discussion with the user have determined that a new value for an aspect is preferred over the old value, then instructions are given for an update.  The instructions consist of the new value, and the new history for the new value.  These instructions are sent to the target storage device, and hopefully soon executed.
 
-If the update itself fails to be completed, but the instructions are there, then there are essentially two versions of the file on that machine.  If these two versions conflict, then the update probably failed because the file was edited after the scan but before the sync.  But if the instructions have a clearly preferable version, then the update may have failed due to permissions or access problems or due to a system crash or other form of abortion.  This makes things more complicated for the interface, but it can allow failed syncs to propagate farther, if the interface treats the instructions as giving the correct version of the file.  Of course if the file itself gets changed also, then the instructions become irrelevant, as there is now a new conflict to resolve.  The instructions can be thought of as giving the state of the file on another, virtual device, related to the actual device.
+If the update itself fails to be completed, but the instructions are there, then there are essentially two versions of the file on that machine.  If these two versions conflict, then the update probably failed because the file was edited after the scan but before the sync.  But if the instructions have a clearly preferable version, then the update may have failed due to permissions or access problems or due to a system crash or other form of abortion.  This makes things more complicated for the interface, but it can allow failed syncs to propagate farther, if the interface treats the instructions as giving the correct version of the file.
+
+The instructions can be thought of as another device, but a nameless one that doesn't appear in any history.  The history accompanying the file is the gossip for the new file.
+
+Of course if the file itself gets changed also, then there is a new conflict to resolve.
 
 
-#####  13. Sync
+##### 14. Sync
 
 A sync consists of instructions being followed.
 
@@ -389,15 +528,19 @@ External activity is always considered to consist of purely preferable changes.
 Syncing only occurs when a change is determined to be preferable.
 So for a given actual file, all changes are increasingly preferable.
 
+Even if a user overrode the default suggestion and chose an old version as preferable, the history accompanying the preferred version has been set to be strictly preferable to (post()) everything it should supercede.  In general, the history is >= everything considered in choosing the preferred version.  It is the sum of post /@ everything it doesn't match and id /@ at most one thing it does match (whichever version we say is the same, if any -- but such a version must be > all other versions).
+
 When the sync occurs, A's aspect value is copied to B's, and if successful B updates its history (and so does A, in round 2).
 If B's aspect value (checked right before sync) no longer matches the one being overwritten (it has been changed even since the latest scan), then the update is cancelled and unsuccessful.
 If permissions or hardware failures block the copy, the update is unsuccessful.
-A device might retain a local copy of the update request and try again later, but it only succeeds when it succeeds.  A shadow of the device could be said to succeed when the update request is retained, but it seems dangerously confusing to give shadows any real status.
+A device might retain the instructions and try again later, but it only succeeds when it succeeds.
 
 If the update is successful, the histories are updated.
-The history at B is updated by taking all of A's history, plus B's history with everything marked to obsolete, plus B itself marked as equal since now, and using only the most recent record for each device.
+The history at B is updated by taking all of A's history, plus B's history with everything marked to obsolete, plus B itself marked as equal since now, and using only the most recent record for each device.  set(A + post(B), B.t)
 The history at A is updated (in round 2) by adding any of B's mirrors that are missing from A's mirror list, marking them as obsolete.  B itself is marked as equal since now.
 The end result is the same at both A and B.
+
+All of these changes are applied as one atomic changeset.
 
 If A and B are not comparable (regarding preferability) then this is marked as a conflict.  If the aspect value is nonetheless the same, then a sync occurs (of unspecified direction), and the histories are made to match by unioning the mirrors, keeping the info on the more recent update time at each (taking the max of the histories).  Should they mark the update time as now, with the others (in max of histories) changed to obsolete?  I don't think so.  But perhaps I am wrong!  (See Naive Merge Theorem.)
 
@@ -411,8 +554,72 @@ In every case, when we do the sync (successfully change (or leave unchanged) a f
 
 While in principle, any two files on any machines can have an arbitrary aspect synced, McSync's virtual tree helps to insure that this doesn't get out of hand.  Only files at the same point in the virtual tree are synced.  And moving a file in the virtual tree (without actually moving the file) requires re-grafting.  So it is natural for a fixed set of file positions (paths on machines) to continually be synced with each other.  Files can of course be moved in and out of this set, by specifying a file's continuation as something in or out of the set, but this will in general affect (after syncing) all the files in the set, so it does not allow for information flow between stable sets.
 
+###       The remainder is from an older version of this section:  View of syncs    It needs to be merged in or, more likely, thrown out.
 
-#####  14. Virtual Tree
+When the workers update files, it is the same as if the user or someone else had updated the file.  The success or failure of McSync's own update attempt is irrelevant.  This update attempt can be viewed as being attempted by a separate process from McSync proper.  What is relevant is the state of the file.  When McSync scans the file again, we are hoping that it sees the preferred values.  When it does, then Zing!, a sync occurs, meaning that two or more tracked file aspects have the same value at the same time.  Actually, to be sure they had the same value at the same time, the HQ can ask for repeat scans of at least all but one mirror of the synced aspects.  If we scan files A, B, C, and then D, and then A, B, C again, and they all give the same value, then they all had the same value at the same time (as far as McSync's histories can tell, which is all we care about), namely the time of the scan of D.
+
+For safety, we need the fact that a tracked file has a single history.  But this is practically the definition of a tracked file: its history.  If there are (by mistake, say) two McSync directories both acting on the same set of OS files, then they each have their own histories for the files.  There will be two tracked files, each with its own history, for a single OS file.  If each one is surprised by the other's changes to the file, it just doesn't matter.  From McSync's point of view, they are two files, being updated by who cares who.  This could also happen from a single McSync directory if a disk is mounted in two separate places.
+
+The lack of safety otherwise would come up in situations such as:  We edit file X on machine B, and then run McSync on A, collecting scans of A and B.  We tell it to propagate the new version to A, but we forget to hit "go", and then we edit file X on machine B some more, and sync B with C, so the new X propagates to C.  We sync C with A, and we specify that actually A's old
+We later finish the sync from B to A
+Well, that example is a bit contorted, but the general idea should be clear.
+
+Anyway, at the Zing! of the sync, the tracked file aspects are known perfectly to be identical, and the meaning of the sync is that they should be considered as in some sense the same; they should share their histories.  If one of them is derived from an old version on machine A (currently unreachable), then any updates to any of them should propagate back to machine A the next time it is reachable.  If any of them gets updated in the future, they all want to get that future update.  These are assuming that the files continue to get synced with each other periodically, according to the default propagation behavior.  Of course a tracked file can be released from this burden by de-grafting it.  The synced files can be split into two sets with two different destinies by re-grafting them to two different places, not the same.
+
+This is a nice view, but has some issues...
+
+
+##### 15. Sequence of operations
+
+Here we describe the sequence of operations (on the files and histories) involved in practice when syncing a directory tree across some devices.
+
+0.
+CMD sets up a network of POs and WKRs and sets up HQ somewhere.
+
+1.
+The histories of all the tracked files are collected from each device.  (Each device loads the history and sends it to HQ.)
+
+2.
+Gossip can be generated based just on the histories sent in.  For any tracked aspect of any file, if h1 >= h2, then h1 can update itself to h1 + h2.  (HQ sends gossip to whoever could use it.)
+
+3.
+A scan of all the files is collected from each device.  (Each device performs a scan and sends it to HQ.)
+(Note that this step can start before the previous steps have finished.)
+
+4.
+The user considers the suggested continuation candidates and specifies (tracked file, scanned file) pairs that go together, for each device.  This includes pairs where one element is missing (i.e., new and deleted files).  (Some scanned files or tracked files might get deliberately ignored for now by the user.  No pairs are sent for these.)
+
+These pairs are both kept at HQ and sent to the devices.  They are used to update the histories as follows:
+
+A (file, history) pair where the file's aspects match the latest version of the history does not need a history update.  Any aspect that does not match gets its history updated to set(post(h),t).  A scanned file with no corresponding history gets a history as above for a changed aspect, but not listing any other replicas, i.e. set(post(¿),t).  A history with no corresponding scanned file is treated as if the value were scanned as "missing".
+
+Since most of the pairs are saying there's no change, and these don't lead to any kind of update, what is the difference between them and a deliberately ignored file?  Nothing.  Ignoring files simply means that they aren't noticed by this scan.  If you put off figuring out the proper continuations until a later scan, that's ok.  Scans aren't really part of the algorithm; they're just a useful heuristic for figuring out continuation guidance, and when that is acted on so as to extend the history, then that is the atomic action that feeds into the algorithm.
+
+5.
+The user considers McSync's suggestions and chooses corresponding files (aspects) to be synced, with a preferred value for each aspect.  This value might be the same version as in one or more members of the set being synced.  Conceptually, this value is written to a temporary device, along with its history.  This temporary device full of useful information is then sent to devices needing updating.  We call the info on the temporary device "instructions".
+
+The history of the aspect version on the device is the sum of the contributing histories.  If there is a non-post-ed contributor, it must have the same aspect value.
+
+6.
+Devices receiving instructions try to execute them.
+
+If they fail, neither file nor history changes.
+
+If they succeed, the history h from the temporary device is adopted (h should equal h + g, where g is the existing history), plus set(h,t).
+
+Success is reported back to HQ, which similarly updates its history records.
+
+7.
+HQ sends out gossip as in step 2.
+
+Note that the temporary device needs to have been listed in the histories for the gossip to know that the same version was adopted everywhere, if this version is not one of the preexisting ones.
+
+We should consider whether to do this.  Can it be recorded elsewhere and still be robust to interruption?  Probably not.  It is only needed in cases where the preferred version is new (or an obsolete version, forcing it to be treated as a new version).  Then a temporary device id needs to be created, just for these instructions going out (and others going out at the same time, perhaps).  And at some point the temporary device needs to be deleted from all these histories.  Basically, as soon as any update succeeds, and all devices hear about it (through gossip) (including the temporary one, in pending instructions), then the temporary device can be erased.  Without the temporary device, successful updates present a naive merge situation.
+
+Or better, McSync could let you set aspect values on any particular tracked file, same as using an editor or shell.  Then, once the value you like is actually set somewhere, you can prefer it in the usual way.  Or it could do all this automatically for your preferred value.
+
+
+##### 16. Virtual Tree
 
 From the point of view of the algorithm so far (the "history algorithms"), the virtual tree is simply a heuristic for helping users keep an orderly understanding of what should sync with what.  From the user's point of view, the virtual tree is the real thing, with parts of it stored here and there on different systems.  All file manipulations by the user occur through the virtual tree interface, which is one of the two foundational ideas of McSync.
 
@@ -426,7 +633,7 @@ The virtual tree is somewhat nebulous, in that its structure beyond the graft po
 Almost all McSync preferences/configurations apply to places/portions of the virtual tree.  (The main exception is networking information.)  Even the McSyncDeviceArchive directory could be indicated by being grafted to /McSync, but that's probably a bad idea because it would encourage new users to poke around in it.
 
 
-#####  15. Graft
+##### 17. Graft
 
 There are grafts of actual device directory trees onto the virtual tree.
 A graft is like a mounted filesystem in a unix machine's directory tree.  But there it hides the previous contents, replacing it with the mounted contents, whereas in McSync, both contents are there, and McSync helps to keep them identical.
@@ -438,21 +645,36 @@ A graft point is where an actual file path is mapped to a virtual file path.
 A prune point belongs to a graft, and indicates a position within the subtree where the mapping ceases.  Prune points may be patterns, such as "any dir containing a file named .svn".
 
 
-#####  16. Locations
+##### 18. Backup devices
 
-By a location, we mean a machine in terms of how it can be accessed from the internet.  If a laptop is taken from hotel to hotel, it is a different location each time.  If a usb stick is taken from one internet cafe to another, it is on a different location each time.  If an external drive is mounted at different points at different times, its location changes accordingly.
+A device can be marked as a backup device.  The idea is it would store every version of every file.  Backup device needs to be able to store many copies of each file, each marked with source device and scan time when that version was noticed.
 
-Locations are important because they let us find devices.  One location can even be connected to more than one device.  When McSync is running, it forms a network of processes on different locations all connected by a message routing system.  There is a worker thread for every device, a router thread for every machine, and one algorithm thread somewhere and one tui thread wherever the user invoked McSync.
+Multiple backup devices can be specified.  On a backup device, no version would be erased (even if clearly unpreferable) unless it is known to be on at least n/m backup devices.  Default is n=min(m,1), m=0.  Nah, you never really know what's on another device.  It would be tricky to avoid simultaneous erasures, each device assuming the other one has it.  A graft (or pruned subtree) can be marked as keeping backups of everything.  In other words, it wants all versions of everything from all other devices.
 
-As it gets started, McSync knows of one device connected to the location it is running on (because the executable lives in the McSync directory for a device, and the executable can find this directory).  It can try to figure out its machine or location, but what it really wants to do is to find other devices where McSync can be invoked.
+That would be strong backup.  Weak backup would just be that it syncs like any other machine, but somehow keeps a record of its own older states, like if a backup system is observing that device.  This would not allow recovery from an incorrect conflict resolution.
+
+Maybe the mess is simply instructions, since instructions are file contents or metadata, plus the associated history.  A backup device would just store a mess of instructions.  To restore a previous version, you just execute that instruction.  (The current history would treat any "reverting" change as a new local edit, but the historical instructions would remain in the backups, untouched.)  Instructions already have a place to be stored until executed, so a backup system would simply store all the instructions it can get its hands on, but not execute most of them or delete any of them.  It would not have to look different from any other graft.
+
+Is a one-step undo possible in any sensible way?  Well, an instruction to revert can be kept for each instruction executed.  This is kind of like a weak backup system that only remembers one step back.  This could be the default for every graft, kind of like emacs keeping one ~ file by default.  I don't think this is very useful.  There could more generally be options about how much history to keep.  But the first thing to implement is a complete backup (all versions) approach.
+
+Part of keeping instructions is making sure you have any file version that the instructions assume are present.  Instructions have a way of including such files anyway.
+
+
+##### 19. Locations
+
+By a location, we mean a machine in terms of how it can be accessed from the internet.  If a laptop is taken from hotel to hotel, it is at a different location each time.  If a usb stick is taken from one internet cafe to another, it is at a different location each time.  If an external drive is mounted at different points at different times, its location changes accordingly.
+
+Locations are important because they let us find devices.  One location can even be connected to more than one device (multiple drives can be mounted somewhere).  When McSync is running, it forms a network of processes at different locations all connected by a message routing system.  There is a worker thread for every device, a router thread for every machine, an optional algorithm thread on each machine and an optional tui thread on each machine.  The normal situation is that the tui and algorithm threads are on the machine where the user invoked McSync.
+
+As it gets started, McSync knows of one device connected to the location it is running on (because the executable lives in the McSync directory for a device, and the executable can find this directory).  It can attempt to figure out its machine or location, but what it really wants to do is to find other devices where McSync can be invoked.
 
 Some devices live at fixed locations.  Some locations are only visible from certain other locations.  A device is typically either fixed (desktop, external drive) or mobile (laptop, usb stick).  If a fixed device moves, the user can update how it should be reached from other locations, and how it reaches other locations, and this info propagates out.  A mobile device has a list of familiar locations where it might be likely to be.  These are just two modes of use, there is no distinction from McSync's point of view, except maybe that a fixed device is sure of its location while a mobile device has to try to figure it out, and I'm not sure how to figure it out.
 
-Except during configuration setup (creating a new device), a location can only be reached if it has a device connected.  Otherwise there is no McSync executable there to talk to.
+Except during configuration setup (creating a new device), a location can only be reached if it has a device connected.  Otherwise there is no McSync executable there to talk to.  If the way to connect from A to B is via several ssh hops with no McSync on the intermediate machines, then from McSync's point of view, this is just a single connection between two locations, A and B.
 
 So every device has a list of other devices that it is willing to try to reach (if they are not yet connected) via various locations.  Some locations are worth trying even if you have only seen other devices (besides the one you're looking for) there before (e.g. usb mount point).
 
-In fact, locations can be grouped into networks.  For example, there are various locations in the internet network, locations in my home network, in my behind-firewall work network, one on my roaming laptop, and so on.  A given location has access to certain networks (most can access internet, but roaming laptop might have access to no networks except itself, for example).  For each network you can access, there are locations you can try to access.  You always have to try a device locater (IP address)* (dir) and see what you get.  Since different usb sticks could be mounted at the same place at different times, you have to check what device you got, and make sure you're not already otherwise connected to it.
+In fact, locations can be grouped into networks.  For example, there are various locations in the internet network, locations in my home network, in my behind-firewall work network, one on my roaming laptop, and so on.  A given location has access to certain networks (most can access internet, but roaming laptop might have access to no networks except itself, for example).  For each network you can access, there are locations you can try to access.  You always have to try a device locater (IP address)* (dir) and see what you get (also df might give you places to guess?).  Since different usb sticks could be mounted at the same place (under the same name) at different times, you have to check what device you got, and make sure you're not already otherwise connected to it.
 
 If there's a computer you want McSync to be aware of (take certain actions from, use as a branching point, etc.) even if you don't sync anything there, you'll need to have McSync running there, which means the executable is on a device, so that location is a device like any other.  Nothing there needs to be grafted onto the virtual tree, so it is natural to sync nothing there.  There is no branching except at devices, so all connections are immediate.  Multi-hop connections occur through intermediate devices which have been reached, so every connection to another machine is (from McSync's point of view) a single-hop (though perhaps a multi-machine / multi-ssh) connection to another device.
 
@@ -472,14 +694,14 @@ volume handheld (SP) internet  // handheld will use SP for its headquarters / al
 
 A device locater has 0 or more hops each with (a) an IP address, (b) a prompt to wait for, and (c) how many seconds to wait for it.  If c is missing it is the default.  If b is missing, it just waits for the full number of seconds.  Finally, after all these hops, it has a path to McSync's directory on that device.
 
-If McSync is started in "wait" mode, then instead of automatically trying to connect everywhere, just give a list of where one would like to connect from/to, and the user can ok any they like.  If automatic, then the central machine tries to contact every machine it can reach directly.  When one attempt times out, the next is tried for the same target.  If all attempts (perhaps 0) have failed, it starts trying multi-hop routes, breadth-first.  Each time a new attempt is to be made, it is recomputed based on the current set of connected devices.  Whenever a device is reached, the central machine stops trying to reach the reached device (although it may continue trying to reach the device it was trying to reach, if that was different from the device it did reach).
+If McSync is started in "wait" mode, then instead of automatically trying to connect everywhere, it just gives a list of where one would like to connect from/to, and the user can ok any they like.  If automatic, then the central machine tries to contact every machine it can reach directly.  When one attempt times out, the next is tried for the same target.  If all attempts (perhaps 0) have failed, it starts trying multi-hop routes, breadth-first.  Each time a new attempt is to be made, it is recomputed based on the current set of connected devices.  Whenever a device is reached, the central machine stops trying to reach the reached device (although it may continue trying to reach the device it was trying to reach, if that was different from the device it did reach).
 
 Only the algorithm is trying to reach devices.  Each device maintains a list of attempted routes.  Given the specs and the current set of connected devices, it tries the first untried single-hop connection it can find, then the first two-hop connection it can find, and so on.
 
 
-#####  17. McSync's Internal Network
+##### 20. McSync's Internal Network
 
-McSync starts up remote processes on other machines and maintains a communication network between these processes.  The communication network takes the form of a tree, rooted at the initial process, which is where the tui is.  If a different machine (perhaps one with better bandwidth) is chosen to be the central machine, the initial machine tries to reach this machine.  The central machine then connects to everything it can, and tells other machines to try to connect further for connections on networks not available to the central machine.
+McSync starts up remote processes on other machines and maintains a communication network between these processes.  The communication network takes the form of a tree, rooted at the initial process, which is where the CMD is.  A different machine (perhaps one with better bandwidth) may be chosen to run HQ.  CMD has responsibility for setting up the network.
 
 
                     ,------- PO ------- PO --------- PO
@@ -491,27 +713,45 @@ McSync starts up remote processes on other machines and maintains a communicatio
     CMD      HQ  WKR        WKR                     WKR
 
 
-  (up the tree) SR ---- plug : plug ----.    ,---- plug : plug ---- WKR 5 (hard disk)
-  (down to 3,4) SR ---- plug : plug ---- PO 2 ---- plug : plug ---- WKR 6 (usb)
-    (down to 7) SR ---- plug : plug ----'    `---- plug : plug ---- maybe HQ and/or CMD
+  (up the tree) SR ---- plug ----.    ,---- plug ---- WKR 5 (hard disk)
+  (down to 3,4) SR ---- plug ---- PO 2 ---- plug ---- WKR 6 (usb)
+    (down to 7) SR ---- plug ----'    `---- plug ---- maybe HQ and/or CMD
+
+Note that both sides of a plug use the same plug struct.  The two threads "own" different parts of the struct and its queues.
+
+When McSync is invoked on a machine, main() transfers control to the router (PO), which sets up some plugs and then starts routing among them.
+
+A plug is a struct with various parts: some parts are used by the recruiter while setting up the remote connection before communication can start, some parts are the queues used by the communicating parties, some parts help the router tell whether this is the plug a message is looking for.  Think of it as a pair of cubbyholes in the router room, made out of wood.  This wooden object has installation and kid-making instructions written on the top, holes for transferring stuff, and an address (or many) for reference during use.  The kid (on the other side of the cubbyhole wall) takes things out of the outbox and puts things in the inbox.  Plugs for communicating with remote places have stream cables plugged in, which the kid uses.
+
+One of the communicating parties is always the router, and the other is called the kid because the router spawns all the other threads it communicates with.
+
+The master McSync PO spawns a CMD and a WKR.  Later, it might set up a connection to a remote device, REMOTE (SR).
+Each slave PO spawns a PARENT (SR) and a WKR.
+Any PO might spawn a RCTR, and if that succeeds then it converts into a REMOTE.
+Any PO might spawn a HQ, if no other PO has one.  An HQ can be shut down if it has no ongoing activities to manage.
+CMD, HQ, RCTR, and WKR are local kids.
+PARENT and REMOTE use multiple threads to handle stream connections between machines.
+   PARENT is run on a slave for communicating with the higher parts of the tree.
+   REMOTE is for communicating down a particular branch of the tree.
+
+List of agents:
+PO - post office (router)
+CMD - user interface
+WKR - worker (does scans, reads/writes histories, executes instructions)
+HQ - headquarters (receives scans, acts as database for CMD, sends identification, gossip, and instructions)
+RCTR - recruiter (attempts to reach remote machines)
+SR - shipping/receiving (thin agents that just forward everything to/from some streams) (REMOTE, PARENT)
 
 
-#####  18. Backup devices
-
-A device can be marked as a backup device.  The idea is it would store every version of every file.  No version would be erased (even if clearly unpreferable) unless it is known to be on at least n/m backup devices.  Default is n=min(m,1), m=0.  Backup device needs to be able to store many copies of each file, each marked with source device and scan time when that version was noticed.
-
-That would be strong backup.  Weak backup would just be that it syncs like any other machine, but somehow keeps a record of its own older states, like if a backup system is observing that device.  This would not allow recovery from an incorrect conflict resolution.
-
-Backup device gets grafted like any other.
-
-Is an undo possible in any sensible way?  Syncs that happen in a grafted part of the virtual tree can be recorded.
-
-
-#####  19. Merge Tools
+##### 21. Merge Tools
 
 Merge tools are data-structure-aware algorithms for deciding what guidance to give.
 
 What does it mean to sync two objects?  Say drive A with drive B?  One person might erase one drive and copy all the bits from the other drive (and if both drives were updated, mark it as a conflict), while another person might claim there is internal structure to the bits, and something more intelligent can be done.  So what does it mean to sync two things with internal structure?  It depends on the structure of course.  A semi-intelligent entity, that understands something about the structure of the contents, must break the structure down into substructures that can be handled by other entities.
+
+McSync can use plug-ins for various types of files.  For example to do line-based code merging, or freemind tree merging.
+
+What such a plug-in does is to replace the idea of syncing A and B with the idea that A has parts and B has parts and these parts can be synced.  Tracking changes in the parts and rearrangements of the structure is the job of the plug-in.  In general, "location in the structure" is an aspect of a part, thought of in the most local way possible.  A file has "location:parent" and "location:name" as the two aspects of its location in the directory structure.  A code file might have "location:previous line" as the lone aspect for each line in the sequence-of-lines structure.  Of course, intuition-matching heuristics are needed to make a reasonable interpretation of observed changes, in terms of objects and their aspects, and it must be possible to provide guidance to correct the heuristics on any given occasion.
 
 One important type of structure is a dictionary with key/value pairs, and different keys have different meanings (structures for the value), so it doesn't make sense to move a value to a different key.  (For example, aspects of a file are like this.  In normal operation, it makes no sense to say a value was moved from the "owner" key to the "permissions" key.)  Items in such a dictionary are synced key by key, syncing values with other values in unsynced places having the same key.
 
@@ -593,7 +833,7 @@ preferences exist for:
 
 Inaction can never be detected.  If a wise person checked a file (or its permission bits or whatever) for accuracy (and found it accurate, so did not change it) while a fool changed it on another machine, the wise person's inaction cannot, in any scheme, conflict with or override the fool's action (unless every update is marked as a potential conflict, in which case you have a modification detector, not a synchronizer).
 
-Is there any way for the wise person to "positively take a null action"?  Yes.  She can mark the checked material as having an adoption time of now on the current machine.  Then if anybody simultaneously changes it elsewhere, it will be detected as a conflict.  However, if her inaction first propagates to the fool's machine, and then the fool changes it, there is no way for McSync to know not to trust the fool, so this is not a very reliable method.  Better is to mark (in the McSync interface, not as part of this algorithm) the machine as dubious or the file as needing approval.
+Is there any way for the wise person to "positively take a null action"?  Yes.  She can mark the checked material as having an adoption time of now on the current machine.  Then if anybody simultaneously changes it elsewhere, it will be detected as a conflict.  However, if her inaction first propagates to the fool's machine, and then the fool changes it, there is no way for McSync to know not to trust the fool, so this is not a very reliable method.  Better is to mark (in the McSync interface, not as part of this algorithm) the fool's machine as dubious or the file as needing approval.
 
 Similarly, mistakes cannot be detected.  If you delete a file by mistake, this deletion will be propagated.  If you are used to CVS's behavior where you can delete a file to get the repository's version, you should be aware that synchronization is not like this -- there is no repository!  If you want to use McSync to get a deleted file back from another machine (assuming the deletion has not been propagated to the other machine yet), you will have to use the interface to mark the older existing version of the file on the other machine as preferable to the newer deletion.
 
@@ -862,70 +1102,20 @@ At the central machine, it is: Scan in, guidance out, sync, success in, guidance
 
 
 
-The Stages of a Sync
-
-1.
-McSync runs on a machine which we will refer to as the central machine.
-The central machine can ask devices for updated scans and histories
-
-1.
-From each device, the logged history (a kind of gossip) and a fresh scan are sent to the user interface machine.
-
-2.
-The user reviews and corrects the decisions made by the comparator, regarding name changes, propagation directions, etc.
-
-3.
-The UI machine sends back guidance, gossip, and instructions.
-
-4.
-The device updates its histories according to the scan using the guidance info and incorporates gossip.
-
-5.
-The device tries to execute the instructions.
-
-6.
-The device gossips back about any success.
-
-7.
-The UI machine spreads any received gossip.
 
 
 The algorithm thread is in charge of everything.  The TUI thread is like an advisor to the algorithm thread (and the -batch option essentially substitutes the TUI with a trivial default-follower).  The algorithm thread reads the specs file to configure itself initially (although the -wait option will prevent automatic actions like automatic starting of remote scans), and then it proceeds to do its things, notifying the TUI of developments during each stage.
-1. connect to remote sites
-2. ask them for new gossip (say what gossip time and scan time we have)
-3. ask them to do scans and send the update
-4. (devices increment device time, do their scans and compute the delta)
-5. wait for the scan updates
-6. analyze what the (default) actions should be
-7. wait for the TUI to say it is done modifying the action plan
-8. asks for file contents
-9. send identification guidance, preference guidance, new gossip, and file contents
-10. (devices increment device time, update histories, update files, and update histories again)
-11. wait to hear about successes and failures
-12. spread final gossip
 
 Each device stores each history and scan sent to each other machine (delete when machine says it got new one ok).
+
+A machine can send file version N.  If it hears back that the other machine has file version N
 
 
 #####  Two Rounds
 
-We call stages 1-5 "round 1", while stages 6-7 are "round 2".
-
-Round 2 is logically just a repeat of round 1.
-Each round simply collects and distributes information ABOUT the data.
-Then it is up to a machine to try to alter its data in response.
-This is similar to a user updating the file, although more history is known about the source of each change than if the user makes the same change on their own.
-In round 2, the only new information is whether the updates were successful.  Thus there can be no renames or conflicts.
-This new information cannot imply that more data should be changed, only that histories should be updated.
-Updated histories do not require any further updating (since the updated history is, apart from propagation success/failure info, a subset of the information already known to the master program).
-Thus no further rounds are needed; the process has converged.
-
 Round 2 is done automatically because (I) at the end of it the state of all participating machines is stable (further rounds would have no effect, unlike at the end of round 1), (II) round 2 can be performed much more efficiently than simply repeating round 1 since no new scans need to be done or transferred and no user input is needed, and (III) the extra information distributed in round 2 can help resolve conflicts.  An example is given below (Example 1).
 
 The equivalence of round 2 to round 1 means that for analysis of safety, correctness, etc., it is enough to consider repeated occurrences of round 1.
-
-Since these rounds simply propagate information, there is no problem if operations are aborted during these rounds.  We simply need to make sure that when new information replaces old information, there is no dangerous corrupted state of information that could result.  This is the same as updating the information in a file, dealt with below.
-
 
 Example 1.  How the second round helps synchronization.
 
@@ -940,8 +1130,6 @@ Later we are back at machine A and synchronize with C again.  This same conflict
 [I don't think this is right -- machine C knows its version is preferable to A's.]
 
 If we had done round 2, then machine A would know that machine C adopted its version at time T, and that the new version was adopted by C at a time > T, so this tells us that machine C already somehow figured out that the new version is to be preferred, and this tells us how to resolve the conflict.
-
-Of course, if you had further edited the file on A since the last sync, then the scan would notice that and change the history to just (A, now), and so upon syncing it would come up as a conflict.  Everything works sensibly.
 
 
 #####  How the virtual tree lets you specify continuation and preference guidance
@@ -999,7 +1187,10 @@ Every device has a local router.  The routers are the only ones who know whether
 #####  McSync operation
 
 The user starts the TUI/GUI/batch commander (CMD).
-The commander sets up a headquarters (HQ).
+
+CMD sets up the distributed communication network.
+
+CMD creates a headquarters (HQ) on some machine.
 
 HQ sets up workers as needed, including at the CMD device.
 
@@ -1059,8 +1250,6 @@ Head of queue is processed by receiver, tail is processed by sender.  Flag NextE
 -- Plugs --
 
 Ok, that last one is the only one we use.  We use the idea of a plug.  A plug (typical var name) is a connection (type).  It is simply a pair of message queues for two-way communication.  A router has some plugs to various processes or other routers.  Plugs are used by routers.  Routers are connected in a tree.  Routers have various plugs for processes they might want to communicate with.  McSync runs either in master mode or in slave mode.  Either way there is just one router.  Although other threads view it as the post office, really it is in charge -- it creates the other threads as needed, and anyway there is always exactly one router, regardless of whatever else is needed locally.  The router always starts a worker thread (connected through its worker plug).  Only in slave mode does the router have a parent plug.  The parent plug points back up the tree.  The master mode router is the root of the tree and has no parent plug.
-
-Right now the master mode router creates an algo plug and a tui plug.  Really it should allow the algo plug to be remote.  After trying to connect to machines, it should let you set any of them to be the algorithm (central) machine, even if the default is for it to be the local machine.
 
 
 -- Message types --
@@ -1165,6 +1354,8 @@ unix has only rare and unused/disabled mandatory locking.  most locking depends 
 
 #####  Beyond ASCII
 
+This is relevant to us for filenames, which we need to display.  This requires knowing the character encoding used by the device, and the character encoding used by the terminal (for the tui, anyway).
+
 UTF-8 seems to be very nicely usable.  Characters 0-127 are the same as ascii, 128-191 are continuations of multi-byte characters, and 192-255 initiate multi-byte characters (although only some such multi-byte sequences are valid UTF-8).
 
 UTF-8 is meant to replace ASCII in the future, so at some point "text file" is going to mean "UTF-8 file" just as it means "ASCII file" now.
@@ -1238,9 +1429,9 @@ mmc: getting all the advantages seems to require that the demon at the remote en
 
 #####  Hopping from machine to machine
 
-mmc: Check out "Using rsync through a firewall"
+Check out "Using rsync through a firewall"
+It has nothing to do with rsync and everything to do with making multiple login hops programmatically possible.
 http://samba.anu.edu.au/rsync/firewall.html
-mmc: it has nothing to do with rsync and everything to do with making multiple login hops programmatically possible
 
 
 #####  Formalized Algorithms
@@ -1528,7 +1719,25 @@ A will automatically propagate over B whenever it can be determined, from any co
 
 Note that condition (ii) is just for safety's sake; in practice it only occasionally comes into play.
 
-Proof:  This theorem, together with the definition of "preferable", is practically the definition of the algorithm.
+Note that this theorem, together with the definition of "preferable", is practically the definition of the algorithm.
+
+Definition:  The past light cone is determined by histories being transferred between devices.  McSync transfers these whenever you let it.  It can happen with or without a sync.  If there is a sync, some more history will be transferred (if possible) if the sync is successful, so the other devices know it was successful.
+
+Proof:
+We will consider a naturally optimal algorithm which has full information about the past light cone, and then show that the data structure we use is actually sufficient for doing the same thing.
+
+Full information would mean that we know (1) every time the file was changed by the user, and (2) every time a file was changed by a sync, and (3) every time a user told McSync that one file was preferable to another.  Of course, we can only know this within the past light cone.
+
+For (1), we really only know about changes at times when the file was scanned by McSync.
+For (2), we know that the new file is preferable to the old files used in that sync, except for the old files it is equal to.
+For (3), you could imagine that a user resolved a bunch of conflicts but wanted to postpone the file transfers to a later time.
+
+
+
+### Consistency Theorem ###
+
+h1 ~ h2    At most one of =, <, or > holds among all (h1.t, h2.t) for tracked files present in both histories.
+The algorithm always maintains h1 ~ h2.
 
 
 
@@ -1752,7 +1961,7 @@ HEY!  We desparately need a minimally working version.
 	* make a scan requestable, performable, and returnable, in some hacky way
 	* make tui show multiple scan results for given location
 	* allow user to select preferred from among existing
-	* make files and properties requestable, performable
+	* make instructions generatable, transmittable, executable
 
 UI vision:
 	datamasses at top ("1" to go there)
@@ -1867,7 +2076,6 @@ projects (each section is internally ordered) (?* marks an exciting thing to mak
  ?	have McSync be able to prepare a new machine for you (copying McSync directory -- should abort if already present)
  ?	record things so that syncs and guidance can be "undone", existance of "repositories" (unedited devices that keep previous versions somewhere) would allow backup storage
  ?	a command line option to indicate that we are nohupped and should close stdin/out/err and connect with a socket to a specified address as an available device
-------
 
 development of Algorithm.txt
 	mcsync vs McSync
@@ -1876,3 +2084,25 @@ development of Algorithm.txt
 	uname -rsp
 	naive merge theorem needs a second look through it, deciding what is the right thing to do
 	repository devices need some thinking
+
+
+stuff from alon dolev:
+
+
+# MCSYNCS' KNOWN BUGS
+
+The following are known bugs which I have not had the time to track down properly:
+
+- Sometimes there is problem with hasing an invalid fileinfo->filename usually related to git files.
+  possible reasons include: very short file names, space in the filepath.
+
+- Segmentation fault after deleting a graft and saving when trying to display the files.
+
+- The scans are inserted at the wrong place when scanning a subfolder of grafts.
+
+  This problem is related to the handling of the history or the lack thereof. Currently the workers
+  just send in the whole tree of their fileinfo history tree and of course, this does not match the
+  currently scanned folder in all cases which leads to shifted inserts.
+
+  -> We need to think about how to store, load and transfer history to and from hq and workers.
+  -> currently every graft leads to a scan request which also transferrs the history...

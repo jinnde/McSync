@@ -52,7 +52,7 @@ Example:  [Simplify this!]  My virtual tree has two top level directories, /Comm
 
 There is only one virtual tree.  You can always add a new directory to the virtual root when a new synchronization project arises.
 
-A real directory that is grafted onto the virtual tree can specify that certain subdirectories should be ignored.  This is mostly useful when the subdirectory would take a lot of disk space and you do not want to bother mirroring it on that device.
+A real directory that is grafted onto the virtual tree can specify that certain subdirectories should be ignored.  This is usually used when the subdirectory would take a lot of disk space and you do not want to bother mirroring it on that device.
 
 Example:  On the machine that hosts my website, the website is stored in ~/public_html, so on that machine, the graft of ~/Common onto /Common specifies that the subdirectory /Common/Website should be ignored for that graft, to save a little diskspace instead of storing the website twice on that machine (both in ~/Common/Website and in ~/public_html).  Although McSync treats hardlinks intelligently, unix does not allow you to hardlink directories to each other.  McSync does not follow symbolic links, but rather treats them similarly to text files.
 
@@ -70,4 +70,6 @@ McSync scans the files on each machine it can reach to see what changes have occ
 For more detail, see "Algorithm.txt".
 
 ---------------------------------------------------------------------------
+(4) Version history
 
+No version has been released yet.

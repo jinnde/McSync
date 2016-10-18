@@ -85,7 +85,7 @@ if [[ -z $CORESERVICES ]]; then
 fi
 # End of command line argument handling
 
-MACHINE_ARCHITECTURE=`cc -v 2>&1 | grep Target: | sed 's/.*: *//'`
+MACHINE_ARCHITECTURE=`gcc -v 2>&1 | grep Target: | sed 's/.*: *//'`
 
 # MACHINE_ENDIANESS = 1 means little endian
 MACHINE_ENDIANESS=`echo I | tr -d [:space:] | od -to2 | head -n1 | awk '{print $2}' | cut -c6`
@@ -100,7 +100,7 @@ cd source
 OPT=
 LIB="-lncurses -pthreads"
 OUT="-o ../bin/mcsync.$MACHINE_ARCHITECTURE"
-SRC="-I. engine/*.c cmd/*.c util/*.c"
+SRC="-I. */*.c */*/*.c"
 
 if [ "$BUILD" == "development" ]; then
     OPT="-O0 -g -Wall -pedantic -std=c99"

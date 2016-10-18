@@ -1,0 +1,1082 @@
+This is pdfTeX, Version 3.1415926-2.3-1.40.12 (TeX Live 2011) (format=pdflatex 2012.4.12)  13 JAN 2014 22:04
+entering extended mode
+ \write18 enabled.
+ %&-line parsing enabled.
+**McSync.tex
+(./McSync.tex
+LaTeX2e <2011/06/27>
+Babel <v3.8m> and hyphenation patterns for english, dumylang, nohyphenation, ge
+rman-x-2011-07-01, ngerman-x-2011-07-01, afrikaans, ancientgreek, ibycus, arabi
+c, armenian, basque, bulgarian, catalan, pinyin, coptic, croatian, czech, danis
+h, dutch, ukenglish, usenglishmax, esperanto, estonian, ethiopic, farsi, finnis
+h, french, galician, german, ngerman, swissgerman, monogreek, greek, hungarian,
+ icelandic, assamese, bengali, gujarati, hindi, kannada, malayalam, marathi, or
+iya, panjabi, tamil, telugu, indonesian, interlingua, irish, italian, kurmanji,
+ lao, latin, latvian, lithuanian, mongolian, mongolianlmc, bokmal, nynorsk, pol
+ish, portuguese, romanian, russian, sanskrit, serbian, serbianc, slovak, sloven
+ian, spanish, swedish, turkish, turkmen, ukrainian, uppersorbian, welsh, loaded
+.
+(/usr/local/texlive/2011/texmf-dist/tex/latex/base/book.cls
+Document Class: book 2007/10/19 v1.4h Standard LaTeX document class
+(/usr/local/texlive/2011/texmf-dist/tex/latex/base/bk10.clo
+File: bk10.clo 2007/10/19 v1.4h Standard LaTeX file (size option)
+)
+\c@part=\count79
+\c@chapter=\count80
+\c@section=\count81
+\c@subsection=\count82
+\c@subsubsection=\count83
+\c@paragraph=\count84
+\c@subparagraph=\count85
+\c@figure=\count86
+\c@table=\count87
+\abovecaptionskip=\skip41
+\belowcaptionskip=\skip42
+\bibindent=\dimen102
+)
+(/usr/local/texlive/2011/texmf-dist/tex/latex/graphics/graphics.sty
+Package: graphics 2009/02/05 v1.0o Standard LaTeX Graphics (DPC,SPQR)
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/graphics/trig.sty
+Package: trig 1999/03/16 v1.09 sin cos tan (DPC)
+)
+(/usr/local/texlive/2011/texmf-dist/tex/latex/latexconfig/graphics.cfg
+File: graphics.cfg 2010/04/23 v1.9 graphics configuration of TeX Live
+)
+Package graphics Info: Driver file: pdftex.def on input line 91.
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/pdftex-def/pdftex.def
+File: pdftex.def 2011/05/27 v0.06d Graphics/color for pdfTeX
+
+(/usr/local/texlive/2011/texmf-dist/tex/generic/oberdiek/infwarerr.sty
+Package: infwarerr 2010/04/08 v1.3 Providing info/warning/message (HO)
+)
+(/usr/local/texlive/2011/texmf-dist/tex/generic/oberdiek/ltxcmds.sty
+Package: ltxcmds 2011/04/18 v1.20 LaTeX kernel commands for general use (HO)
+)
+\Gread@gobject=\count88
+))
+(/usr/local/texlive/2011/texmf-dist/tex/latex/amsfonts/amssymb.sty
+Package: amssymb 2009/06/22 v3.00
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/amsfonts/amsfonts.sty
+Package: amsfonts 2009/06/22 v3.00 Basic AMSFonts support
+\@emptytoks=\toks14
+\symAMSa=\mathgroup4
+\symAMSb=\mathgroup5
+LaTeX Font Info:    Overwriting math alphabet `\mathfrak' in version `bold'
+(Font)                  U/euf/m/n --> U/euf/b/n on input line 96.
+))
+(/usr/local/texlive/2011/texmf-dist/tex/latex/base/makeidx.sty
+Package: makeidx 2000/03/29 v1.0m Standard LaTeX package
+)
+(/usr/local/texlive/2011/texmf-dist/tex/latex/numname/numname.sty
+\c@ism@mctr=\count89
+\c@xsm@mctr=\count90
+\c@csm@mctr=\count91
+\c@ksm@mctr=\count92
+\c@xksm@mctr=\count93
+\c@cksm@mctr=\count94
+\c@msm@mctr=\count95
+\c@xmsm@mctr=\count96
+\c@cmsm@mctr=\count97
+\c@bsm@mctr=\count98
+\c@workm@mctr=\count99
+)
+(/usr/local/texlive/2011/texmf-dist/tex/latex/url/url.sty
+\Urlmuskip=\muskip10
+Package: url 2006/04/12  ver 3.3  Verb mode for urls, etc.
+)
+(/usr/local/texlive/2011/texmf-dist/tex/latex/hyperref/hyperref.sty
+Package: hyperref 2012/02/06 v6.82o Hypertext links for LaTeX
+
+(/usr/local/texlive/2011/texmf-dist/tex/generic/oberdiek/hobsub-hyperref.sty
+Package: hobsub-hyperref 2011/04/23 v1.4 Bundle oberdiek, subset hyperref (HO)
+
+(/usr/local/texlive/2011/texmf-dist/tex/generic/oberdiek/hobsub-generic.sty
+Package: hobsub-generic 2011/04/23 v1.4 Bundle oberdiek, subset generic (HO)
+Package: hobsub 2011/04/23 v1.4 Subsetting bundle oberdiek (HO)
+Package hobsub Info: Skipping package `infwarerr' (already loaded).
+Package hobsub Info: Skipping package `ltxcmds' (already loaded).
+Package: ifluatex 2010/03/01 v1.3 Provides the ifluatex switch (HO)
+Package ifluatex Info: LuaTeX not detected.
+Package: ifvtex 2010/03/01 v1.5 Switches for detecting VTeX and its modes (HO)
+Package ifvtex Info: VTeX not detected.
+Package: intcalc 2007/09/27 v1.1 Expandable integer calculations (HO)
+Package: ifpdf 2011/01/30 v2.3 Provides the ifpdf switch (HO)
+Package ifpdf Info: pdfTeX in PDF mode is detected.
+Package: etexcmds 2011/02/16 v1.5 Prefix for e-TeX command names (HO)
+Package etexcmds Info: Could not find \expanded.
+(etexcmds)             That can mean that you are not using pdfTeX 1.50 or
+(etexcmds)             that some package has redefined \expanded.
+(etexcmds)             In the latter case, load this package earlier.
+Package: kvsetkeys 2011/04/07 v1.13 Key value parser (HO)
+Package: kvdefinekeys 2011/04/07 v1.3 Defining keys (HO)
+Package: pdftexcmds 2011/04/22 v0.16 Utilities of pdfTeX for LuaTeX (HO)
+Package pdftexcmds Info: LuaTeX not detected.
+Package pdftexcmds Info: \pdf@primitive is available.
+Package pdftexcmds Info: \pdf@ifprimitive is available.
+Package pdftexcmds Info: \pdfdraftmode found.
+Package: pdfescape 2011/04/04 v1.12 Provides string conversions (HO)
+Package: bigintcalc 2011/01/30 v1.2 Expandable big integer calculations (HO)
+Package: bitset 2011/01/30 v1.1 Data type bit set (HO)
+Package: uniquecounter 2011/01/30 v1.2 Provides unlimited unique counter (HO)
+)
+Package hobsub Info: Skipping package `hobsub' (already loaded).
+Package: letltxmacro 2010/09/02 v1.4 Let assignment for LaTeX macros (HO)
+Package: hopatch 2011/01/30 v1.0 Wrapper for package hooks (HO)
+Package: xcolor-patch 2011/01/30 xcolor patch
+Package: atveryend 2011/04/23 v1.7 Hooks at very end of document (HO)
+Package: atbegshi 2011/01/30 v1.15 At begin shipout hook (HO)
+Package: refcount 2010/12/01 v3.2 Data extraction from references (HO)
+Package: hycolor 2011/01/30 v1.7 Color options of hyperref/bookmark (HO)
+)
+(/usr/local/texlive/2011/texmf-dist/tex/latex/graphics/keyval.sty
+Package: keyval 1999/03/16 v1.13 key=value parser (DPC)
+\KV@toks@=\toks15
+)
+(/usr/local/texlive/2011/texmf-dist/tex/generic/ifxetex/ifxetex.sty
+Package: ifxetex 2010/09/12 v0.6 Provides ifxetex conditional
+)
+(/usr/local/texlive/2011/texmf-dist/tex/latex/oberdiek/kvoptions.sty
+Package: kvoptions 2010/12/23 v3.10 Keyval support for LaTeX options (HO)
+)
+\@linkdim=\dimen103
+\Hy@linkcounter=\count100
+\Hy@pagecounter=\count101
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/hyperref/pd1enc.def
+File: pd1enc.def 2012/02/06 v6.82o Hyperref: PDFDocEncoding definition (HO)
+)
+\Hy@SavedSpaceFactor=\count102
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/latexconfig/hyperref.cfg
+File: hyperref.cfg 2002/06/06 v1.2 hyperref configuration of TeXLive
+)
+Package hyperref Info: Hyper figures OFF on input line 4046.
+Package hyperref Info: Link nesting OFF on input line 4051.
+Package hyperref Info: Hyper index ON on input line 4054.
+Package hyperref Info: Plain pages OFF on input line 4061.
+Package hyperref Info: Backreferencing OFF on input line 4066.
+Package hyperref Info: Implicit mode ON; LaTeX internals redefined.
+Package hyperref Info: Bookmarks ON on input line 4284.
+\c@Hy@tempcnt=\count103
+LaTeX Info: Redefining \url on input line 4637.
+\Fld@menulength=\count104
+\Field@Width=\dimen104
+\Fld@charsize=\dimen105
+Package hyperref Info: Hyper figures OFF on input line 5757.
+Package hyperref Info: Link nesting OFF on input line 5762.
+Package hyperref Info: Hyper index ON on input line 5765.
+Package hyperref Info: backreferencing OFF on input line 5772.
+Package hyperref Info: Link coloring OFF on input line 5777.
+Package hyperref Info: Link coloring with OCG OFF on input line 5782.
+Package hyperref Info: PDF/A mode OFF on input line 5787.
+LaTeX Info: Redefining \ref on input line 5827.
+LaTeX Info: Redefining \pageref on input line 5831.
+\Hy@abspage=\count105
+\c@Item=\count106
+\c@Hfootnote=\count107
+)
+
+Package hyperref Message: Driver (autodetected): hpdftex.
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/hyperref/hpdftex.def
+File: hpdftex.def 2012/02/06 v6.82o Hyperref driver for pdfTeX
+\Fld@listcount=\count108
+\c@bookmark@seq@number=\count109
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/oberdiek/rerunfilecheck.sty
+Package: rerunfilecheck 2011/04/15 v1.7 Rerun checks for auxiliary files (HO)
+Package uniquecounter Info: New unique counter `rerunfilecheck' on input line 2
+82.
+)
+\Hy@SectionHShift=\skip43
+)
+(/usr/local/texlive/2011/texmf-dist/tex/latex/base/inputenc.sty
+Package: inputenc 2008/03/30 v1.1d Input encoding file
+\inpenc@prehook=\toks16
+\inpenc@posthook=\toks17
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/base/utf8.def
+File: utf8.def 2008/04/05 v1.1m UTF-8 support for inputenc
+Now handling font encoding OML ...
+... no UTF-8 mapping file for font encoding OML
+Now handling font encoding T1 ...
+... processing UTF-8 mapping file for font encoding T1
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/base/t1enc.dfu
+File: t1enc.dfu 2008/04/05 v1.1m UTF-8 support for inputenc
+   defining Unicode char U+00A1 (decimal 161)
+   defining Unicode char U+00A3 (decimal 163)
+   defining Unicode char U+00AB (decimal 171)
+   defining Unicode char U+00BB (decimal 187)
+   defining Unicode char U+00BF (decimal 191)
+   defining Unicode char U+00C0 (decimal 192)
+   defining Unicode char U+00C1 (decimal 193)
+   defining Unicode char U+00C2 (decimal 194)
+   defining Unicode char U+00C3 (decimal 195)
+   defining Unicode char U+00C4 (decimal 196)
+   defining Unicode char U+00C5 (decimal 197)
+   defining Unicode char U+00C6 (decimal 198)
+   defining Unicode char U+00C7 (decimal 199)
+   defining Unicode char U+00C8 (decimal 200)
+   defining Unicode char U+00C9 (decimal 201)
+   defining Unicode char U+00CA (decimal 202)
+   defining Unicode char U+00CB (decimal 203)
+   defining Unicode char U+00CC (decimal 204)
+   defining Unicode char U+00CD (decimal 205)
+   defining Unicode char U+00CE (decimal 206)
+   defining Unicode char U+00CF (decimal 207)
+   defining Unicode char U+00D0 (decimal 208)
+   defining Unicode char U+00D1 (decimal 209)
+   defining Unicode char U+00D2 (decimal 210)
+   defining Unicode char U+00D3 (decimal 211)
+   defining Unicode char U+00D4 (decimal 212)
+   defining Unicode char U+00D5 (decimal 213)
+   defining Unicode char U+00D6 (decimal 214)
+   defining Unicode char U+00D8 (decimal 216)
+   defining Unicode char U+00D9 (decimal 217)
+   defining Unicode char U+00DA (decimal 218)
+   defining Unicode char U+00DB (decimal 219)
+   defining Unicode char U+00DC (decimal 220)
+   defining Unicode char U+00DD (decimal 221)
+   defining Unicode char U+00DE (decimal 222)
+   defining Unicode char U+00DF (decimal 223)
+   defining Unicode char U+00E0 (decimal 224)
+   defining Unicode char U+00E1 (decimal 225)
+   defining Unicode char U+00E2 (decimal 226)
+   defining Unicode char U+00E3 (decimal 227)
+   defining Unicode char U+00E4 (decimal 228)
+   defining Unicode char U+00E5 (decimal 229)
+   defining Unicode char U+00E6 (decimal 230)
+   defining Unicode char U+00E7 (decimal 231)
+   defining Unicode char U+00E8 (decimal 232)
+   defining Unicode char U+00E9 (decimal 233)
+   defining Unicode char U+00EA (decimal 234)
+   defining Unicode char U+00EB (decimal 235)
+   defining Unicode char U+00EC (decimal 236)
+   defining Unicode char U+00ED (decimal 237)
+   defining Unicode char U+00EE (decimal 238)
+   defining Unicode char U+00EF (decimal 239)
+   defining Unicode char U+00F0 (decimal 240)
+   defining Unicode char U+00F1 (decimal 241)
+   defining Unicode char U+00F2 (decimal 242)
+   defining Unicode char U+00F3 (decimal 243)
+   defining Unicode char U+00F4 (decimal 244)
+   defining Unicode char U+00F5 (decimal 245)
+   defining Unicode char U+00F6 (decimal 246)
+   defining Unicode char U+00F8 (decimal 248)
+   defining Unicode char U+00F9 (decimal 249)
+   defining Unicode char U+00FA (decimal 250)
+   defining Unicode char U+00FB (decimal 251)
+   defining Unicode char U+00FC (decimal 252)
+   defining Unicode char U+00FD (decimal 253)
+   defining Unicode char U+00FE (decimal 254)
+   defining Unicode char U+00FF (decimal 255)
+   defining Unicode char U+0102 (decimal 258)
+   defining Unicode char U+0103 (decimal 259)
+   defining Unicode char U+0104 (decimal 260)
+   defining Unicode char U+0105 (decimal 261)
+   defining Unicode char U+0106 (decimal 262)
+   defining Unicode char U+0107 (decimal 263)
+   defining Unicode char U+010C (decimal 268)
+   defining Unicode char U+010D (decimal 269)
+   defining Unicode char U+010E (decimal 270)
+   defining Unicode char U+010F (decimal 271)
+   defining Unicode char U+0110 (decimal 272)
+   defining Unicode char U+0111 (decimal 273)
+   defining Unicode char U+0118 (decimal 280)
+   defining Unicode char U+0119 (decimal 281)
+   defining Unicode char U+011A (decimal 282)
+   defining Unicode char U+011B (decimal 283)
+   defining Unicode char U+011E (decimal 286)
+   defining Unicode char U+011F (decimal 287)
+   defining Unicode char U+0130 (decimal 304)
+   defining Unicode char U+0131 (decimal 305)
+   defining Unicode char U+0132 (decimal 306)
+   defining Unicode char U+0133 (decimal 307)
+   defining Unicode char U+0139 (decimal 313)
+   defining Unicode char U+013A (decimal 314)
+   defining Unicode char U+013D (decimal 317)
+   defining Unicode char U+013E (decimal 318)
+   defining Unicode char U+0141 (decimal 321)
+   defining Unicode char U+0142 (decimal 322)
+   defining Unicode char U+0143 (decimal 323)
+   defining Unicode char U+0144 (decimal 324)
+   defining Unicode char U+0147 (decimal 327)
+   defining Unicode char U+0148 (decimal 328)
+   defining Unicode char U+014A (decimal 330)
+   defining Unicode char U+014B (decimal 331)
+   defining Unicode char U+0150 (decimal 336)
+   defining Unicode char U+0151 (decimal 337)
+   defining Unicode char U+0152 (decimal 338)
+   defining Unicode char U+0153 (decimal 339)
+   defining Unicode char U+0154 (decimal 340)
+   defining Unicode char U+0155 (decimal 341)
+   defining Unicode char U+0158 (decimal 344)
+   defining Unicode char U+0159 (decimal 345)
+   defining Unicode char U+015A (decimal 346)
+   defining Unicode char U+015B (decimal 347)
+   defining Unicode char U+015E (decimal 350)
+   defining Unicode char U+015F (decimal 351)
+   defining Unicode char U+0160 (decimal 352)
+   defining Unicode char U+0161 (decimal 353)
+   defining Unicode char U+0162 (decimal 354)
+   defining Unicode char U+0163 (decimal 355)
+   defining Unicode char U+0164 (decimal 356)
+   defining Unicode char U+0165 (decimal 357)
+   defining Unicode char U+016E (decimal 366)
+   defining Unicode char U+016F (decimal 367)
+   defining Unicode char U+0170 (decimal 368)
+   defining Unicode char U+0171 (decimal 369)
+   defining Unicode char U+0178 (decimal 376)
+   defining Unicode char U+0179 (decimal 377)
+   defining Unicode char U+017A (decimal 378)
+   defining Unicode char U+017B (decimal 379)
+   defining Unicode char U+017C (decimal 380)
+   defining Unicode char U+017D (decimal 381)
+   defining Unicode char U+017E (decimal 382)
+   defining Unicode char U+200C (decimal 8204)
+   defining Unicode char U+2013 (decimal 8211)
+   defining Unicode char U+2014 (decimal 8212)
+   defining Unicode char U+2018 (decimal 8216)
+   defining Unicode char U+2019 (decimal 8217)
+   defining Unicode char U+201A (decimal 8218)
+   defining Unicode char U+201C (decimal 8220)
+   defining Unicode char U+201D (decimal 8221)
+   defining Unicode char U+201E (decimal 8222)
+   defining Unicode char U+2030 (decimal 8240)
+   defining Unicode char U+2031 (decimal 8241)
+   defining Unicode char U+2039 (decimal 8249)
+   defining Unicode char U+203A (decimal 8250)
+   defining Unicode char U+2423 (decimal 9251)
+)
+Now handling font encoding OT1 ...
+... processing UTF-8 mapping file for font encoding OT1
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/base/ot1enc.dfu
+File: ot1enc.dfu 2008/04/05 v1.1m UTF-8 support for inputenc
+   defining Unicode char U+00A1 (decimal 161)
+   defining Unicode char U+00A3 (decimal 163)
+   defining Unicode char U+00B8 (decimal 184)
+   defining Unicode char U+00BF (decimal 191)
+   defining Unicode char U+00C5 (decimal 197)
+   defining Unicode char U+00C6 (decimal 198)
+   defining Unicode char U+00D8 (decimal 216)
+   defining Unicode char U+00DF (decimal 223)
+   defining Unicode char U+00E6 (decimal 230)
+   defining Unicode char U+00EC (decimal 236)
+   defining Unicode char U+00ED (decimal 237)
+   defining Unicode char U+00EE (decimal 238)
+   defining Unicode char U+00EF (decimal 239)
+   defining Unicode char U+00F8 (decimal 248)
+   defining Unicode char U+0131 (decimal 305)
+   defining Unicode char U+0141 (decimal 321)
+   defining Unicode char U+0142 (decimal 322)
+   defining Unicode char U+0152 (decimal 338)
+   defining Unicode char U+0153 (decimal 339)
+   defining Unicode char U+2013 (decimal 8211)
+   defining Unicode char U+2014 (decimal 8212)
+   defining Unicode char U+2018 (decimal 8216)
+   defining Unicode char U+2019 (decimal 8217)
+   defining Unicode char U+201C (decimal 8220)
+   defining Unicode char U+201D (decimal 8221)
+)
+Now handling font encoding OMS ...
+... processing UTF-8 mapping file for font encoding OMS
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/base/omsenc.dfu
+File: omsenc.dfu 2008/04/05 v1.1m UTF-8 support for inputenc
+   defining Unicode char U+00A7 (decimal 167)
+   defining Unicode char U+00B6 (decimal 182)
+   defining Unicode char U+00B7 (decimal 183)
+   defining Unicode char U+2020 (decimal 8224)
+   defining Unicode char U+2021 (decimal 8225)
+   defining Unicode char U+2022 (decimal 8226)
+)
+Now handling font encoding OMX ...
+... no UTF-8 mapping file for font encoding OMX
+Now handling font encoding U ...
+... no UTF-8 mapping file for font encoding U
+Now handling font encoding PD1 ...
+... no UTF-8 mapping file for font encoding PD1
+   defining Unicode char U+00A9 (decimal 169)
+   defining Unicode char U+00AA (decimal 170)
+   defining Unicode char U+00AE (decimal 174)
+   defining Unicode char U+00BA (decimal 186)
+   defining Unicode char U+02C6 (decimal 710)
+   defining Unicode char U+02DC (decimal 732)
+   defining Unicode char U+200C (decimal 8204)
+   defining Unicode char U+2026 (decimal 8230)
+   defining Unicode char U+2122 (decimal 8482)
+   defining Unicode char U+2423 (decimal 9251)
+))
+(/usr/local/texlive/2011/texmf-dist/tex/latex/newunicodechar/newunicodechar.sty
+Package: newunicodechar 2011/02/18 v1.0 Defining Unicode characters
+)
+
+Package newunicodechar Warning: Redefining Unicode character on input line 23.
+
+\@indexfile=\write3
+\openout3 = `McSync.idx'.
+
+Writing index file McSync.idx
+\c@claim=\count110
+(./McSync.aux)
+\openout1 = `McSync.aux'.
+
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 86.
+LaTeX Font Info:    ... okay on input line 86.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 86.
+LaTeX Font Info:    ... okay on input line 86.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 86.
+LaTeX Font Info:    ... okay on input line 86.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 86.
+LaTeX Font Info:    ... okay on input line 86.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 86.
+LaTeX Font Info:    ... okay on input line 86.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 86.
+LaTeX Font Info:    ... okay on input line 86.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 86.
+LaTeX Font Info:    ... okay on input line 86.
+
+(/usr/local/texlive/2011/texmf-dist/tex/context/base/supp-pdf.mkii
+[Loading MPS to PDF converter (version 2006.09.02).]
+\scratchcounter=\count111
+\scratchdimen=\dimen106
+\scratchbox=\box26
+\nofMPsegments=\count112
+\nofMParguments=\count113
+\everyMPshowfont=\toks18
+\MPscratchCnt=\count114
+\MPscratchDim=\dimen107
+\MPnumerator=\count115
+\makeMPintoPDFobject=\count116
+\everyMPtoPDFconversion=\toks19
+) (/usr/local/texlive/2011/texmf-dist/tex/latex/oberdiek/epstopdf-base.sty
+Package: epstopdf-base 2010/02/09 v2.5 Base part for package epstopdf
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/oberdiek/grfext.sty
+Package: grfext 2010/08/19 v1.1 Managing graphics extensions (HO)
+)
+Package grfext Info: Graphics extension search list:
+(grfext)             [.png,.pdf,.jpg,.mps,.jpeg,.jbig2,.jb2,.PNG,.PDF,.JPG,.JPE
+G,.JBIG2,.JB2,.eps]
+(grfext)             \AppendGraphicsExtensions on input line 452.
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
+File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
+e
+))
+\AtBeginShipoutBox=\box27
+Package hyperref Info: Link coloring OFF on input line 86.
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/hyperref/nameref.sty
+Package: nameref 2010/04/30 v2.40 Cross-referencing by name of section
+
+(/usr/local/texlive/2011/texmf-dist/tex/generic/oberdiek/gettitlestring.sty
+Package: gettitlestring 2010/12/03 v1.4 Cleanup title references (HO)
+)
+\c@section@level=\count117
+)
+LaTeX Info: Redefining \ref on input line 86.
+LaTeX Info: Redefining \pageref on input line 86.
+LaTeX Info: Redefining \nameref on input line 86.
+
+(./McSync.out) (./McSync.out)
+\@outlinefile=\write4
+\openout4 = `McSync.out'.
+
+LaTeX Font Info:    Try loading font information for U+msa on input line 93.
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/amsfonts/umsa.fd
+File: umsa.fd 2009/06/22 v3.00 AMS symbols A
+)
+LaTeX Font Info:    Try loading font information for U+msb on input line 93.
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/amsfonts/umsb.fd
+File: umsb.fd 2009/06/22 v3.00 AMS symbols B
+) [1
+
+
+{/usr/local/texlive/2011/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2
+
+] (./McSync.toc
+[3] [4])
+\tf@toc=\write5
+\openout5 = `McSync.toc'.
+
+ [5] [6
+
+]
+Overfull \hbox (3.41727pt too wide) in paragraph at lines 104--105
+\OT1/cmr/m/n/10 McSync is a util-ity for keep-ing files on dif-fer-ent ma-chine
+s syn-chro-nized (``synced'')
+ []
+
+[7] [8
+
+]
+Chapter 1.
+LaTeX Font Info:    Try loading font information for OMS+cmr on input line 163.
+
+(/usr/local/texlive/2011/texmf-dist/tex/latex/base/omscmr.fd
+File: omscmr.fd 1999/05/25 v2.5h Standard LaTeX font definitions
+)
+LaTeX Font Info:    Font shape `OMS/cmr/m/n' in size <10> not available
+(Font)              Font shape `OMS/cmsy/m/n' tried instead on input line 163.
+ [9] [10]
+Chapter 2.
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [11
+
+]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [12]
+Overfull \hbox (6.85802pt too wide) in paragraph at lines 294--294
+[]\OT1/cmr/bx/n/14.4 Sync-based up-grades vs. user-made up-grades 
+ []
+
+[13] [14]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [15]
+[16]
+Overfull \hbox (74.34157pt too wide) has occurred while \output is active
+\OT1/cmr/m/sl/10 2.9.  WHAT INFORMATION ABOUT THE MESH DO WE ACTUALLY NEED TO S
+TORE? \OT1/cmr/m/n/10 17
+ []
+
+[17] [18] [19] [20]
+Chapter 3.
+[21
+
+]
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 22 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[22] [23]
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 24 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[24] [25]
+Overfull \hbox (316.49423pt too wide) in paragraph at lines 578--578
+[]\OT1/cmtt/m/n/10 #ok if changes on one machine (this link gone, that link new
+, etc.) are a non-strict superset of changes on all other machines[] 
+ []
+
+
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 26 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[26] [27]
+Overfull \hbox (26.1952pt too wide) in paragraph at lines 636--639
+\OT1/cmr/m/n/10 iden-tify a file, re-gard-less of changes in lo-ca-tion, name, 
+or in-ode, or any-thing/everything
+ []
+
+
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 28 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[28]
+Overfull \hbox (5.08417pt too wide) in paragraph at lines 668--669
+[]\OT1/cmr/m/n/10 file.txt: mod-time:04:22, name:``file.txt'', owner:``www'', m
+d5:blah, in-ode:5757,
+ []
+
+[29]
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 30 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[30]
+Overfull \hbox (15.52863pt too wide) in paragraph at lines 716--719
+[]\OT1/cmr/m/n/10 Example: file track-ing num-ber 72: name:``file.txt'',(m1:56,
+17,no),(m2:72,12,yes),
+ []
+
+[31]
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 32 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[32]
+Overfull \hbox (41.12521pt too wide) in paragraph at lines 765--770
+[][] 
+ []
+
+[33]
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 34 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[34] [35]
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 36 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[36]
+Overfull \hbox (9.36172pt too wide) in paragraph at lines 946--949
+[]\OT1/cmr/m/n/10 Scans/identification guid-ance/noticing rep-re-sent the at-te
+mpt to get the tracked
+ []
+
+[37]
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 38 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[38]
+Overfull \hbox (3.44173pt too wide) in paragraph at lines 992--993
+[]\OT1/cmr/m/n/10 If di-rec-to-ries B and C get moved around so that A/B/C/D be
+-comes A/C/B/D
+ []
+
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [39]
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 40 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[40] [41]
+Overfull \hbox (6.98364pt too wide) has occurred while \output is active
+\OT1/cmr/m/n/10 42 \OT1/cmr/m/sl/10 CHAPTER 3.  WHAT DOES IT MEAN TO KEEP FILES
+ SYNCHRONIZED?
+ []
+
+[42]
+Chapter 4.
+[43
+
+] [44]
+Underfull \vbox (badness 1112) has occurred while \output is active []
+
+ [45]
+[46] [47] [48] [49] [50] [51] [52] [53] [54] [55] [56] [57]
+Overfull \hbox (8.3616pt too wide) in paragraph at lines 1723--1724
+\OT1/cmr/m/n/10 The set of an-ces-tors (on dif-fer-ent de-vices) stored for a f
+ile as-pect are all less/equally
+ []
+
+[58] [59]
+Overfull \hbox (206.2452pt too wide) in paragraph at lines 1784--1784
+[]        \OT1/cmtt/m/n/10 A                       B                       C   
+                    D                       E[] 
+ []
+
+
+Overfull \hbox (290.24446pt too wide) in paragraph at lines 1784--1784
+[]\OT1/cmtt/m/n/10 t=1     n: A1 B1 C1 D1 E1       n: A1 B1 C1 D1 E1       n: A
+1 B1 C1 D1 E1       n: A1 B1 C1 D1 E1       n: A1 B1 C1 D1 E1[] 
+ []
+
+
+Overfull \hbox (290.24446pt too wide) in paragraph at lines 1784--1784
+[]\OT1/cmtt/m/n/10 t=3                             y: a1 B2 c1 d1 E3           
+                                            y: a1 B2 c1 d1 E3[] 
+ []
+
+
+Overfull \hbox (164.24556pt too wide) in paragraph at lines 1784--1784
+[]\OT1/cmtt/m/n/10 t=4     y: A2 b1 c1 D4 e1                                   
+                    y: A2 b1 c1 D4 e1[] 
+ []
+
+[60]
+Overfull \hbox (38.24666pt too wide) in paragraph at lines 1784--1784
+[]\OT1/cmtt/m/n/10 t=6     n: A5 b1 C6 d4 e1                               n: A
+5 b1 C6 d4 e1[] 
+ []
+
+
+Overfull \hbox (290.24446pt too wide) in paragraph at lines 1784--1784
+[]\OT1/cmtt/m/n/10 t=8     y: A7 B2 c6 d4 E3                                   
+                                            y: A7 B2 c6 d4 E3[] 
+ []
+
+
+Overfull \hbox (164.24556pt too wide) in paragraph at lines 1784--1784
+[]\OT1/cmtt/m/n/10 t=9                             y: A2 B2 c1 D4 E3           
+                    y: A2 B2 c1 D4 E3[] 
+ []
+
+
+Overfull \hbox (43.49661pt too wide) in paragraph at lines 1784--1784
+[]\OT1/cmtt/m/n/10 t=10                            n: A5 B10 C6 d4 e3      n: A
+5 B10 C6 d4 e3[] 
+ []
+
+[61]
+LaTeX Font Info:    Try loading font information for OMS+cmtt on input line 181
+7.
+LaTeX Font Info:    No file OMScmtt.fd. on input line 1817.
+
+
+LaTeX Font Warning: Font shape `OMS/cmtt/m/n' undefined
+(Font)              using `OMS/cmsy/m/n' instead
+(Font)              for symbol `textsection' on input line 1817.
+
+
+Overfull \hbox (203.44023pt too wide) in paragraph at lines 1817--1817
+[]        \OT1/cmtt/m/n/10 y: \OMS/cmtt/m/n/10 x\OT1/cmtt/m/n/10 7 \OMS/cmtt/m/
+n/10 x\OT1/cmtt/m/n/10 2 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 
+6 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 4 =3       n: \OMS/cmtt
+/m/n/10 x\OT1/cmtt/m/n/10 5 =10 =6 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cm
+tt/m/n/10 4 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 3            
+  a clear win for A: A wants A, B wants ?[] 
+ []
+
+
+Overfull \hbox (101.24611pt too wide) in paragraph at lines 1817--1817
+[]\OT1/cmtt/m/n/10 and if at t=10 the user had changed B, then after the B-C sy
+nc at t=11 we would have:[] 
+ []
+
+
+Overfull \hbox (197.3848pt too wide) in paragraph at lines 1817--1817
+[]        \OT1/cmtt/m/n/10 y: \OMS/cmtt/m/n/10 x\OT1/cmtt/m/n/10 7 \OMS/cmtt/m/
+n/10 x\OT1/cmtt/m/n/10 2 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 
+6 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 4 =3       n: \OMS/cmtt
+/m/n/10 x\OT1/cmtt/m/n/10 5 \OMS/cmtt/m/n/10 x\OT1/cmtt/m/n/10 10 =6 $\OMS/cmtt
+/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 4 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/1
+0 =$\OT1/cmtt/m/n/10 3              a clear conflict: A wants A, B wants B[] 
+ []
+
+
+Overfull \hbox (122.24593pt too wide) in paragraph at lines 1817--1817
+[]\OT1/cmtt/m/n/10 while if at t=2 the user set F to n, and then at step 9.5 me
+rged B with F, we would have:[] 
+ []
+
+
+Overfull \hbox (199.91264pt too wide) in paragraph at lines 1817--1817
+[]        \OT1/cmtt/m/n/10 y: \OMS/cmtt/m/n/10 x\OT1/cmtt/m/n/10 7 \OMS/cmtt/m/
+n/10 x\OT1/cmtt/m/n/10 2 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 
+6 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 4 =3 $\OMS/cmtt/m/n/10 
+6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 1    n: \OMS/cmtt/m/n/10 x\OT1/cmtt/m/n/10 
+5 =10 =6 $\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 4 $\OMS/cmtt/m/n
+/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 3 \OMS/cmtt/m/n/10 x\OT1/cmtt/m/n/10 2 
+          a clear conflict: A wants A, F wants B[] 
+ []
+
+[62] [63] [64] [65]
+Overfull \hbox (1.1778pt too wide) in paragraph at lines 1970--1970
+[]\OT1/cmr/bx/n/12 General com-ments re-gard-ing syn-chro-niza-tion in gen-
+ []
+
+
+Overfull \hbox (39.44536pt too wide) in paragraph at lines 1978--1979
+\OT1/cmr/m/n/10 http://cboard.cprogramming.com/linux-programming/114785-mac-os-
+x-10-4-getattrlist-
+ []
+
+[66] [67] [68]
+Overfull \hbox (158.24574pt too wide) in paragraph at lines 2014--2015
+[][]\OT1/cmtt/m/n/10 A: a1=, b1=, c1=, d1=   B: a1=, b1=, c1=, d1=   C: a1=, b1
+=, c1=, d1=   D: a1=, b1=, c1=, d1= 
+ []
+
+
+Overfull \hbox (178.46852pt too wide) in paragraph at lines 2018--2019
+[][]\OT1/cmtt/m/n/10 A: a2=, b2=, c1$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/c
+mtt/m/n/10 , d1$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$   \OT1/cmtt/m/n/10 B: a2=,
+ b2=, c1$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 , d1$\OMS/cmtt/m/
+n/10 6\OT1/cmr/m/n/10 =$   \OT1/cmtt/m/n/10 C: a1$\OMS/cmtt/m/n/10 6\OT1/cmr/m/
+n/10 =$\OT1/cmtt/m/n/10 , b1$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/
+10 , c2=, d2=   D: a1$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 , b1
+$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 , c2=, d2= 
+ []
+
+
+Overfull \hbox (163.10718pt too wide) in paragraph at lines 2022--2023
+[][]\OT1/cmtt/m/n/10 A: a2=, b2=, c3= d2$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$  
+ \OT1/cmtt/m/n/10 B: a2$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 , 
+b3=, c2=, d2=   C: a2=, b2=, c3=, d2$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$   \OT
+1/cmtt/m/n/10 D: a2$\OMS/cmtt/m/n/10 6\OT1/cmr/m/n/10 =$\OT1/cmtt/m/n/10 , b3=,
+ c2=, d2= 
+ []
+
+[69]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [70]
+[71] [72]
+Overfull \hbox (8.59802pt too wide) in paragraph at lines 2121--2122
+\OT1/cmr/m/n/10 Get-Cat-a-logInfo[Bulk] and the Finder info you get back by ``c
+om.apple.FinderInfo''.
+ []
+
+
+Overfull \hbox (11.74702pt too wide) in paragraph at lines 2133--2134
+[][]$\OT1/cmtt/m/n/10 http : / / lists . apple . com / archives / Filesystem-[]
+dev / 2008 / Feb / msg00014 .
+ []
+
+[73]
+Overfull \hbox (175.4956pt too wide) in paragraph at lines 2153--2154
+[][]$\OT1/cmtt/m/n/10 http : / / archive . netbsd . se / ?ml = samba-[]technica
+l&a = 2006-[]08&t = 2304036hascodeforos-[]independentgetxattr$[] 
+ []
+
+
+Overfull \hbox (26.99689pt too wide) in paragraph at lines 2163--2164
+[][]$\OT1/cmtt/m/n/10 http : / / www . bombich . com / groups / ccc / wiki / 7b
+a51 / Improvements _ to _ Backup _
+ []
+
+[74]
+Overfull \hbox (173.74565pt too wide) in paragraph at lines 2250--2251
+[][]$\OT1/cmtt/m/n/10 http : / / blog . plasticsfuture . org / 2006 / 03 / 05 /
+ the-[]state-[]of-[]backup-[]and-[]cloning-[]tools-[]under-[]mac-[]os-[]x/$[] 
+ []
+
+[75] [76]
+Chapter 5.
+[77
+
+] [78] [79]
+Overfull \hbox (12.92291pt too wide) in paragraph at lines 2390--2390
+[]\OT1/cmr/bx/n/14.4 Propagation of Source and Con-fig-u-ra-tion Files 
+ []
+
+
+Underfull \vbox (badness 1067) has occurred while \output is active []
+
+ [80]
+[81] [82
+
+]
+Chapter 6.
+
+Underfull \vbox (badness 3780) has occurred while \output is active []
+
+ [83]
+[84]
+Overfull \hbox (105.7462pt too wide) in paragraph at lines 2468--2470
+[][]\OT1/cmtt/m/n/10 internet:login.ini.uzh.ch`15`$ :cook-sp`30`$ :~/Common/Cod
+ing/Unix/McSync/McSyncDA2 
+ []
+
+[85]
+Overfull \hbox (8.77837pt too wide) in paragraph at lines 2495--2496
+[]\OT1/cmr/m/n/10 An ad-dress (MLS, Mc-Sync lo-ca-tor string) is ei-ther ssh:us
+er@hostname: /.mc-
+ []
+
+[86]
+Overfull \hbox (27.74675pt too wide) in paragraph at lines 2535--2535
+[]  \OT1/cmtt/m/n/10 (up the tree) SR ---- plug ----.    ,---- plug ---- WKR 5 
+(hard disk)[] 
+ []
+
+
+Overfull \hbox (38.24666pt too wide) in paragraph at lines 2535--2535
+[]    \OT1/cmtt/m/n/10 (down to 7) SR ---- plug ----'    `---- plug ---- maybe 
+HQ and/or CMD[] 
+ []
+
+[87]
+Overfull \hbox (18.5562pt too wide) in paragraph at lines 2586--2587
+[]\OT1/cmr/m/n/10 So for a scan, in-voke re-mote Mc-Sync and com-mu-ni-cate wit
+h it on its stdin/stdout.
+ []
+
+[88]
+Overfull \hbox (6.86174pt too wide) in paragraph at lines 2590--2592
+[]\OT1/cmr/m/n/10 Cpus/machines are only use-ful as net-worked nodes, for trans
+-fer-ring/comparing
+ []
+
+
+Overfull \hbox (32.7508pt too wide) in paragraph at lines 2596--2601
+\OT1/cmr/m/n/10 tory by: (ssh to ma-chine)*, look for di-rec-tory Kind of like 
+cook@dna.caltech.edu:somedir
+ []
+
+[89] [90] [91]
+Overfull \hbox (64.49643pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 LT  TUIprocesschar  receives 'c'onnect command, sends "newpl
+ugplease" (NPP1/2)[] 
+ []
+
+
+Overfull \hbox (80.24629pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 LA  algomain        receives NPP1 (devid) or NPP2(dstid,srci
+d) and calls reachfor[] 
+ []
+
+
+Overfull \hbox (17.24684pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 LA  algo_reachfor   sends NPP (deviceid + routeraddr) to wor
+ker, uses[] 
+ []
+
+
+Overfull \hbox (6.74693pt too wide) in paragraph at lines 2739--2739
+[]                 \OT1/cmtt/m/n/10 $1 deviceid to find machine and set its rou
+teraddr[] 
+ []
+
+
+Overfull \hbox (80.24629pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 ---                 at this point we go to whatever PO shoul
+d try the connection,[] 
+ []
+
+
+Overfull \hbox (27.74675pt too wide) in paragraph at lines 2739--2739
+[]                    \OT1/cmtt/m/n/10 could be local or remote.  we call it in
+termediate.[] 
+ []
+
+
+Overfull \hbox (80.24629pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 IW  channel_launch  creates the new plug, sets target_machin
+e to the machine with[] 
+ []
+
+
+Overfull \hbox (85.49625pt too wide) in paragraph at lines 2739--2739
+[]                    \OT1/cmtt/m/n/10 the given deviceid, sets routeradder (on
+ intermediate machine)[] 
+ []
+
+
+Overfull \hbox (85.49625pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 IP  thread_main     recognizes plug as needing connection an
+d calls reachforremote[] 
+ []
+
+
+Overfull \hbox (69.74638pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 IP  reachforremote  does regular scrolling, gives birth, giv
+es further commands[] 
+ []
+
+
+Overfull \hbox (59.24648pt too wide) in paragraph at lines 2739--2739
+[]                    \OT1/cmtt/m/n/10 to process, waits for McSync to show sig
+ns of life, sends[] 
+ []
+
+
+Overfull \hbox (85.49625pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 RC  main            prints messages to show signs of life, r
+eceives router address[] 
+ []
+
+
+Overfull \hbox (59.24648pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 RC  routermain      tells channel_launch to create a parent 
+plug and a worker[] 
+ []
+
+
+Overfull \hbox (53.99652pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 RC  channel_launch  creates the new plug, sets target_machin
+e and routeraddr[] 
+ []
+
+
+Overfull \hbox (74.99634pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 ---                 every hop along the way adds the worker'
+s plug number to the[] 
+ []
+
+
+Overfull \hbox (69.74638pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 LA                  algorithm receives this and asks worker 
+for deviceid string[] 
+ []
+
+
+Overfull \hbox (80.24629pt too wide) in paragraph at lines 2739--2739
+[]\OT1/cmtt/m/n/10 LA                  algo finds machine with given deviceid, 
+sets status_connected[] 
+ []
+
+[92]
+Chapter 7.
+
+Underfull \vbox (badness 3735) has occurred while \output is active []
+
+ [93
+
+]
+[94] (./McSync.ind [95]
+Overfull \hbox (2.11151pt too wide) in paragraph at lines 4--5
+[]\OT1/cmr/m/n/10 arbitrary dis-tin-guisha-bil-ity the-o-rem, []72[] 
+ []
+
+[96
+
+])
+Package atveryend Info: Empty hook `BeforeClearDocument' on input line 2864.
+ [97
+
+
+]
+Package atveryend Info: Empty hook `AfterLastShipout' on input line 2864.
+ (./McSync.aux)
+Package atveryend Info: Executing hook `AtVeryEndDocument' on input line 2864.
+Package atveryend Info: Executing hook `AtEndAfterFileList' on input line 2864.
+
+Package rerunfilecheck Info: File `McSync.out' has not changed.
+(rerunfilecheck)             Checksum: 547182937A2F92A9495551286A2FD47E;6036.
+
+
+LaTeX Font Warning: Some font shapes were not available, defaults substituted.
+
+ ) 
+Here is how much of TeX's memory you used:
+ 5917 strings out of 493625
+ 83667 string characters out of 3143269
+ 172578 words of memory out of 3000000
+ 8959 multiletter control sequences out of 15000+200000
+ 13883 words of font info for 53 fonts, out of 3000000 for 9000
+ 831 hyphenation exceptions out of 8191
+ 29i,8n,28p,2209b,435s stack positions out of 5000i,500n,10000p,200000b,50000s
+</usr/local/texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb
+></usr/local/texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb>
+</usr/local/texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb>
+</usr/local/texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><
+/usr/local/texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></u
+sr/local/texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr
+/local/texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/l
+ocal/texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/loc
+al/texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/
+texlive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/tex
+live/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmsl10.pfb></usr/local/texl
+ive/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texli
+ve/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive
+/2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/local/texlive/
+2011/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2
+011/texmf-dist/fonts/type1/public/amsfonts/symbols/msam10.pfb>
+Output written on McSync.pdf (97 pages, 445342 bytes).
+PDF statistics:
+ 1058 PDF objects out of 1200 (max. 8388607)
+ 933 compressed objects within 10 object streams
+ 197 named destinations out of 1000 (max. 500000)
+ 705 words of extra memory for PDF output out of 10000 (max. 10000000)
+
